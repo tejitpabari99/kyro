@@ -21,7 +21,7 @@ Task count: **12**
 **How:** Per 05 §5: `kgToLb` (×2.2046226218) with display rounding nearest 0.5 lb ≥ 10 lb else 0.1; `lbToKg` stored full precision; m↔km/miles (miles = m/1609.344, 2 decimals), meters/feet (whole ft); seconds → mm:ss under 1 h, h:mm:ss above; cm↔in (1 decimal). Include mm:ss **parsing**: digit-fill seconds→minutes ("130" → 1:30 → 90 s) and normalize bare seconds ≥ 60 ("90" → 1:30/90 s per 08 §4.5 resolution). Pure TS, zero RN imports.
 **References:** 05 §5; 02 §4 (TIME entry); 08 §4.5 (named cases).
 **Dependencies:** M0-03.
-**Acceptance / test gate:** 08 §4.5 suite green: kg↔lb round-trip stability (100 random values × 3 round trips, epsilon-bounded), display rounding rules, mm:ss parse cases, miles/km, cm/in, 0-and-null passthrough.
+**Acceptance / test gate:** 08 §4.5 suite green: kg↔lb round-trip stability (100 random values × 3 round trips, epsilon-bounded), display rounding rules, mm:ss parse cases, miles/km, cm/in, 0-and-null passthrough. **Also:** this is the first source file under `src/domain/**` — uncomment the `'./src/domain/**/*.{ts,tsx}': { lines: 95, branches: 90 }` `coverageThreshold` entry in `jest.config.js` (currently commented out with a `TODO(M1)`, per M0-03's review — Jest hard-errors on a zero-covered-file glob, which is why it was deferred, not weakened) and confirm `pnpm test -- --coverage` still passes with it active.
 **Est:** 0.5 d
 
 ### M1-03 — Vendor free-exercise-db + curation scaffolding

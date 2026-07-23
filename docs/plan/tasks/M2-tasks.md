@@ -31,7 +31,7 @@ Task count: **19**
 **How:** `src/features/workout/activeWorkoutStore.ts`. Each action updates the draft AND awaits the matching repo mutator in the same call; repo failure → rollback + error toast (typed `DataError`, 06 §9). Rehydrate from `getActive()` on cold start (wire into root layout DB-ready gate). Per-set Zustand selectors so SetRow subscribes only to its slice (06 §8). No persistence middleware — DB is the durable copy.
 **References:** 06 §4.1, §5.3, §9; 02 §10.
 **Dependencies:** M2-02.
-**Acceptance / test gate:** 08 §4.9 crash-safety suite: every store action → DB state assertion; **kill simulation** — N seeded random valid actions, drop store, rehydrate, deep-equal (100 seeds); rollback-on-repo-failure test with an injected failing driver.
+**Acceptance / test gate:** 08 §4.9 crash-safety suite: every store action → DB state assertion; **kill simulation** — N seeded random valid actions, drop store, rehydrate, deep-equal (100 seeds); rollback-on-repo-failure test with an injected failing driver. **Also:** this is the first source file under `src/features/workout/**` — uncomment the `'./src/features/workout/**/*.{ts,tsx}': { lines: 85, branches: 80 }` `coverageThreshold` entry in `jest.config.js` (currently commented out with a `TODO(M2)`, per M0-03's review — Jest hard-errors on a zero-covered-file glob, which is why it was deferred, not weakened) and confirm `pnpm test -- --coverage` still passes with it active.
 **Est:** 2 d
 
 ### M2-04 — domain/volume.ts + domain/previous-values.ts
