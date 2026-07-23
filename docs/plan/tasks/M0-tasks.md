@@ -56,7 +56,7 @@ Task count: **12**
 **Acceptance / test gate:** RNTL smoke render for each component in **both themes** (08 §2 policy); Button press/disabled behavioral test; visual check in dev gallery (M0-08).
 **Est:** 1.5 d
 
-### M0-07 — Core primitives, batch 2: Sheet, SegmentedControl, NumericInput, Snackbar, StatColumn/StatTile, Avatar/Thumb
+### M0-07 — Core primitives, batch 2: Sheet, SegmentedControl, NumericInput, Snackbar, StatColumn/StatTile, Avatar/Thumb [done]
 **Description:** Second half of the M0 primitive set.
 **How:** `Sheet`: bottom sheet on `react-native-gesture-handler` + Reanimated, detents 0.5/0.9, grabber, scrim (`overlay` token), keyboard-aware — component-level, not a route (06 §3). `SegmentedControl` iOS-style. `NumericInput`: boxed bg.elevated, radius sm, `setValue` typography, placeholder text.tertiary, select-all-on-focus, decimal/integer modes. `Snackbar` with Undo affordance, 5 s auto-dismiss. `StatColumn`/`StatTile` (footnote label over statLarge/Small value). `Avatar/Thumb` exercise thumbnail with initial-letter fallback circle. Install `react-native-gesture-handler` + `react-native-reanimated` 4 here.
 **References:** 07 §5; 06 §1 (gestures/animation deps), §3 (sheets are components).

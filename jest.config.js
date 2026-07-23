@@ -88,6 +88,32 @@ module.exports = {
       // (see its testMatch entry above) since tokens.ts has zero RN
       // imports — excluded here so it doesn't also run under jest-expo.
       testPathIgnorePatterns: ['/node_modules/', '<rootDir>/src/ui/__tests__/tokens.test.ts'],
+      // `Sheet` (M0-07) is built on react-native-gesture-handler +
+      // react-native-reanimated (4.x, which delegates worklets to the
+      // separate `react-native-worklets` package). Three pieces make that
+      // combination runnable under Jest (no simulator/device, no native
+      // worklets runtime available):
+      //  1. gesture-handler's `jestSetup.js` replaces its native module +
+      //     gesture components with JS mocks (recommended install step in
+      //     its own docs).
+      //  2. reanimated itself needs no mapper/mock entry point — it
+      //     self-detects Jest via `process.env.JEST_WORKER_ID`
+      //     (`src/common/constants/platform.ts`'s `IS_JEST`/
+      //     `SHOULD_BE_USE_WEB`) and falls back to its synchronous JS/"web"
+      //     implementation, the same path it uses on react-native-web.
+      //  3. That fallback only engages if module resolution actually loads
+      //     `react-native-worklets`' *plain* (web-safe) files instead of its
+      //     `.native.ts` variants — Jest's Haste/RN resolver prefers
+      //     `.native.ts` by default, and that variant's `NativeWorklets`
+      //     class throws synchronously in its constructor if the native
+      //     module isn't registered (true in Jest). `react-native-worklets`
+      //     ships a `jest/resolver.js` for exactly this: it strips `native`
+      //     from the resolvable extensions list, but *only* for requests
+      //     resolving inside the `react-native-worklets` package itself
+      //     (checked via `options.basedir`/`request`), so it doesn't affect
+      //     resolution of anything else in the `ui` project.
+      resolver: '<rootDir>/node_modules/react-native-worklets/jest/resolver.js',
+      setupFiles: ['<rootDir>/node_modules/react-native-gesture-handler/jestSetup.js'],
       moduleNameMapper: {
         '^@/(.*)$': '<rootDir>/src/$1',
         // `lucide-react-native`'s `"react-native"` package.json field (which
