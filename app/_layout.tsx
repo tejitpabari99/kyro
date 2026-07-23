@@ -15,14 +15,27 @@
  * relaunch (the write lands in SQLite via `SettingsRepository` before this
  * component's next render).
  *
- * --- DB-ready gate (M0-09), extended by M0-10 ------------------------------
+ * --- DB-ready gate (M0-09), extended by M0-10 + M1-05 ----------------------
  * 06 §5.1's cold start sequence: "splash -> open DB -> run pending
- * migrations -> ... -> load settings -> ... -> render tabs". `runDbBoot()`
- * (`src/data/sqlite/boot.ts`) opens the on-device DB and runs the migration
- * runner; once that resolves, M0-10 adds one more boot step before the gate
- * flips to `ready`: `useSettingsStore.getState().load(new
- * SettingsRepository(getAppDriver()))` — the settings store is fully
- * populated (not just seeded with code defaults) before any screen renders.
+ * migrations -> seed/refresh dataset if version differs -> load settings ->
+ * ... -> render tabs". `runDbBoot()` (`src/data/sqlite/boot.ts`) opens the
+ * on-device DB and runs the migration runner; once that resolves, two more
+ * boot steps run in that exact order before the gate flips to `ready`:
+ *  1. (M1-05) `seedBundledBuiltinExercises(getAppDriver())` — upserts the
+ *     bundled `assets/exercise-db.json` built-in exercises by id whenever
+ *     the bundled checksum differs from `app_meta.dataset_version`; a pure,
+ *     synchronous no-op on every cold start after the first successful seed
+ *     (03 §6.4 step 6, `src/data/exercises/seed-builtins.ts`). Runs before
+ *     settings load per 06 §5.1's ordering.
+ *  2. (M0-10) `useSettingsStore.getState().load(new
+ *     SettingsRepository(getAppDriver()))` — the settings store is fully
+ *     populated (not just seeded with code defaults) before any screen
+ *     renders.
+ * Either step throwing rejects the same boot promise as a migration failure
+ * would, landing on the same blocking error screen below (06 §9) — dataset
+ * seeding is exactly as boot-critical as migrations: the exercise library
+ * must exist before the tabs (in particular the Exercises tab, M1-07+) can
+ * render meaningfully.
  *  - pending: render nothing (the native splash screen stays up — no JS
  *    splash view needed since Expo's splash already covers this window).
  *  - ready: render the real route tree, `ThemeProvider` controlled by the
@@ -46,6 +59,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 
+import { seedBundledBuiltinExercises } from '@/data/exercises/seed-builtins';
 import { getAppDriver, runDbBoot } from '@/data/sqlite/boot';
 import { SettingsRepository } from '@/data/settings/settings-repository';
 import { useSettingsStore } from '@/features/settings/settings-store';
@@ -75,6 +89,11 @@ export default function RootLayout(): React.JSX.Element | null {
 
     runDbBoot()
       .then(async () => {
+        // M1-05: seed/refresh the bundled exercise dataset before settings
+        // load (06 §5.1 ordering). Synchronous under the hood (both
+        // `SqliteDriver` backends' `transaction()` are sync) — not awaited,
+        // just sequenced before the settings load below.
+        seedBundledBuiltinExercises(getAppDriver());
         await useSettingsStore.getState().load(new SettingsRepository(getAppDriver()));
         if (!cancelled) {
           setGate({ status: 'ready' });
