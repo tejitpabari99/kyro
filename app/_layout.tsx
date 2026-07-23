@@ -65,6 +65,16 @@
  * `EXPO_PUBLIC_SENTRY_DSN` is unset (true today — no owner DSN exists yet,
  * O-05 provides the real one by M6). This is deliberately independent of
  * the DB-ready gate: Sentry must never block or be blocked by boot.
+ *
+ * --- `workout/active`'s fullScreenModal presentation (M2-05) --------------
+ * 06 §3: "workout/active.tsx # ACTIVE LOGGER — fullScreenModal,
+ * slide-from-bottom". Every other route gets the `<Stack>`'s own
+ * `screenOptions={{headerShown: false}}` default (still true here); this
+ * one route additionally needs `presentation: 'fullScreenModal'` +
+ * `animation: 'slide_from_bottom'`, so it's declared as an explicit
+ * `<Stack.Screen>` child — expo-router merges an explicitly declared
+ * screen's options with the rest of the file-system-derived route tree,
+ * it doesn't replace it (every other route stays auto-registered).
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -171,7 +181,12 @@ export default function RootLayout(): React.JSX.Element | null {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider preference={themePreference} onPreferenceChange={handleThemePreferenceChange}>
-        <Stack screenOptions={{ headerShown: false }} />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen
+            name="workout/active"
+            options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
+          />
+        </Stack>
       </ThemeProvider>
     </QueryClientProvider>
   );
