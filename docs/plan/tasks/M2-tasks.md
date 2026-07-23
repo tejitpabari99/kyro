@@ -34,7 +34,7 @@ Task count: **19**
 **Acceptance / test gate:** 08 §4.9 crash-safety suite: every store action → DB state assertion; **kill simulation** — N seeded random valid actions, drop store, rehydrate, deep-equal (100 seeds); rollback-on-repo-failure test with an injected failing driver. **Also:** this is the first source file under `src/features/workout/**` — uncomment the `'./src/features/workout/**/*.{ts,tsx}': { lines: 85, branches: 80 }` `coverageThreshold` entry in `jest.config.js` (currently commented out with a `TODO(M2)`, per M0-03's review — Jest hard-errors on a zero-covered-file glob, which is why it was deferred, not weakened) and confirm `pnpm test -- --coverage` still passes with it active.
 **Est:** 2 d
 
-### M2-04 — domain/volume.ts + domain/previous-values.ts
+### M2-04 — domain/volume.ts + domain/previous-values.ts [done]
 **Description:** Pure volume math (P7) and previous-values selection logic.
 **How:** `volume.ts`: per-set by type — weight_reps/weight_duration/short_distance_weight = `weight_kg × max(reps,1)`; bodyweight_reps = added `weight_kg × reps`; bodyweight_assisted_reps/reps_only/duration/distance_duration = 0; warm-ups included iff `warmup_in_stats`; unchecked rows always 0; workout volume = Σ. `previous-values.ts`: pure mapping from `PreviousSet[]` + current rows → per-row PREVIOUS display value + placeholder payload (row-type aware, routine-target fallback, `—` when none). Display conversion via M1-02.
 **References:** 04 §4.2 (P7); 02 §6; 00 P6/P7.
