@@ -14,16 +14,14 @@ Plan:
 
 Delivery: assets bundled (size-check; move to on-demand download if > 50 MB added) + dataset version bump; media slot needs no code change beyond `expo-image` playback (already GIF/WebP-capable).
 
-## 2. Cloud sync & multi-device (design sketch)
+## 2. Cloud-sync extensions (core sync shipped in v1 — see `12`)
 
-The repository layer (`05` §6) is the seam; rows already carry `updated_at` + `deleted_at` (workouts) and stable UUIDs.
+Single-user Supabase sync of saved data is **implemented in v1** (D9, spec `12`, milestone MC): outbox push on save, watermark pull on cold start, LWW + tombstones. What remains future:
 
-Sketch:
-- **Model:** single-user sync (not collaboration). Hevy's own API validates the shape: an event feed `events?since=` of `updated|deleted` envelopes per entity (research §3.1).
-- **Backend options:** (a) dumb file sync — periodically push the `db.json` logical dump + photos to iCloud Drive/CloudKit private DB; last-writer-wins per entity by `updated_at`; simplest, fits one-user-few-devices. (b) proper row sync — small server (or CloudKit records) with per-entity `updated_at` reconciliation and a client outbox journal.
-- **Client changes:** wrap repositories in a `SyncedRepository` decorator writing an outbox row per mutation (id, entity, op, updated_at); a sync engine drains the outbox and applies remote events through the same repository interfaces; conflict policy last-writer-wins (single user, conflicts rare), except active workouts which never sync (device-local by invariant).
-- **Prep already done in v1:** canonical units, soft delete, UUIDs, no SQL outside `data/`, deterministic derived data (PRs recompute anywhere).
-- Adds settings for account/e2e-encryption decisions if a server is involved; prefer CloudKit private database to avoid running infrastructure and to keep the privacy label clean.
+- **Progress-photo cloud backup:** upload originals to Supabase Storage (1 GB free) through the same outbox mechanism (`12` §3 excludes photos in v1); pull-side download on restore. Alternative/parallel belt-and-braces: debounced upload of the `05` §9 backup zip to the owner's iCloud via `react-native-cloud-storage` (research §2.7) — zero backend, all-or-nothing granularity.
+- **Second-device polish (iPad/new phone):** the machinery already works (fresh install + sign-in + pull = full restore, `12` §8); polish items are live-ish freshness (pull on foreground, shorter throttle), a first-run "Restore from cloud?" prompt instead of the silent pull, and conflict soak-testing with two devices genuinely alternating.
+- **E2E encryption** if the trust model ever changes (client-side encryption before push; costs queryability in Studio).
+- **Provider exit:** Cloudflare Workers + D1 is the researched runner-up if Supabase's free tier degrades (research §3); the outbox/pull design ports — D1 is SQLite, so the mirror schema gets *simpler*.
 
 ## 3. Apple Health integration
 
@@ -31,7 +29,7 @@ Most-likely first integration (owner already excluded it from v1 deliberately).
 - Write: completed workouts as HKWorkout (traditional strength training) with duration + estimated energy off; body mass from measurements.
 - Read: body weight (prefill measurement entries), optionally heart rate overlay post-Watch (see §4).
 - Implementation: `@kingstinct/react-native-healthkit` or a thin custom module; all behind `lib/health.ts`; settings toggles per stream; privacy label update (Health data category) + `NSHealthShareUsageDescription`/`NSHealthUpdateUsageDescription`.
-- Effort: small (1 milestone-week); do after sync decision to avoid double-writing complexities.
+- Effort: small (1 milestone-week); sync is settled (v1, `12`), so the only ordering note left: HealthKit writes happen on workout finish alongside the sync enqueue — one more decorator on the same seam.
 
 ## 4. Apple Watch app
 
@@ -60,7 +58,7 @@ Codebase is portable by guardrail (`06` §10). The work is: QA pass on Android h
 - **Routine scheduling** (day-of-week plan + reminder notifications; pairs with the day-of-week widget).
 - **iPad layout** (multi-column: library + detail; logger unchanged).
 - **App lock** (FaceID via `expo-local-authentication`) if the device is ever shared.
-- **iCloud photo/backup automation** (subsumed by §2 option a).
+- **iCloud photo/backup automation** (see §2 — secondary backup-zip upload option).
 
 ## 8. Explicit never-list (re-affirmed)
 

@@ -188,8 +188,9 @@ Setting **Previous Workout Values** = `any_workout` (default) | `same_routine`.
 
 **Acceptance criteria**
 - [ ] Force-quit mid-typing loses at most the single uncommitted text field, nothing else.
+- [ ] **Close/kill the app mid-workout (backgrounded swipe-kill AND hard force-quit), reopen → the active workout is still there with ALL entered data intact:** every set value, checked/unchecked state, set types, RPE, notes, superset grouping, exercise order, and elapsed duration — 10/10 repeated attempts (G2; Hevy-exact behavior). Automated: kill-simulation deep-equal suite (`08` §4.9) + Maestro flow 3 (`08` §6); manual: force-quit drill (`08` §7).
 - [ ] Mini-bar shows on all 4 tabs; timer countdown mirrors the pill.
-- [ ] Device restart mid-workout → relaunch resumes with correct duration and all checked sets.
+- [ ] Device restart mid-workout → relaunch resumes with correct duration and all checked sets (physical-device verification: owner drill, tasks O-09).
 
 ## 11. Plate calculator
 

@@ -107,7 +107,7 @@ Maintained as `docs/qa/` checklists; the recurring core:
 
 - **Device matrix:** owner's iPhone + smallest supported (iPhone SE-class simulator) + Dynamic Island device; dark + light; Dynamic Type 100%/140%.
 - **Logging drill (M2+):** 20-minute real gym session (or simulated) logging 5 exercises incl. superset, drop set, warm-ups, RPE — zero data errors, zero mistaps caused by layout.
-- **Backgrounding drill:** timer + lock screen (notification fires, sound correct, ±15 s honored); force-quit resume ×10; airplane mode (no behavioral change — fully offline app).
+- **Backgrounding drill:** timer + lock screen (notification fires, sound correct, ±15 s honored); force-quit resume ×10; airplane mode (post-MC: save succeeds instantly, offline notice shown once, sync state Pending, nothing else changes — `12` §11.1; pre-MC: no behavioral change at all).
 - **A11y pass (M6):** VoiceOver through flows 1–3 of §6; Reduce Motion; 200% type on non-table screens.
 - **Data integrity audit (M5+):** export CSV → diff against in-app history for 10 random workouts; backup → wipe simulator → restore → spot-check.
 - **Perf spot-checks:** cold start < 1.5 s, keypress latency, 1000-workout history scroll (import synthetic fixture).

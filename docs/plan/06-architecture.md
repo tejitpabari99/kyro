@@ -26,6 +26,8 @@ Technical blueprint. Data-layer specifics in `05`; testing of everything here in
 | Drag reorder | `react-native-reanimated-dnd` (or `react-native-draggable-flatlist` if it proves more stable on RN 0.85 — decide at M3 spike) |
 | KV cache | `expo-sqlite/kv-store` (Zustand persistence, small flags) |
 | Crash/monitoring | `@sentry/react-native` via config plugin (P13) |
+| Cloud sync | `@supabase/supabase-js` + `react-native-url-polyfill` (session storage adapter on `expo-sqlite/kv-store`) (D9, `12`) |
+| Connectivity | `@react-native-community/netinfo` (sync drain trigger only — no feature reads it) |
 | CSV | custom `lib/csv.ts` (RFC 4180 subset; dependency-free, fully unit-tested) |
 | Validation | Zod (settings, CSV rows, backup dumps, dataset build) |
 | Dates | `date-fns` (tree-shakeable; no moment/luxon) |
@@ -50,15 +52,18 @@ kyro/
                       # stats-buckets.ts, previous-values.ts, csv-codec.ts, units.ts
     data/             # repository interfaces + sqlite/drizzle implementations,
                       # schema.ts, migrations/, seed/
+                      # cloud/: CloudSync interface, SupabaseCloudSync + NoopCloudSync,
+                      #   outbox decorators, push/pull engine, merge logic (12)
     ui/               # design-system components (07 §5), tokens.ts, icons
     lib/              # notifications.ts, sound.ts, haptics.ts, files.ts, logger.ts
   assets/exercises/   # built dataset output (03 §6.4)
   data/               # vendored free-exercise-db + curation (build input)
   scripts/            # build-exercise-db.ts etc.
   e2e/                # Maestro flows
+  supabase/           # config.toml, migrations/*.sql (Postgres mirror), seed.sql (12 §4, §13)
 ```
 
-Dependency rule (enforced by ESLint import boundaries): `app → features → {domain, data, ui, lib}`; `domain` imports nothing app-side; `data` imports `domain` types only; `ui` imports tokens only. This keeps domain logic Node-testable (E3).
+Dependency rule (enforced by ESLint import boundaries): `app → features → {domain, data, ui, lib}`; `domain` imports nothing app-side; `data` imports `domain` types only; `ui` imports tokens only. This keeps domain logic Node-testable (E3). Supabase is imported **only** inside `src/data/cloud/` — features and screens never touch it (G-C2, `12`).
 
 ## 3. Navigation (expo-router)
 
@@ -100,7 +105,7 @@ Why not Redux/MobX/Jotai: one writer (the user), no remote sync, small object gr
 ## 5. Boot, persistence & lifecycle
 
 ### 5.1 Cold start sequence
-splash → open DB → run pending migrations (`05` §10) → seed/refresh dataset if version differs → load settings → rehydrate active workout + timer → render tabs (target < 1.5 s on device; dataset seed only on first run/update).
+splash → open DB → run pending migrations (`05` §10) → seed/refresh dataset if version differs → load settings → rehydrate active workout + timer → render tabs (target < 1.5 s on device; dataset seed only on first run/update). **After first frame** (never gating boot): CloudSync init — drain any pending outbox, and run the throttled watermark pull if due (`12` §7–8).
 
 ### 5.2 One transaction per user action
 Repository mutators wrap each logical action (check set, add exercise with N sets, finish) in a single SQLite transaction — crash leaves the DB at an action boundary, never mid-action.
@@ -156,3 +161,11 @@ Re-render discipline verified with React DevTools profiling in M2 exit review (`
 - No direct `Platform.OS === 'ios'` branching outside `lib/` (single lint-allowed list).
 - All native capabilities behind `lib/` wrappers (notifications, haptics, files, keep-awake) — Android later means auditing `lib/`, not features.
 - Design tokens/typography reference system fonts abstractly (`07` §3) — SF Pro on iOS, Roboto fallback free on Android.
+
+## 11. CloudSync module (D9 — full spec in `12`)
+
+- **Boundary:** everything sync lives in `src/data/cloud/` behind a `CloudSync` interface (`enqueue`, `syncNow`, `status`, `signIn/signOut`). Two implementations selected at boot from env: `SupabaseCloudSync` and `NoopCloudSync` (no config → no-op, status "Off"). Repositories gain thin decorators that enqueue `sync_outbox` rows after their local transaction commits (`05` §3.6, `12` §6.1); nothing else in the app changes.
+- **When it runs:** push drain — debounced after enqueue, on `AppState → active`, on connectivity regain (netinfo), on manual "Sync now". Watermark pull — post-first-frame cold start (≥ 6 h throttle), post-sign-in, manual. Single-flight; never during boot; pull deferred while a workout is active. No iOS background-fetch modes in v1 — a pre-force-quit save pushes on next launch (data is already durable locally).
+- **Background behavior:** fire-and-forget with exponential backoff (`12` §11); failures are silent (passive Settings status only); local writes are never delayed, blocked, or rolled back by sync.
+- **State surface:** a tiny `syncStatusStore` (Zustand) mirrors engine state for the Settings row + passive badge (`12` §12); read models stay pure TanStack-Query-over-SQLite — pull applies rows locally then invalidates queries, identical to CSV import.
+- **Env/config:** `EXPO_PUBLIC_SUPABASE_URL` / `EXPO_PUBLIC_SUPABASE_ANON_KEY`; committed dev defaults point at the local `supabase start` stack (deterministic keys); production values come from EAS env/secrets per build profile (`10` §2, `12` §13). `supabase/` in the repo holds the Postgres mirror migrations.

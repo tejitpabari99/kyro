@@ -2,11 +2,11 @@
 
 ## 1. Product vision
 
-Kyro is a **personal weightlifting logbook** for iPhone that makes recording a set take under three seconds, keeps every byte of data on the owner's device, and turns years of training history into trustworthy records and charts.
+Kyro is a **personal weightlifting logbook** for iPhone that makes recording a set take under three seconds, keeps the owner's data on-device and mirrored to the owner's own private cloud, and turns years of training history into trustworthy records and charts.
 
 It is a deliberate clone of Hevy's tracking core — the best-in-class logging UX — with three deliberate departures:
 
-1. **No cloud, no account, no social.** One user, one device, local SQLite. Nothing is gated, nothing phones home.
+1. **No vendor cloud, no social.** One user, local SQLite as the only read model; saved data backs up to a Supabase project the owner controls (D9, `12`). Nothing is gated, nothing phones home to anyone but the owner.
 2. **Everything unlocked.** Every feature Hevy sells as Pro (unlimited routines and custom exercises, all-time statistics, full body measurements, warm-up calculator) ships free.
 3. **Its own identity.** Hevy's layout quality and interaction patterns with a distinct emerald/teal, dark-first design language.
 
@@ -37,7 +37,7 @@ Although single-user, the app ships through TestFlight and the App Store like a 
 
 ### Engineering goals
 
-- **E1 — Sync-ready without sync.** All data access goes through repository interfaces (`05` §6); domain logic never touches SQL directly, so a cloud backend can be added later by swapping/extending repositories (`11` §2).
+- **E1 — Local-first with sync as a decorator.** All data access goes through repository interfaces (`05` §6); domain logic never touches SQL directly. Cloud sync (`12`) attaches as repository decorators + a background engine — zero changes to screens or domain logic, and the whole app runs green with sync stubbed out.
 - **E2 — Portable.** No iOS-only code paths except where the feature is iOS-only (notifications config, haptics tuning, keep-awake). Android should be a config-and-QA project later, not a rewrite.
 - **E3 — Testable by construction.** Domain logic (PRs, 1RM, volume, calculators, CSV, timers) is pure TypeScript with no React/Expo imports, unit-testable in Node.
 
@@ -52,6 +52,7 @@ Full details in docs 02–04; summary:
 - **Body:** all 17 measurement fields, date-keyed; progress photos with gallery and side-by-side compare.
 - **Settings:** units (weight, distance, body measurements), first day of week, theme (system/light/dark), and the 12 workout settings (research §1.6).
 - **Data:** Hevy-compatible CSV export; Hevy CSV import; local backup export (see `05` §9).
+- **Cloud sync (D9, `12`):** workout in progress = local only; on save, completed workouts, routines + folders, custom exercises, measurements, and settings push to the owner's private Supabase project via an outbox; home list + detail always read from the local store (cloud-synced); watermark pull on cold start restores everything after reinstall. Saves always succeed locally and instantly; an offline save shows one non-blocking "saved on device, will sync when online" notice, then retries silently (`12` §11.1); subtle status + manual "Sync now" in Settings. Progress photos stay local in v1.
 - **Launch:** TestFlight beta, App Store submission, Sentry crash monitoring, EAS Update for JS fixes.
 
 ## 5. Non-goals (explicit, v1)
@@ -60,7 +61,7 @@ Full details in docs 02–04; summary:
 |---|---|
 | Social: feed, profiles, follows, likes, comments, leaderboards, shared/community routines, share cards | Permanently out — single-user app. Workout "share" reduces to CSV/backup export. |
 | Third-party integrations: Apple Health, Strava, Garmin, AI/coach features | Out of v1. Apple Health is the most likely future addition (`11` §3). |
-| Cloud sync, accounts, auth | Out of v1 by design (D3). Repository layer keeps the door open (`11` §2). |
+| Multi-user accounts, real-time multi-device sync, photo cloud backup | Single-user Supabase sync of saved data **is** in v1 (D9, `12`). Out: any second user, live device-to-device sync (second device works via cold-start pull only), and cloud photo backup (`11` §2). |
 | Android | Later; keep portable (E2), plan no Android work now. |
 | Apple Watch app | Later (`11` §4). |
 | Home-screen widgets, Live Activities / Dynamic Island | Stretch/roadmap (`11` §6). Rest timer uses local notifications in v1 (P14). |
@@ -85,5 +86,5 @@ v1 is done when all are true:
 - Solo developer + AI coding agents; milestones in `09` are sequenced for that (small vertical slices, test gates).
 - iOS minimum: iOS 16.0 (Expo SDK 56 supports it; covers every device the owner uses).
 - Device storage is not a concern (dataset images ≈ 25–40 MB bundled; acceptable, see `03` §6.5).
-- No backend budget: $99/yr Apple Developer Program + free tiers of EAS/GitHub Actions/Sentry suffice (`10` §1).
+- No backend budget: $99/yr Apple Developer Program + free tiers of EAS/GitHub Actions/Sentry/Supabase suffice (`10` §1, `12` §2 — Supabase free tier has decades of headroom at Kyro's scale).
 - All Hevy behaviors marked `[confidence: medium]` in the research doc have been resolved into explicit specified behavior in these docs — implementers follow this PRD, not Hevy observation.

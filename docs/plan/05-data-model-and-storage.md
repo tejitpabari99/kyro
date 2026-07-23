@@ -4,7 +4,9 @@
 
 Stack (decision P1): **SQLite via `expo-sqlite`** + **Drizzle ORM** (schema in TypeScript, compile-time typed queries) + **drizzle-kit generated SQL migrations bundled with the app**. Rationale: expo-sqlite is the first-party, New-Architecture-ready driver (with SQLCipher optionality and `expo-sqlite/kv-store`); Drizzle is the lightest typed ORM with a clean migration story that runs the exact same schema under Node (`better-sqlite3`) for fast integration tests (`08` §5) — that dual-driver property is the deciding factor over WatermelonDB (sync-oriented, heavier, schema DSL lock-in) and raw SQL (no types). Repositories (§6) hide Drizzle from the rest of the app.
 
-Conventions: table/column names snake_case; ids: UUIDv4 TEXT for user-created rows, dataset slugs for built-in exercises, INTEGER autoincrement for folders; timestamps INTEGER epoch **milliseconds UTC**; booleans INTEGER 0/1; soft delete via `deleted_at` on workouts (sync-readiness, research §3.1); enums stored as TEXT with CHECK constraints.
+Conventions: table/column names snake_case; ids: UUIDv4 TEXT for user-created rows, dataset slugs for built-in exercises; timestamps INTEGER epoch **milliseconds UTC**; booleans INTEGER 0/1; soft delete via `deleted_at` on synced root tables (workouts, routines, routine_folders, exercises — tombstones for cloud sync, `12` §9); enums stored as TEXT with CHECK constraints.
+
+> **Cloud-sync additions (D9, `12`)** are marked `[sync]` below: `deleted_at` tombstones on routines/folders/exercises, the `sync_outbox` table (§3.6), `routine_folders.id` as UUID TEXT (was INTEGER autoincrement — changed so folder ids are globally unique for idempotent cloud upserts), and `app_meta` watermark keys. Everything else is unchanged; this doc stays the single source of truth for both the local schema and the column set mirrored to Postgres (`12` §4).
 
 ---
 
@@ -15,7 +17,8 @@ exercises 1←n workout_exercises n→1 workouts (state: active|completed)
 exercises 1←n routine_exercises n→1 routines n→1 routine_folders
 workout_exercises 1←n sets          routine_exercises 1←n routine_sets
 body_measurements 1←n progress_photos
-settings (kv)                        app_meta (kv: schema/dataset versions)
+settings (kv)                        app_meta (kv: schema/dataset versions, sync watermarks)
+sync_outbox (journal of pending cloud pushes — local only, never synced)  [sync]
 ```
 
 Derived (computed, never stored): PR records, set records, statistics, streaks (`04` §4–5).
@@ -60,11 +63,14 @@ CREATE TABLE exercises (
   aliases                 TEXT NOT NULL DEFAULT '[]',    -- JSON array, search synonyms
   archived_at             INTEGER,                       -- null = visible in browse/picker
   created_at              INTEGER NOT NULL,
-  updated_at              INTEGER NOT NULL
+  updated_at              INTEGER NOT NULL,
+  deleted_at              INTEGER                        -- [sync] tombstone; only ever set on custom rows (12 §9)
 );
 CREATE INDEX idx_exercises_name ON exercises(name COLLATE NOCASE);
-CREATE UNIQUE INDEX idx_exercises_name_active ON exercises(name COLLATE NOCASE) WHERE archived_at IS NULL;
+CREATE UNIQUE INDEX idx_exercises_name_active ON exercises(name COLLATE NOCASE) WHERE archived_at IS NULL AND deleted_at IS NULL;  -- [sync] deleted_at clause added
 ```
+
+`[sync]` note: `ExerciseRepository.delete` (custom, unreferenced rows only, unchanged rule) now sets `deleted_at` instead of removing the row, so the deletion propagates as a tombstone (`12` §9). All queries/pickers already exclude nothing extra — they must filter `deleted_at IS NULL` like workouts.
 
 ### 3.2 workouts / workout_exercises / sets
 
@@ -119,22 +125,24 @@ Invariants (enforced in repository layer + tests): at most one active workout; o
 
 ```sql
 CREATE TABLE routine_folders (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  id         TEXT PRIMARY KEY,                           -- uuid  [sync] was INTEGER AUTOINCREMENT; UUID for idempotent cloud upserts (12 §5)
   title      TEXT NOT NULL,
   position   INTEGER NOT NULL,
   collapsed  INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
+  updated_at INTEGER NOT NULL,
+  deleted_at INTEGER                                     -- [sync] tombstone
 );
 
 CREATE TABLE routines (
   id         TEXT PRIMARY KEY,                           -- uuid
   title      TEXT NOT NULL,
   notes      TEXT,
-  folder_id  INTEGER REFERENCES routine_folders(id) ON DELETE SET NULL,  -- null = "My Routines"
+  folder_id  TEXT REFERENCES routine_folders(id) ON DELETE SET NULL,  -- null = "My Routines"; [sync] TEXT to match folder uuid
   position   INTEGER NOT NULL,                           -- order within folder
   created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
+  updated_at INTEGER NOT NULL,
+  deleted_at INTEGER                                     -- [sync] tombstone; routine delete is now soft (12 §9), queries filter it
 );
 
 CREATE TABLE routine_exercises (
@@ -197,6 +205,26 @@ CREATE TABLE app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);  -- 'dataset_
 ```
 
 Settings keys (typed via a `Settings` TS interface + Zod schema, defaults in code): `weight_unit`, `distance_unit`, `body_measurement_unit`, `theme`, `first_day_of_week`, `weekly_goal`, `default_rest_seconds`, `previous_values_mode`, `warmup_in_stats`, `rpe_enabled`, `plate_calc` `{enabled, bars:[{name,weight_kg}], plates:[{weight_kg,count}]}`, `warmup_calc` `{sets:[{percent,reps}], plate_increment_kg, dumbbell_increment_kg}`, `smart_superset_scroll`, `inline_timer`, `keep_awake`, `live_pr_banner`, `sounds` `{timer_sound, timer_volume, set_check_volume, notification_volume}`, `rest_notifications_enabled`, `sentry_enabled`.
+
+`[sync]` `app_meta` gains sync-bookkeeping keys (device-local, never synced): `last_pulled_at:<table>` (per-root-table pull watermark, `12` §8), `last_pull_completed_at`, `last_push_ok_at`, `cloud_auth_state`.
+
+### 3.6 sync_outbox `[sync — new table, 12 §6]`
+
+Journal of pending cloud pushes — records *that* a root entity changed, never the payload (payload is read fresh from the tables above at push time). Local infrastructure: never synced, excluded from CSV and from the backup zip's restore comparison (a restored device re-enqueues nothing; the cloud already has, or will receive, the data via normal writes/pull).
+
+```sql
+CREATE TABLE sync_outbox (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  entity_type TEXT NOT NULL CHECK (entity_type IN
+              ('workout','routine','routine_folder','exercise','measurement','setting')),
+  entity_id   TEXT NOT NULL,        -- uuid | 'YYYY-MM-DD' (measurement) | settings key
+  op          TEXT NOT NULL CHECK (op IN ('upsert','delete')),
+  created_at  INTEGER NOT NULL,
+  attempts    INTEGER NOT NULL DEFAULT 0,
+  last_error  TEXT
+);
+CREATE UNIQUE INDEX idx_outbox_entity ON sync_outbox(entity_type, entity_id);  -- coalescing (12 §6)
+```
 
 ## 4. Query performance notes
 
@@ -272,7 +300,7 @@ interface CsvService  { exportAll(units): Promise<FileUri>; exportWorkout(id, un
 interface BackupService { export(): Promise<FileUri>; restore(fileUri): Promise<RestoreReport> }
 ```
 
-Implementations live in `data/sqlite/*` (Drizzle). Domain services (`RecordsService`, `StatsService`, warm-up/plate calculators, Epley) are pure functions over repository outputs — no SQL. **Cloud-sync path** (`11` §2): because every mutation flows through repositories and rows carry `updated_at`/`deleted_at`, a future `SyncedWorkoutRepository` decorator can journal mutations and reconcile — zero UI changes.
+Implementations live in `data/sqlite/*` (Drizzle). Domain services (`RecordsService`, `StatsService`, warm-up/plate calculators, Epley) are pure functions over repository outputs — no SQL. **Cloud-sync path** (`12`, in v1 per D9): because every mutation flows through repositories and rows carry `updated_at`/`deleted_at`, sync attaches as repository decorators that journal saved-data mutations into `sync_outbox` (§3.6) after the local transaction commits; the push/pull engine lives in `data/cloud/*` (`06` §11) — zero UI changes, and the decorators are the complete list in `12` §6.1.
 
 ## 7. CSV export / import (Hevy-compatible)
 

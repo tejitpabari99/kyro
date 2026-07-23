@@ -2,7 +2,7 @@
 
 Phased plan sequenced for a solo developer + AI coding agents: vertical slices, each milestone ends with a working app, a test gate (`08`), and a tagged build. Estimates are calendar-loose (personal project); order and gates are the contract, not dates.
 
-Dependency spine: **M0 → M1 → M2 → M3 → M4 → M5 → M6 → M7**. M3 and M4 can partially overlap; nothing else should.
+Dependency spine: **M0 → M1 → M2 → M3 → M4 → M5 → MC → M6 → M7**. M3 and M4 can partially overlap, and MC's infrastructure tasks (local Supabase stack, cloud schema, auth, pure sync logic — MC-01…04, MC-06) may overlap M4/M5; nothing else should.
 
 ---
 
@@ -86,6 +86,24 @@ Dependency spine: **M0 → M1 → M2 → M3 → M4 → M5 → M6 → M7**. M3 an
 - Owner's history imported: 0 dropped rows, PRs sane, spot-check vs Hevy passes (G4).
 - Backup → wipe → restore drill passes.
 
+## MC — Cloud sync (Supabase)
+
+Slotted after M5 (all saveable entities and their repositories exist by then) and before polish, so the M6 beta soaks real sync. Spec: `12` (D9). **All development and CI run against the local `supabase start` Docker stack + the no-op stub — nothing in MC waits on the owner's Supabase account**; only production-credential wiring (MC-14, owner task O-13) is owner-gated, and it can complete as late as the M6-09 TestFlight window.
+
+**Scope**
+- `supabase/` in-repo: local stack config, Postgres mirror migrations + RLS policies + heartbeat RPC; env plumbing (`EXPO_PUBLIC_SUPABASE_*`) with committed local-stack dev defaults; `CloudSync` interface + no-op stub (`06` §11).
+- Local schema migration: `sync_outbox`, tombstone columns, folder-UUID change (`05` §3.6 and `[sync]` marks).
+- Auth (single user, kv-store session persistence, passive failure states); outbox enqueue decorators on every save path (`12` §6.1); push engine with batching/idempotent upserts/retry-backoff; watermark pull + reinstall restore; tombstone/LWW merge.
+- Sync status row + "Sync now" in Settings → Data; passive badge; one-time offline save notice ("No network — saved on device, will sync when online", `12` §11.1).
+- Test suites per `12` §15 (unit + integration against the local stack + stub regression) and the CI cloud job; heartbeat GitHub Action authored (enable = owner, O-14).
+
+**Exit criteria / test gate**
+- All `12` §17 acceptance criteria pass (local stack); `12` §15 suites green in CI.
+- Reinstall-restore drill: finish workouts → wipe simulator → sign in → pull → history/routines/records deep-match.
+- Airplane-mode drill: save succeeds instantly, offline notice shown exactly once, everything else unchanged (G-C4, `12` §11.1); full pre-existing suite green with the stub (proves sync is additive).
+- Production wiring (MC-14) explicitly **not** required to exit MC — it lands with M6-09.
+- Milestone tag: `v0.5.1` (MC sits between M5's `v0.5.0` and M6's `v0.6.0` in the `v0.<M>.0` convention).
+
 ## M6 — Polish, hardening, beta
 
 **Scope**
@@ -93,7 +111,7 @@ Dependency spine: **M0 → M1 → M2 → M3 → M4 → M5 → M6 → M7**. M3 an
 - Visual QA sweep both themes on device matrix; motion/haptics tuning; empty states/onboarding-lite (first-run hints).
 - Perf audit (cold start, re-render profiling `06` §8); bundle size check.
 - Bug-bash weeks: fix everything P0–P2; regression tests per fix.
-- App Store prep start: icon, screenshots, copy (`10` §7); TestFlight internal beta via EAS Submit; 2-week dogfood with Sentry watch.
+- App Store prep start: icon, screenshots, copy (`10` §7); TestFlight internal beta via EAS Submit; 2-week dogfood with Sentry watch — beta builds carry real Supabase credentials once O-13 is done (MC-14), so the dogfood also soaks production sync; without O-13 the beta runs with the sync stub, still valid for everything else.
 
 **Exit criteria / test gate**
 - Zero P0/P1, zero known P2; crash-free ≥ 99.5% over the beta window (G6/success criteria `01` §6).
@@ -102,7 +120,7 @@ Dependency spine: **M0 → M1 → M2 → M3 → M4 → M5 → M6 → M7**. M3 an
 ## M7 — App Store launch
 
 **Scope** (details in `10`)
-- Production bundle id/profiles, privacy nutrition label, review notes (exercise-image licensing answer), App Store listing assets, versioning set to 1.0.0.
+- Production bundle id/profiles, privacy nutrition label (now includes the fitness-data sync declaration, `10` §6), review notes (exercise-image licensing answer), App Store listing assets, versioning set to 1.0.0.
 - EAS production build → TestFlight external (optional) → App Store submission; address review feedback.
 - Post-launch: Sentry release monitoring, EAS Update channel for JS hotfixes, backup-reminder default on.
 
@@ -117,4 +135,4 @@ Dependency spine: **M0 → M1 → M2 → M3 → M4 → M5 → M6 → M7**. M3 an
 - Feature PRs follow the DoD (`08` §8); agents receive the relevant spec sections as context and must tick acceptance boxes in the PR description.
 - Milestone exit = tag `v0.<M>.0` + release-candidate build + checklist file committed under `docs/qa/`.
 - Expo SDK/dependency upgrades only between milestones.
-- Scope discipline: anything not in docs 02–05 goes to `11-future-roadmap.md`, not into the milestone.
+- Scope discipline: anything not in docs 02–05 or 12 goes to `11-future-roadmap.md`, not into the milestone.
