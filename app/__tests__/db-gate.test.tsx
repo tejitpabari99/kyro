@@ -9,7 +9,8 @@
  */
 import { renderRouter, screen } from 'expo-router/testing-library';
 
-import { runDbBoot } from '@/data/sqlite/boot';
+import { getAppDriver, runDbBoot } from '@/data/sqlite/boot';
+import type { SqliteDriver } from '@/data/sqlite/driver';
 
 // A factory mock (rather than bare `jest.mock('@/data/sqlite/boot')`) is
 // required here: automocking without a factory still `require`s the real
@@ -23,10 +24,29 @@ jest.mock('@/data/sqlite/boot', () => ({
 }));
 
 const mockRunDbBoot = runDbBoot as jest.MockedFunction<typeof runDbBoot>;
+const mockGetAppDriver = getAppDriver as jest.MockedFunction<typeof getAppDriver>;
+
+/**
+ * M0-10: once `runDbBoot()` resolves, the root layout also calls
+ * `SettingsRepository(getAppDriver()).get()` (via `settingsStore.load()`)
+ * before flipping the gate to `ready` — so a driver stub with a working
+ * (empty-result) `queryAll` is needed here too, or that second boot step
+ * itself rejects and the gate never reaches `ready`.
+ */
+function fakeEmptySettingsDriver(): SqliteDriver {
+  return {
+    dialect: 'better-sqlite3',
+    execute: jest.fn().mockReturnValue({ changes: 0, lastInsertRowId: 0 }),
+    queryAll: jest.fn().mockReturnValue([]),
+    transaction: jest.fn((fn) => fn()),
+    close: jest.fn(),
+  };
+}
 
 describe('DB-ready gate (M0-09)', () => {
   afterEach(() => {
     mockRunDbBoot.mockReset();
+    mockGetAppDriver.mockReset();
   });
 
   it('renders the tab content once migration resolves', async () => {
@@ -35,6 +55,7 @@ describe('DB-ready gate (M0-09)', () => {
       toVersion: 1,
       applied: ['0000_app_meta_and_settings'],
     });
+    mockGetAppDriver.mockReturnValue(fakeEmptySettingsDriver());
 
     await renderRouter('app', { initialUrl: '/' });
 

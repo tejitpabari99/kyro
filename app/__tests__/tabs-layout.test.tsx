@@ -35,9 +35,19 @@ import { renderRouter, screen } from 'expo-router/testing-library';
 // automocking without one still `require`s the real module first, which
 // would pull in `expo-sqlite`'s native module (unavailable under Jest, 08
 // §5 — see `db-gate.test.tsx`'s header for the full explanation).
+// M0-10 update: the root layout now also loads `settingsStore` from
+// `SettingsRepository(getAppDriver())` before flipping the gate to `ready`
+// (see `db-gate.test.tsx`'s `fakeEmptySettingsDriver` for why `getAppDriver`
+// needs a working (empty-result) driver stub, not just `jest.fn()`).
 jest.mock('@/data/sqlite/boot', () => ({
   runDbBoot: jest.fn().mockResolvedValue({ fromVersion: 0, toVersion: 1, applied: [] }),
-  getAppDriver: jest.fn(),
+  getAppDriver: jest.fn().mockReturnValue({
+    dialect: 'better-sqlite3',
+    execute: jest.fn().mockReturnValue({ changes: 0, lastInsertRowId: 0 }),
+    queryAll: jest.fn().mockReturnValue([]),
+    transaction: jest.fn((fn: () => unknown) => fn()),
+    close: jest.fn(),
+  }),
 }));
 
 describe('tab shell — boots to tabs, all 4 tabs navigable', () => {

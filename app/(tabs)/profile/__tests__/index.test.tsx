@@ -1,15 +1,36 @@
 /**
- * Profile tab placeholder test (M0-08) — the dev-gallery link's `__DEV__`
- * guard: shown under `__DEV__` (true in every Jest run), hidden when
- * `__DEV__` is `false` (the guard's actual production behavior).
+ * Profile tab placeholder test (M0-08, +M0-10's Settings link) — the
+ * dev-gallery link's `__DEV__` guard: shown under `__DEV__` (true in every
+ * Jest run), hidden when `__DEV__` is `false` (the guard's actual
+ * production behavior). Also covers the M0-10 Settings row, which is
+ * unconditional (present in every build).
  */
-import { render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen } from '@testing-library/react-native';
+import { router } from 'expo-router';
 import React from 'react';
 
 import ProfileScreen from '../index';
 import { ThemeProvider } from '@/ui/theme-provider';
 
-describe('ProfileScreen — dev-gallery link is __DEV__-gated', () => {
+jest.mock('expo-router', () => ({
+  ...jest.requireActual('expo-router'),
+  router: { push: jest.fn() },
+}));
+
+describe('ProfileScreen — Settings link + dev-gallery link __DEV__ gate', () => {
+  it('shows the Settings row (every build) and navigates to /profile/settings on press', async () => {
+    await render(
+      <ThemeProvider>
+        <ProfileScreen />
+      </ThemeProvider>,
+    );
+
+    const settingsLink = screen.getByTestId('settings-link');
+    expect(settingsLink).toBeTruthy();
+    fireEvent.press(settingsLink);
+    expect(router.push).toHaveBeenCalledWith('/profile/settings');
+  });
+
   it('shows the Design Gallery row under __DEV__', async () => {
     await render(
       <ThemeProvider>
