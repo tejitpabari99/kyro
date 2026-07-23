@@ -80,7 +80,7 @@ Task count: **12**
 **Acceptance / test gate:** Migration-runner integration test green (empty→migrated, idempotent re-run); device/simulator boots through the migration gate; migration failure path shows the blocking error screen stub (06 §9).
 **Est:** 1 d
 
-### M0-10 — SettingsRepository + settingsStore; theme & units settings end-to-end
+### M0-10 — SettingsRepository + settingsStore; theme & units settings end-to-end [done]
 **Description:** Typed settings layer: Zod-validated `Settings` interface with all keys + defaults, SQLite-backed repository, Zustand store loaded at boot; wire theme + units settings to real UI.
 **How:** Define the full `Settings` TS interface + Zod schema + code defaults for **every** key listed in 05 §3.5 (weight_unit, distance_unit, body_measurement_unit, theme, first_day_of_week, weekly_goal, default_rest_seconds, previous_values_mode, warmup_in_stats, rpe_enabled, plate_calc{…}, warmup_calc{…}, smart_superset_scroll, inline_timer, keep_awake, live_pr_banner, sounds{…}, rest_notifications_enabled, sentry_enabled) — storage is ready even though most UIs come later. `SettingsRepository.get/set` (JSON-encoded values); `settingsStore` (Zustand) loaded at boot, synchronous reads, write-through. Minimal Profile → Settings screen with theme selector (System/Light/Dark via SegmentedControl) and weight-unit toggle, both persisting and applying instantly.
 **References:** 05 §3.5 (settings keys), 06 §4 (settingsStore), 04 §7, 02 §13 #12.
