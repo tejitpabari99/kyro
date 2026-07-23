@@ -1,30 +1,13 @@
-import { StyleSheet, Text, View } from 'react-native';
+/**
+ * Root redirect (M0-08). 06 §3's route tree has no top-level `index.tsx` of
+ * its own — the app's entry point is the tabs shell. `(tabs)` is a pathless
+ * group (its segment doesn't appear in the URL) and none of its four tabs
+ * is named `index`, so `/` has no leaf route without this redirect. Lands
+ * on the Workout tab (06 §3: "routines hub" — the natural landing tab,
+ * where Start lives per 07 §6).
+ */
+import { Redirect } from 'expo-router';
 
-// Placeholder home screen for M0-01 (repo scaffold). The real (tabs) shell
-// (workout/history/exercises/profile) lands in M0-08 per
-// docs/plan/06-architecture.md §3.
-export default function Index() {
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Kyro</Text>
-      <Text style={styles.subtitle}>Scaffold OK — tabs shell lands in M0-08.</Text>
-    </View>
-  );
+export default function Index(): React.JSX.Element {
+  return <Redirect href="/workout" />;
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: '700',
-  },
-  subtitle: {
-    fontSize: 14,
-    opacity: 0.6,
-  },
-});

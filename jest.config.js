@@ -112,7 +112,10 @@ module.exports = {
       //     resolving inside the `react-native-worklets` package itself
       //     (checked via `options.basedir`/`request`), so it doesn't affect
       //     resolution of anything else in the `ui` project.
-      resolver: '<rootDir>/node_modules/react-native-worklets/jest/resolver.js',
+      //  4. `<rootDir>/jest/resolver.js` (M0-08) wraps that same vendor
+      //     resolver with one more scoped rule, for `expo-router`'s
+      //     internal toolbar native-view module — see that file's header.
+      resolver: '<rootDir>/jest/resolver.js',
       setupFiles: ['<rootDir>/node_modules/react-native-gesture-handler/jestSetup.js'],
       moduleNameMapper: {
         '^@/(.*)$': '<rootDir>/src/$1',

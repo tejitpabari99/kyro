@@ -64,7 +64,7 @@ Task count: **12**
 **Acceptance / test gate:** RNTL smoke both themes for all; Sheet open/dismiss behavioral test; NumericInput select-all-on-focus + decimal filtering tests.
 **Est:** 2 d
 
-### M0-08 — Tab shell, navigation skeleton, dev gallery
+### M0-08 — Tab shell, navigation skeleton, dev gallery [done]
 **Description:** expo-router route tree with 4 tabs and placeholder screens, plus a dev-only design-gallery route rendering every primitive in both themes.
 **How:** Routes per 06 §3: `app/_layout.tsx` (root Stack: QueryClientProvider, theme provider, DB-ready gate placeholder), `app/(tabs)/_layout.tsx` with tabs workout/history/exercises/profile (icons: dumbbell, history, book-open, user; active accent, inactive text.tertiary; bg.surface + top hairline, no center FAB), placeholder index screens per tab. Dev gallery at e.g. `app/dev/gallery.tsx`, linked only in `__DEV__`. Reserve the `GlobalWorkoutBar` overlay slot in the tabs layout (empty component until M2-13).
 **References:** 06 §3 (navigation map), 07 §6 (tab bar spec).
