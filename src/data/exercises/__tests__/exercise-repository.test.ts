@@ -196,20 +196,14 @@ describe('ExerciseRepositoryImpl (M1-06 integration, better-sqlite3)', () => {
       );
     });
 
-    it('falls back to a locally-generated uuid v4 when crypto.randomUUID is unavailable', async () => {
-      const original = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
-      Object.defineProperty(globalThis, 'crypto', { value: undefined, configurable: true });
-      try {
-        const created = await repo.create(makeCustomInput({ name: 'No Crypto Global' }));
-        expect(created.id).toMatch(
-          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
-        );
-      } finally {
-        if (original) {
-          Object.defineProperty(globalThis, 'crypto', original);
-        }
-      }
-    });
+    // The "no globalThis.crypto.randomUUID" fallback path (`../shared/uuid.ts`,
+    // an `expo-crypto` dynamic import) is exercised by
+    // `src/data/shared/__tests__/uuid.test.ts` directly, against a mocked
+    // `expo-crypto` — real `expo-crypto` cannot load outside a native-module
+    // host (see that module's header), so it is not re-exercised here; this
+    // repository's own contract is just "delegate id generation to
+    // `generateUuid`," which the happy-path `create` test above already
+    // confirms via the returned id's UUID-shaped format.
   });
 
   // -------------------------------------------------------------------
@@ -285,6 +279,30 @@ describe('ExerciseRepositoryImpl (M1-06 integration, better-sqlite3)', () => {
       expect(results.map((e) => e.id)).toContain(exercise.id);
       // Confirm this is genuinely an alias match, not a name substring match.
       expect(exercise.name.toLowerCase()).not.toContain('ohp');
+    });
+
+    it('matches a diacritic query against a plain-ASCII alias (normalization applied to the query side)', async () => {
+      const exercise = await repo.create(makeCustomInput({ name: 'Alias Normalization Test A' }));
+      driver.execute(`UPDATE exercises SET aliases = ? WHERE id = ?`, [
+        JSON.stringify(['Curl']),
+        exercise.id,
+      ]);
+
+      // "cúrl" normalizes to "curl" — must still match the plain-ASCII alias.
+      const results = await repo.list({ query: 'cúrl' });
+      expect(results.map((e) => e.id)).toContain(exercise.id);
+    });
+
+    it('matches a plain-ASCII query against a diacritic alias (normalization applied to the stored-data side)', async () => {
+      const exercise = await repo.create(makeCustomInput({ name: 'Alias Normalization Test B' }));
+      driver.execute(`UPDATE exercises SET aliases = ? WHERE id = ?`, [
+        JSON.stringify(['Überkopfdrücken']),
+        exercise.id,
+      ]);
+
+      // Plain-ASCII "uberkopfdrucken" must still match the accented alias.
+      const results = await repo.list({ query: 'uberkopfdrucken' });
+      expect(results.map((e) => e.id)).toContain(exercise.id);
     });
 
     it('matches query against a real vendored built-in alias via seedBuiltins ("OHP" -> Barbell Shoulder Press)', async () => {

@@ -17,6 +17,12 @@
  *
  * ## Design notes on the constraints in 05 §6 / 03 §5
  *
+ * - **Id generation** (`create`): `../shared/uuid.ts`'s `generateUuid` —
+ *   shared across every `src/data/**` repository that mints a UUIDv4 primary
+ *   key (05's conventions line), not a copy local to this file. See that
+ *   module's header for why it lives in `src/data/shared/` rather than
+ *   `src/domain/`/`src/lib/`, and for the `expo-crypto`-backed fix to an
+ *   earlier `Math.random`-fallback review finding.
  * - **Name uniqueness** (`create`/`update`/`restore`): enforced twice —
  *   once as a pre-check (`assertNameAvailable`, a `SELECT` against
  *   `idx_exercises_name_active`'s exact condition: `name = ? COLLATE NOCASE
@@ -83,11 +89,12 @@
  *   Exercises tab itself will use (M1-07), just applied inside the
  *   repository instead of the UI layer.
  */
-import { normalizeForSearch } from '@/domain/search';
+import { matchesSearchQuery } from '@/domain/search';
 import type { Equipment, ExerciseType, MuscleGroup } from '@/domain/enums';
 import type { MappedExerciseRecord } from '@/domain/exercise-mapping';
 
 import type { SqliteDriver } from '../sqlite/driver';
+import { generateUuid } from '../shared/uuid';
 import {
   BuiltinExerciseImmutableError,
   DuplicateExerciseNameError,
@@ -148,29 +155,6 @@ function isUniqueConstraintError(error: unknown): boolean {
   return error instanceof Error && /UNIQUE constraint failed/i.test(error.message);
 }
 
-/**
- * Dependency-free RFC 4122 v4 UUID generator. Prefers the platform's
- * `crypto.randomUUID` when present (available in the Jest/`better-sqlite3`
- * Node process; may or may not be present in the on-device Hermes runtime
- * depending on Expo/RN version — no polyfill package is installed in this
- * repo yet, see this task's report for the deviation note) and falls back to
- * a `Math.random`-based generator otherwise. Exercise ids are not
- * security-sensitive (no auth/token use), only need to be practically
- * unique, so the non-cryptographic fallback is an acceptable tradeoff rather
- * than adding a new runtime dependency for this alone.
- */
-function generateExerciseId(): string {
-  const globalCrypto = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
-  if (typeof globalCrypto?.randomUUID === 'function') {
-    return globalCrypto.randomUUID();
-  }
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (placeholder) => {
-    const random = (Math.random() * 16) | 0;
-    const value = placeholder === 'x' ? random : (random & 0x3) | 0x8;
-    return value.toString(16);
-  });
-}
-
 export class ExerciseRepositoryImpl implements ExerciseRepository {
   constructor(private readonly driver: SqliteDriver) {}
 
@@ -202,13 +186,11 @@ export class ExerciseRepositoryImpl implements ExerciseRepository {
       return exercises;
     }
 
-    const normalizedQuery = normalizeForSearch(query);
-    return exercises.filter((exercise) => {
-      if (normalizeForSearch(exercise.name).includes(normalizedQuery)) {
-        return true;
-      }
-      return exercise.aliases.some((alias) => normalizeForSearch(alias).includes(normalizedQuery));
-    });
+    return exercises.filter(
+      (exercise) =>
+        matchesSearchQuery(exercise.name, query) ||
+        exercise.aliases.some((alias) => matchesSearchQuery(alias, query)),
+    );
   }
 
   async get(id: string): Promise<Exercise | null> {
@@ -223,7 +205,7 @@ export class ExerciseRepositoryImpl implements ExerciseRepository {
     }
     this.assertNameAvailable(name);
 
-    const id = generateExerciseId();
+    const id = await generateUuid();
     const now = Date.now();
     const secondaryMuscleGroups = input.secondaryMuscleGroups ?? [];
     const equipment = input.equipment ?? 'none';
