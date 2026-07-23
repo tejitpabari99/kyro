@@ -1,32 +1,23 @@
 /**
- * Exercises tab placeholder (M0-08) — exercise library browse (06 §3). Real
- * screen (search, filters, FlashList of ~870 exercises) lands in M1/M2.
+ * Exercises tab (M1-07) — 03 §2's full library browse screen. Wires the
+ * real, on-device `ExerciseRepositoryImpl` (backed by the single app-wide
+ * `SqliteDriver`, `src/data/sqlite/boot.ts` — the same connection every
+ * other repository consumer reuses post-boot) into
+ * `src/features/exercises/ExerciseBrowseScreen.tsx`, which holds all of
+ * this screen's actual logic/layout so it stays trivially reusable as a
+ * picker sheet later (M2-09) without this route file changing.
+ *
+ * Replaces the M0-08 placeholder (`EmptyState` stub) that shipped before
+ * the exercise data layer (M1-01..M1-06) existed.
  */
-import React from 'react';
-import { BookOpen } from 'lucide-react-native';
-import { StyleSheet, View } from 'react-native';
+import React, { useMemo } from 'react';
 
-import { EmptyState } from '@/ui/EmptyState';
-import { useTheme } from '@/ui/theme-provider';
+import { ExerciseRepositoryImpl } from '@/data/exercises/exercise-repository';
+import { getAppDriver } from '@/data/sqlite/boot';
+import { ExerciseBrowseScreen } from '@/features/exercises/ExerciseBrowseScreen';
 
 export default function ExercisesScreen(): React.JSX.Element {
-  const { colors } = useTheme();
+  const repository = useMemo(() => new ExerciseRepositoryImpl(getAppDriver()), []);
 
-  return (
-    <View style={[styles.container, { backgroundColor: colors.bg.base }]}>
-      <EmptyState
-        icon={<BookOpen size={40} strokeWidth={1.75} color={colors.text.tertiary} />}
-        title="Exercise library coming soon"
-        caption="Search and browse exercises will live here."
-      />
-    </View>
-  );
+  return <ExerciseBrowseScreen repository={repository} />;
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});

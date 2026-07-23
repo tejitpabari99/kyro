@@ -7,6 +7,7 @@
     "@expo/metro-runtime": "~56.0.18",
     "@expo/ui": "~56.0.23",
     "@sentry/react-native": "~7.11.0",
+    "@shopify/flash-list": "2.3.2",
     "@tanstack/react-query": "^5.101.4",
     "drizzle-orm": "^0.45.2",
     "expo": "~56.0.17",
@@ -76,6 +77,7 @@
     "format:check": "prettier --check .",
     "test": "jest",
     "build:exercises": "tsx scripts/build-exercise-db.ts",
+    "build:exercise-thumbnails": "tsx scripts/generate-exercise-thumbnail-registry.ts",
     "ci": "pnpm run typecheck && pnpm run lint && pnpm test -- --coverage && npx expo-doctor && npx expo export --platform ios"
   },
   "private": true,

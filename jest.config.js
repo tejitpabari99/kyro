@@ -128,6 +128,23 @@ module.exports = {
       //     internal toolbar native-view module — see that file's header.
       resolver: '<rootDir>/jest/resolver.js',
       setupFiles: ['<rootDir>/node_modules/react-native-gesture-handler/jestSetup.js'],
+      // `@shopify/flash-list` v2 (M1-07) ships `dist/index.js` as plain ESM
+      // (`import`/`export` syntax, no CJS build) — `jest-expo`'s own default
+      // `transformIgnorePatterns` (see its `jest-preset.js`) already
+      // un-ignores a specific package allow-list (react-native, expo*,
+      // react-navigation, etc.) under both plain and pnpm's nested
+      // `.pnpm/<pkg>/node_modules/<pkg>` layout; `@shopify/flash-list` isn't
+      // on that list, so requiring it raises "Cannot use import statement
+      // outside a module" unless it's added here too. This is the *same*
+      // pattern jest-expo ships, verbatim, with one more alternative added
+      // — not a hand-rolled replacement — so every other package that
+      // preset already handles (including pnpm's `.pnpm/` un-ignoring)
+      // keeps working.
+      transformIgnorePatterns: [
+        '/node_modules/(?!(.pnpm|react-native|@react-native|@react-native-community|expo|@expo|@expo-google-fonts|react-navigation|@react-navigation|@sentry/react-native|native-base|standard-navigation|@shopify/flash-list))',
+        '/node_modules/react-native-reanimated/plugin/',
+        '/node_modules/@react-native/babel-preset/',
+      ],
       moduleNameMapper: {
         '^@/(.*)$': '<rootDir>/src/$1',
         // `lucide-react-native`'s `"react-native"` package.json field (which

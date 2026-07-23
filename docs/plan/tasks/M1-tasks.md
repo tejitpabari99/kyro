@@ -68,7 +68,7 @@ caveat carries forward from this task.
 **Acceptance / test gate:** Integration test per method — happy path + key edge (08 §2): duplicate active name rejected case-insensitively, archived excluded from default list, delete-referenced throws, recentlyUsed ordering/distinctness, alias match. Coverage counts toward the ≥ 90% `src/data` gate.
 **Est:** 1.5 d
 
-### M1-07 — Exercises tab: browse, search, filters, A–Z index
+### M1-07 — Exercises tab: browse, search, filters, A–Z index [done]
 **Description:** The full library browse screen per 03 §2 (picker mode is M2-09).
 **How:** `app/(tabs)/exercises/index.tsx` + feature components. FlashList v2, fixed row height, 44 pt thumbnail via `expo-image` (memory-disk cache) with initial fallback (`Avatar/Thumb`); Recent section (repo `recentlyUsed(10)`, hidden while searching/filtering — will be empty until M2 logging exists; render the section only when non-empty); All section alphabetical with sticky letter headers + right-edge A–Z rail; equipment + muscle filter chips opening option Sheets (single-select, human labels from enums module, Clear resets, active accent tint); search debounced 150 ms, in-memory over the preloaded array; empty state with `Create "{query}"` shortcut (navigates to M1-09 form with name pre-filled); "Custom" tag on custom rows.
 **References:** 03 §2; 06 §8 (perf tactics); 07 §5.

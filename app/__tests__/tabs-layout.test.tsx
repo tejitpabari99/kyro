@@ -89,8 +89,15 @@ describe('tab shell — boots to tabs, all 4 tabs navigable', () => {
   it(
     'navigates to the Exercises tab',
     async () => {
+      // M1-07 update: the real browse screen replaced the placeholder.
+      // `getAppDriver`'s mock above returns an empty `queryAll(...)` result
+      // for everything (including `ExerciseRepository.list()`), so the
+      // screen legitimately renders its "no exercises" empty state here —
+      // this smoke test only needs to prove the route renders the real
+      // screen, not exercise real browse behavior (covered in
+      // `src/features/exercises/__tests__/`).
       await renderRouter('app', { initialUrl: '/exercises' });
-      expect(await screen.findByText('Exercise library coming soon')).toBeTruthy();
+      expect(await screen.findByText('No exercises found')).toBeTruthy();
     },
     15000,
   );
