@@ -88,7 +88,7 @@ Task count: **12**
 **Acceptance / test gate:** Repo integration tests (get defaults, set/get round-trip, bad JSON → Zod default fallback); theme change is instant app-wide and survives relaunch; units value persists.
 **Est:** 1 d
 
-### M0-11 — Sentry, error boundaries, logger
+### M0-11 — Sentry, error boundaries, logger [done]
 **Description:** Crash/monitoring scaffolding that works with **no owner account**: Sentry integrated but a no-op until a DSN exists.
 **How:** `@sentry/react-native` via Expo config plugin; init **after first frame** (06 §8), reading DSN from env/app config — when DSN is empty, skip init entirely (SDK no-ops; this is the not-blocked-by-owner path; real DSN arrives with O-05 by M6). `sendDefaultPii: false`, no user identifiers, breadcrumbs = one-line action names, no payloads (06 §9). Root ErrorBoundary per tab + one for the logger route (preserves store on remount). `src/lib/logger.ts`: ring buffer of last 500 events in `expo-sqlite/kv-store`, with an export hook for the future diagnostics screen (M5-04).
 **References:** 06 §9; 00 P13; 10 §6 (privacy posture).
