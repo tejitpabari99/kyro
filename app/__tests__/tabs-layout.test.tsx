@@ -27,6 +27,19 @@
  */
 import { renderRouter, screen } from 'expo-router/testing-library';
 
+// M0-09 update: the root layout now gates the `<Stack>` on
+// `@/data/sqlite/boot`'s `runDbBoot()` (06 §5.1). Mocked here (resolved) so
+// this smoke test still exercises the real tab tree — the gate's own
+// pending/error paths get dedicated coverage in `db-gate.test.tsx`. A
+// factory mock (not bare `jest.mock('@/data/sqlite/boot')`) is required:
+// automocking without one still `require`s the real module first, which
+// would pull in `expo-sqlite`'s native module (unavailable under Jest, 08
+// §5 — see `db-gate.test.tsx`'s header for the full explanation).
+jest.mock('@/data/sqlite/boot', () => ({
+  runDbBoot: jest.fn().mockResolvedValue({ fromVersion: 0, toVersion: 1, applied: [] }),
+  getAppDriver: jest.fn(),
+}));
+
 describe('tab shell — boots to tabs, all 4 tabs navigable', () => {
   it('redirects "/" to the Workout tab', async () => {
     await renderRouter('app', { initialUrl: '/' });

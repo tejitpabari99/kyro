@@ -1,0 +1,40 @@
+/**
+ * Migration manifest (M0-09) — the ordered list of migrations the runner
+ * (`src/data/sqlite/migrator.ts`) applies. One entry per `drizzle-kit
+ * generate` run: import its `.sql` file (inlined to a string at transform
+ * time by `babel-plugin-inline-import`, see root `babel.config.js` and
+ * `./sql.d.ts`) and append an entry with the next `version` number.
+ *
+ * `version` is this app's own sequential head, recorded verbatim into
+ * `app_meta.schema_version` (05 §3.5/§10) — deliberately independent of
+ * drizzle-kit's own `0000`-based file naming (drizzle-kit always starts
+ * numbering at `0000`; this app's docs/tasks talk about "migration 0001"
+ * meaning the first migration ever, i.e. `version: 1` here). Never reorder
+ * or renumber an existing entry once it has shipped — 05 §10: "never edit
+ * an applied migration".
+ *
+ * `sql` is one or more statements separated by drizzle-kit's own
+ * `--> statement-breakpoint` marker (its convention for "run these as
+ * separate statements" — needed because neither backing driver's
+ * `execute()` can run more than one SQL statement per call, 05 §"P1"/08
+ * §5). The runner splits on that exact marker.
+ */
+import migration0001Sql from './0000_app_meta_and_settings.sql';
+
+export interface Migration {
+  /** Sequential head recorded into `app_meta.schema_version` after this migration applies. */
+  version: number;
+  /** The drizzle-kit-generated file this entry mirrors — for logs/errors only. */
+  tag: string;
+  /** Raw SQL, one or more `--> statement-breakpoint`-separated statements. */
+  sql: string;
+}
+
+/**
+ * Migration 0001 (M0-09 scope): `app_meta` + `settings` only, per 05 §3.5.
+ * The full v1 schema (workouts/exercises/etc., 05 §3.1-3.4) lands in M1-01
+ * as migration 0002 — append its entry here, do not touch this one.
+ */
+export const MIGRATIONS: readonly Migration[] = [
+  { version: 1, tag: '0000_app_meta_and_settings', sql: migration0001Sql },
+];

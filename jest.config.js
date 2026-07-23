@@ -68,6 +68,15 @@ module.exports = {
               ['@babel/preset-env', { targets: { node: 'current' } }],
               '@babel/preset-typescript',
             ],
+            // Mirrors root `babel.config.js`'s plugin (M0-09): the `node`
+            // project defines its own inline babel transform instead of
+            // reading that file, so the plugin that lets
+            // `src/data/migrations/manifest.ts` `import` a `.sql` file as an
+            // inlined string constant (rather than needing filesystem access
+            // at runtime — required for the same file to also bundle
+            // cleanly under Metro/Hermes, which has none) has to be
+            // registered here too.
+            plugins: [['inline-import', { extensions: ['.sql'] }]],
           },
         ],
       },

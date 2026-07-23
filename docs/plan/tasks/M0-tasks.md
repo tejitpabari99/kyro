@@ -72,7 +72,7 @@ Task count: **12**
 **Acceptance / test gate:** App boots to tabs on simulator; all 4 tabs navigable; gallery shows every primitive and toggles theme; RNTL smoke on tab layout.
 **Est:** 1 d
 
-### M0-09 — SQLite + Drizzle wiring, migration runner, initial migration
+### M0-09 — SQLite + Drizzle wiring, migration runner, initial migration [done]
 **Description:** Wire expo-sqlite + Drizzle with a bundled-migrations runner and land migration 0001 creating `app_meta` + `settings`.
 **How:** `src/data/sqlite/`: db open (WAL mode on), drizzle-kit config generating versioned SQL into `src/data/migrations/`; runner applies pending migrations sequentially at cold start behind a splash gate (06 §5.1) and records head in `app_meta.schema_version`. Migration 0001: `settings(key TEXT PK, value TEXT)` + `app_meta(key TEXT PK, value TEXT)` per 05 §3.5. Note: the **full** v1 schema (workouts/exercises/etc.) lands in M1-01 as migration 0002 — 09's "empty → v1 schema" gate is interpreted as: runner mechanism proven here on 0001, extended and fixture-tested in M1. Runner integration test on better-sqlite3: empty DB → migrate → assert tables + schema_version; re-run → no-op.
 **References:** 05 §3.5, §10 (migrations); 06 §5.1 (cold start); 08 §5 (parity harness).
