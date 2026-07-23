@@ -13,6 +13,8 @@ import {
   EQUIPMENT_LABELS,
   EQUIPMENT_OPTIONS,
   EQUIPMENT_VALUES,
+  EXERCISE_TYPE_LABELS,
+  EXERCISE_TYPE_OPTIONS,
   EXERCISE_TYPE_VALUES,
   FIRST_DAY_OF_WEEK_VALUES,
   MUSCLE_GROUP_LABELS,
@@ -38,6 +40,27 @@ describe('exercise_type (05 §2.1)', () => {
       'distance_duration',
       'short_distance_weight',
     ]);
+  });
+
+  it('has a UI label for every value (M1-08, 03 §3\'s own example: weight_reps -> "Weight & Reps")', () => {
+    expect(EXERCISE_TYPE_LABELS).toEqual({
+      weight_reps: 'Weight & Reps',
+      reps_only: 'Reps Only',
+      bodyweight_reps: 'Bodyweight Reps',
+      bodyweight_assisted_reps: 'Assisted Bodyweight',
+      duration: 'Duration',
+      weight_duration: 'Weight & Duration',
+      distance_duration: 'Distance & Duration',
+      short_distance_weight: 'Short Distance & Weight',
+    });
+  });
+
+  it('OPTIONS mirrors VALUES order with the matching label attached', () => {
+    expect(EXERCISE_TYPE_OPTIONS).toHaveLength(EXERCISE_TYPE_VALUES.length);
+    EXERCISE_TYPE_OPTIONS.forEach((option, index) => {
+      expect(option.value).toBe(EXERCISE_TYPE_VALUES[index]);
+      expect(option.label).toBe(EXERCISE_TYPE_LABELS[option.value]);
+    });
   });
 });
 

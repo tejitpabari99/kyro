@@ -42,6 +42,38 @@ export const EXERCISE_TYPE_VALUES = [
 
 export type ExerciseType = (typeof EXERCISE_TYPE_VALUES)[number];
 
+/**
+ * Human-readable label per `exercise_type` value (M1-08, first consumer:
+ * the exercise detail "About" tab, 03 §3's own example — "Weight & Reps"
+ * for `weight_reps`). Not spelled out verbatim anywhere in `05`/`03` beyond
+ * that one example, so the remaining seven are derived from `02` §4's set
+ * -table column layout for each type (the only other place the doc
+ * describes what each type actually tracks) rather than invented from
+ * scratch: `reps_only` tracks reps alone, `bodyweight_reps` adds optional
+ * bodyweight-plus-load, `bodyweight_assisted_reps` subtracts assistance,
+ * `duration`/`weight_duration` are time-based (with/without load),
+ * `distance_duration` is cardio (distance over time), and
+ * `short_distance_weight` is load carried over a short distance (farmer's
+ * walk, sled push). Will also back M1-09's exercise-type picker
+ * (03 §5: "picker with column-preview explanation").
+ */
+export const EXERCISE_TYPE_LABELS: Record<ExerciseType, string> = {
+  weight_reps: 'Weight & Reps',
+  reps_only: 'Reps Only',
+  bodyweight_reps: 'Bodyweight Reps',
+  bodyweight_assisted_reps: 'Assisted Bodyweight',
+  duration: 'Duration',
+  weight_duration: 'Weight & Duration',
+  distance_duration: 'Distance & Duration',
+  short_distance_weight: 'Short Distance & Weight',
+};
+
+/** `{value, label}` pairs in canonical order — mirrors `MUSCLE_GROUP_OPTIONS`/`EQUIPMENT_OPTIONS` (03 §2/§5's option-picker Sheet shape). */
+export const EXERCISE_TYPE_OPTIONS = EXERCISE_TYPE_VALUES.map((value) => ({
+  value,
+  label: EXERCISE_TYPE_LABELS[value],
+}));
+
 // ---------------------------------------------------------------------------
 // set_type (05 §2.2) — 4 values
 // ---------------------------------------------------------------------------

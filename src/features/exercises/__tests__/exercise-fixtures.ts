@@ -127,9 +127,11 @@ export const FIXTURE_CUSTOM_NO_IMAGES: Exercise = {
 
 /**
  * Minimal `ExerciseRepository` serving fixed in-memory arrays — only
- * `list`/`recentlyUsed` are meaningful for the browse-screen tests that use
- * this; every write/lifecycle method throws (unused by this screen, M1-07
- * is read-only over the repository).
+ * `list`/`recentlyUsed`/`get` are meaningful for the screens that use this
+ * (`list`/`recentlyUsed` for `ExerciseBrowseScreen`, M1-07; `get` added for
+ * `ExerciseDetailScreen`, M1-08 — a plain by-id lookup over the same `all`
+ * array, no new fixture class needed); every write/lifecycle method still
+ * throws (unused by either screen, both are read-only over the repository).
  */
 export class FakeExerciseRepository implements ExerciseRepository {
   constructor(
@@ -145,8 +147,8 @@ export class FakeExerciseRepository implements ExerciseRepository {
     return this.recent.slice(0, limit);
   }
 
-  async get(): Promise<Exercise | null> {
-    throw new Error('FakeExerciseRepository.get is not implemented — unused by ExerciseBrowseScreen.');
+  async get(id: string): Promise<Exercise | null> {
+    return this.all.find((exercise) => exercise.id === id) ?? null;
   }
   async create(): Promise<Exercise> {
     throw new Error('FakeExerciseRepository.create is not implemented — unused by ExerciseBrowseScreen.');
