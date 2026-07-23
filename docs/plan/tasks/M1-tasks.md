@@ -44,7 +44,7 @@ caveat carries forward from this task.
 **Acceptance / test gate:** Files committed; overrides.json validates against its Zod schema in a unit test; repo size delta noted (input images are raw here; output compression happens in M1-04).
 **Est:** 0.5 d
 
-### M1-04 — `scripts/build-exercise-db.ts` build pipeline + tests
+### M1-04 — `scripts/build-exercise-db.ts` build pipeline + tests [done]
 **Description:** Deterministic Node script mapping the vendored dataset to Kyro schema records + processed images.
 **How:** Implement 03 §6.4 steps 2–5: apply overrides (override file wins over all heuristics); map fields per 03 §6.3 (muscle map incl. middle back→upper_back, equipment map incl. cable→machine and e-z curl bar→barbell; exercise-type heuristic in the specified order 1–9); validate — every enum legal, primary muscle present, image files exist; **fail build on hard errors**, emit `curation-report.md` warnings (missing instructions, unmatched values). Image processing via `sharp`: max 600 px wide, strip metadata, JPEG q75, plus 128 px `thumb.jpg`, output `assets/exercises/{id}/{0,1}.jpg`. Emit `assets/exercise-db.json` + checksum/version constant. `npm run build:exercises` script. Determinism: stable sort + stable JSON key order → stable output hash.
 **References:** 03 §6.3–6.5; 08 §4.7.
