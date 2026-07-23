@@ -1,5 +1,6 @@
 /**
- * `WorkoutRepositoryImpl` (M2-01) — active-workout lifecycle methods against
+ * `WorkoutRepositoryImpl` (M2-01, extended M2-02) — active-workout lifecycle
+ * methods against
  * the raw `SqliteDriver` surface, following the exact pattern
  * `ExerciseRepositoryImpl` (M1-06) established: both backends
  * (`better-sqlite3` in Jest, `expo-sqlite` on device) are reached through
@@ -61,18 +62,85 @@
  *   — `SqliteDriver.transaction`'s callback is synchronous (mirrors
  *   `better-sqlite3`'s own `db.transaction()` contract), so nothing inside
  *   it may `await`.
+ *
+ * ## M2-02 additions — granular mutators + `previousSets`
+ *
+ * - **`addExercises`** (02 §3: "same number of set rows as its most recent
+ *   performance ... otherwise one empty normal set"): row *count* only —
+ *   the new rows are always bare (`set_type='normal'`, every value field
+ *   `NULL`, unchecked). "Previous values as placeholders" is a *display*
+ *   concept computed live by `previousSets`, never baked into stored rows
+ *   (nothing here duplicates that data). Set-count lookup always uses
+ *   occurrence 0 (the exercise's first/only occurrence in its most recent
+ *   completed workout) regardless of how many times the exercise is being
+ *   added *this* call — 02 §3 doesn't mention occurrence for row-count
+ *   seeding, only `previousSets`' display lookup does (02 §16.6).
+ * - **`previousSets`** (02 §6/§16.6, 05 §4's query-perf note): finds the
+ *   single most recent completed workout containing `exerciseId` (optional
+ *   `routineId` restriction, optional `beforeWorkoutId` "at or before this
+ *   workout, excluding it" restriction — see `PreviousSetsQuery`'s doc
+ *   comment in `./types.ts`), then the `occurrenceIndex`-th
+ *   `workout_exercises` row for that exercise within that one workout (0-based,
+ *   default 0), then all of that occurrence's `sets` split into two
+ *   **independently-numbered buckets** — warm-up and non-warm-up — each in
+ *   `position` order (02 §6: "warm-up rows reference the previous session's
+ *   warm-up sets by warm-up index"). No `is_completed` filter is needed:
+ *   every set in a *completed* workout is `is_completed=1` by the finish
+ *   invariant, so "checked" is automatically true. A previous session with
+ *   fewer sets than the current one simply yields fewer entries in the
+ *   returned array — callers (M2-04's `domain/previous-values.ts`) treat a
+ *   missing `bucketIndex` as "no previous value" (`—`), not this
+ *   repository's concern. Reuses `idx_we_exercise` (exercise_id lookup) +
+ *   `idx_workouts_start` (start_time ordering/filtering), per 05 §4.
+ * - **`addExercises`'s internal set-count lookup** shares the exact same
+ *   private helper `previousSets` uses (`findMostRecentOccurrenceSetRows`),
+ *   just called with `occurrenceIndex: 0` and no `routineId`/`beforeWorkoutId`
+ *   restriction — one source of truth for "what did the most recent
+ *   completed occurrence of this exercise look like."
+ * - **Undefined-vs-null patch convention** (`updateSet`/`updateExercise`/
+ *   `updateMeta`): a key's absence in the patch object means "leave this
+ *   field unchanged"; an explicit `null` (on nullable fields) means "clear
+ *   it." Mirrors `ExerciseRepositoryImpl.update`'s `patch.field !== undefined`
+ *   convention, extended to nullable value fields.
+ * - **Position renumbering** (`removeExercise`/`reorderExercises`/`addSet`/
+ *   `removeSet`): every mutator that adds/removes a row keeps
+ *   `position` contiguous 0-based immediately, in the same transaction —
+ *   not deferred to `finish` (05 §3.2's invariant applies at rest, not just
+ *   post-finish).
+ * - **`replaceExercise`** (02 §3: "keeps set count, clears values/placeholders"):
+ *   repoints `exercise_id`, keeps every set row (and its `position`), but
+ *   resets `set_type` to `'normal'`, `is_completed` to `0`, and nulls every
+ *   value field — a wholesale "different exercise, same empty slots" reset.
+ *   `notes`/`restSeconds`/`supersetId` are left untouched (conservative
+ *   reading — the spec only calls out set values/placeholders).
  */
+import type { Rpe, SetType } from '@/domain/enums';
+
 import { generateUuid } from '../shared/uuid';
 import type { SqliteDriver } from '../sqlite/driver';
-import { ActiveWorkoutExistsError, WorkoutNotActiveError, WorkoutNotFoundError } from './errors';
+import {
+  ActiveWorkoutExistsError,
+  ReorderMismatchError,
+  SetNotFoundError,
+  WorkoutExerciseNotFoundError,
+  WorkoutNotActiveError,
+  WorkoutNotFoundError,
+} from './errors';
 import type {
+  AddExerciseItem,
   AutoHealEvent,
   FinishMeta,
   ListCompletedPage,
+  NewSetInput,
+  PreviousSet,
+  PreviousSetsQuery,
+  UpdateExerciseInput,
+  UpdateMetaInput,
+  UpdateSetInput,
   WorkoutExerciseFull,
   WorkoutFull,
+  WorkoutRepository,
   WorkoutRepositoryDeps,
-  WorkoutRepositoryLifecycle,
   WorkoutSet,
   WorkoutSummary,
 } from './types';
@@ -179,6 +247,20 @@ function mapWorkoutSummaryRow(row: WorkoutRow): WorkoutSummary {
   };
 }
 
+function mapPreviousSetRow(row: SetRow, bucketIndex: number, isWarmup: boolean): PreviousSet {
+  return {
+    bucketIndex,
+    isWarmup,
+    setType: row.set_type as SetType,
+    weightKg: row.weight_kg,
+    reps: row.reps,
+    distanceMeters: row.distance_meters,
+    durationSeconds: row.duration_seconds,
+    rpe: row.rpe as Rpe | null,
+    customMetric: row.custom_metric,
+  };
+}
+
 /** `true` when `error` is the SQLite unique-constraint-violation raised by either backend (both surface the SQLite engine's verbatim message text) — same helper `ExerciseRepositoryImpl` uses. */
 function isUniqueConstraintError(error: unknown): boolean {
   return error instanceof Error && /UNIQUE constraint failed/i.test(error.message);
@@ -195,7 +277,7 @@ const DEFAULT_ON_AUTO_HEAL = (event: AutoHealEvent): void => {
   );
 };
 
-export class WorkoutRepositoryImpl implements WorkoutRepositoryLifecycle {
+export class WorkoutRepositoryImpl implements WorkoutRepository {
   private readonly onAutoHeal: (event: AutoHealEvent) => void;
 
   constructor(
@@ -368,6 +450,253 @@ export class WorkoutRepositoryImpl implements WorkoutRepositoryLifecycle {
   }
 
   // ---------------------------------------------------------------------
+  // M2-02 — granular mutators + previousSets
+  // ---------------------------------------------------------------------
+
+  async addExercises(
+    workoutId: string,
+    items: AddExerciseItem[],
+  ): Promise<WorkoutExerciseFull[]> {
+    this.requireWorkoutRow(workoutId);
+    if (items.length === 0) {
+      return [];
+    }
+
+    // Reads (history lookups) + id generation happen before the sync
+    // transaction — see this file's header note on `generateUuid` timing.
+    const prepared: { weId: string; setIds: string[]; item: AddExerciseItem }[] = [];
+    for (const item of items) {
+      const weId = await generateUuid();
+      const historyRows = this.findMostRecentOccurrenceSetRows(item.exerciseId, {});
+      const setCount = historyRows.length > 0 ? historyRows.length : 1;
+      const setIds = await Promise.all(Array.from({ length: setCount }, () => generateUuid()));
+      prepared.push({ weId, setIds, item });
+    }
+
+    this.driver.transaction(() => {
+      let position = this.nextExercisePosition(workoutId);
+      for (const { weId, setIds, item } of prepared) {
+        this.driver.execute(
+          `INSERT INTO workout_exercises (id, workout_id, exercise_id, position, superset_id, notes, rest_seconds)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [
+            weId,
+            workoutId,
+            item.exerciseId,
+            position,
+            item.supersetId ?? null,
+            item.notes ?? null,
+            item.restSeconds ?? null,
+          ],
+        );
+        position += 1;
+
+        setIds.forEach((setId, index) => {
+          this.driver.execute(
+            `INSERT INTO sets (id, workout_exercise_id, position, set_type, is_completed)
+             VALUES (?, ?, ?, 'normal', 0)`,
+            [setId, weId, index],
+          );
+        });
+      }
+    });
+
+    return prepared.map(({ weId }) => this.requireWorkoutExerciseFull(weId));
+  }
+
+  async removeExercise(workoutId: string, workoutExerciseId: string): Promise<void> {
+    this.requireWorkoutExerciseRow(workoutExerciseId, workoutId);
+    this.driver.transaction(() => {
+      this.driver.execute(`DELETE FROM workout_exercises WHERE id = ?`, [workoutExerciseId]);
+      this.renumberExercisePositions(workoutId);
+    });
+  }
+
+  async reorderExercises(workoutId: string, orderedWorkoutExerciseIds: string[]): Promise<void> {
+    const existingIds = this.driver
+      .queryAll<{ id: string }>(`SELECT id FROM workout_exercises WHERE workout_id = ?`, [
+        workoutId,
+      ])
+      .map((row) => row.id);
+    const existingSet = new Set(existingIds);
+    const isExactPermutation =
+      existingSet.size === orderedWorkoutExerciseIds.length &&
+      new Set(orderedWorkoutExerciseIds).size === orderedWorkoutExerciseIds.length &&
+      orderedWorkoutExerciseIds.every((id) => existingSet.has(id));
+
+    if (!isExactPermutation) {
+      throw new ReorderMismatchError(workoutId);
+    }
+
+    this.driver.transaction(() => {
+      orderedWorkoutExerciseIds.forEach((weId, index) => {
+        this.driver.execute(`UPDATE workout_exercises SET position = ? WHERE id = ?`, [
+          index,
+          weId,
+        ]);
+      });
+    });
+  }
+
+  async replaceExercise(
+    workoutExerciseId: string,
+    newExerciseId: string,
+  ): Promise<WorkoutExerciseFull> {
+    this.requireWorkoutExerciseRow(workoutExerciseId);
+    this.driver.transaction(() => {
+      this.driver.execute(`UPDATE workout_exercises SET exercise_id = ? WHERE id = ?`, [
+        newExerciseId,
+        workoutExerciseId,
+      ]);
+      this.driver.execute(
+        `UPDATE sets
+         SET set_type = 'normal', weight_kg = NULL, reps = NULL, distance_meters = NULL,
+             duration_seconds = NULL, rpe = NULL, custom_metric = NULL, is_completed = 0
+         WHERE workout_exercise_id = ?`,
+        [workoutExerciseId],
+      );
+    });
+    return this.requireWorkoutExerciseFull(workoutExerciseId);
+  }
+
+  async addSet(workoutExerciseId: string, input: NewSetInput = {}): Promise<WorkoutSet> {
+    this.requireWorkoutExerciseRow(workoutExerciseId);
+    const id = await generateUuid();
+
+    this.driver.transaction(() => {
+      const position = this.nextSetPosition(workoutExerciseId);
+      this.driver.execute(
+        `INSERT INTO sets
+           (id, workout_exercise_id, position, set_type, weight_kg, reps, distance_meters,
+            duration_seconds, rpe, custom_metric, is_completed)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+        [
+          id,
+          workoutExerciseId,
+          position,
+          input.setType ?? 'normal',
+          input.weightKg ?? null,
+          input.reps ?? null,
+          input.distanceMeters ?? null,
+          input.durationSeconds ?? null,
+          input.rpe ?? null,
+          input.customMetric ?? null,
+        ],
+      );
+    });
+
+    return mapSetRow(this.requireSetRow(id));
+  }
+
+  async updateSet(setId: string, patch: UpdateSetInput): Promise<WorkoutSet> {
+    const existing = this.requireSetRow(setId);
+    const weightKg = patch.weightKg !== undefined ? patch.weightKg : existing.weight_kg;
+    const reps = patch.reps !== undefined ? patch.reps : existing.reps;
+    const distanceMeters =
+      patch.distanceMeters !== undefined ? patch.distanceMeters : existing.distance_meters;
+    const durationSeconds =
+      patch.durationSeconds !== undefined ? patch.durationSeconds : existing.duration_seconds;
+    const rpe = patch.rpe !== undefined ? patch.rpe : existing.rpe;
+    const customMetric =
+      patch.customMetric !== undefined ? patch.customMetric : existing.custom_metric;
+
+    this.driver.transaction(() => {
+      this.driver.execute(
+        `UPDATE sets
+         SET weight_kg = ?, reps = ?, distance_meters = ?, duration_seconds = ?, rpe = ?, custom_metric = ?
+         WHERE id = ?`,
+        [weightKg, reps, distanceMeters, durationSeconds, rpe, customMetric, setId],
+      );
+    });
+
+    return mapSetRow(this.requireSetRow(setId));
+  }
+
+  async removeSet(setId: string): Promise<void> {
+    const existing = this.requireSetRow(setId);
+    this.driver.transaction(() => {
+      this.driver.execute(`DELETE FROM sets WHERE id = ?`, [setId]);
+      this.renumberSetPositions(existing.workout_exercise_id);
+    });
+  }
+
+  async setSetType(setId: string, setType: SetType): Promise<WorkoutSet> {
+    this.requireSetRow(setId);
+    this.driver.transaction(() => {
+      this.driver.execute(`UPDATE sets SET set_type = ? WHERE id = ?`, [setType, setId]);
+    });
+    return mapSetRow(this.requireSetRow(setId));
+  }
+
+  async setCompleted(setId: string, isCompleted: boolean): Promise<WorkoutSet> {
+    this.requireSetRow(setId);
+    this.driver.transaction(() => {
+      this.driver.execute(`UPDATE sets SET is_completed = ? WHERE id = ?`, [
+        isCompleted ? 1 : 0,
+        setId,
+      ]);
+    });
+    return mapSetRow(this.requireSetRow(setId));
+  }
+
+  async updateExercise(
+    workoutExerciseId: string,
+    patch: UpdateExerciseInput,
+  ): Promise<WorkoutExerciseFull> {
+    const existing = this.requireWorkoutExerciseRow(workoutExerciseId);
+    const notes = patch.notes !== undefined ? patch.notes : existing.notes;
+    const restSeconds =
+      patch.restSeconds !== undefined ? patch.restSeconds : existing.rest_seconds;
+    const supersetId =
+      patch.supersetId !== undefined ? patch.supersetId : existing.superset_id;
+
+    this.driver.transaction(() => {
+      this.driver.execute(
+        `UPDATE workout_exercises SET notes = ?, rest_seconds = ?, superset_id = ? WHERE id = ?`,
+        [notes, restSeconds, supersetId, workoutExerciseId],
+      );
+    });
+
+    return this.requireWorkoutExerciseFull(workoutExerciseId);
+  }
+
+  async updateMeta(workoutId: string, patch: UpdateMetaInput): Promise<WorkoutFull> {
+    const existing = this.requireWorkoutRow(workoutId);
+    const title = patch.title !== undefined ? patch.title : existing.title;
+    const description =
+      patch.description !== undefined ? patch.description : existing.description;
+    const startTime = patch.startTime !== undefined ? patch.startTime : existing.start_time;
+    const endTime = patch.endTime !== undefined ? patch.endTime : existing.end_time;
+    const durationPauseOffsetMs =
+      patch.durationPauseOffsetMs !== undefined
+        ? patch.durationPauseOffsetMs
+        : existing.duration_pause_offset_ms;
+    const now = Date.now();
+
+    this.driver.transaction(() => {
+      this.driver.execute(
+        `UPDATE workouts
+         SET title = ?, description = ?, start_time = ?, end_time = ?, duration_pause_offset_ms = ?, updated_at = ?
+         WHERE id = ?`,
+        [title, description, startTime, endTime, durationPauseOffsetMs, now, workoutId],
+      );
+    });
+
+    return (await this.getFull(workoutId))!;
+  }
+
+  async previousSets(exerciseId: string, opts: PreviousSetsQuery = {}): Promise<PreviousSet[]> {
+    const rows = this.findMostRecentOccurrenceSetRows(exerciseId, opts);
+    const warmups = rows.filter((row) => row.set_type === 'warmup');
+    const nonWarmups = rows.filter((row) => row.set_type !== 'warmup');
+
+    return [
+      ...nonWarmups.map((row, index) => mapPreviousSetRow(row, index, false)),
+      ...warmups.map((row, index) => mapPreviousSetRow(row, index, true)),
+    ];
+  }
+
+  // ---------------------------------------------------------------------
   // Internal helpers
   // ---------------------------------------------------------------------
 
@@ -441,5 +770,116 @@ export class WorkoutRepositoryImpl implements WorkoutRepositoryLifecycle {
       keptWorkoutId: keep!.id,
       healedWorkoutIds: rest.map((row) => row.id),
     });
+  }
+
+  private findWorkoutExerciseRow(id: string): WorkoutExerciseRow | undefined {
+    return this.driver.queryAll<WorkoutExerciseRow>(
+      `SELECT * FROM workout_exercises WHERE id = ?`,
+      [id],
+    )[0];
+  }
+
+  /** Look up a `workout_exercises` row, optionally also asserting it belongs to `workoutId` (`removeExercise`'s scoping). */
+  private requireWorkoutExerciseRow(id: string, workoutId?: string): WorkoutExerciseRow {
+    const row = this.findWorkoutExerciseRow(id);
+    if (!row || (workoutId !== undefined && row.workout_id !== workoutId)) {
+      throw new WorkoutExerciseNotFoundError(id);
+    }
+    return row;
+  }
+
+  private requireWorkoutExerciseFull(id: string): WorkoutExerciseFull {
+    return this.hydrateWorkoutExercise(this.requireWorkoutExerciseRow(id));
+  }
+
+  private findSetRow(id: string): SetRow | undefined {
+    return this.driver.queryAll<SetRow>(`SELECT * FROM sets WHERE id = ?`, [id])[0];
+  }
+
+  private requireSetRow(id: string): SetRow {
+    const row = this.findSetRow(id);
+    if (!row) {
+      throw new SetNotFoundError(id);
+    }
+    return row;
+  }
+
+  private nextExercisePosition(workoutId: string): number {
+    const row = this.driver.queryAll<{ next: number }>(
+      `SELECT COALESCE(MAX(position), -1) + 1 AS next FROM workout_exercises WHERE workout_id = ?`,
+      [workoutId],
+    )[0];
+    return row?.next ?? 0;
+  }
+
+  private nextSetPosition(workoutExerciseId: string): number {
+    const row = this.driver.queryAll<{ next: number }>(
+      `SELECT COALESCE(MAX(position), -1) + 1 AS next FROM sets WHERE workout_exercise_id = ?`,
+      [workoutExerciseId],
+    )[0];
+    return row?.next ?? 0;
+  }
+
+  /**
+   * The shared lookup behind both `previousSets` and `addExercises`'s
+   * set-count seeding (see this file's header, "M2-02 additions"): the
+   * `occurrenceIndex`-th `workout_exercises` row for `exerciseId` (0-based,
+   * default 0) within the single most recent completed workout containing
+   * it, restricted per `opts.routineId`/`opts.beforeWorkoutId` — returns
+   * that occurrence's `sets` rows in `position` order, or `[]` when no
+   * matching workout/occurrence exists. An unresolvable `beforeWorkoutId`
+   * (unknown id) degrades to "no restriction" rather than throwing — this
+   * is a read-only query helper, not a mutator, so a stale/foreign id
+   * should never hard-fail a PREVIOUS lookup.
+   */
+  private findMostRecentOccurrenceSetRows(
+    exerciseId: string,
+    opts: PreviousSetsQuery,
+  ): SetRow[] {
+    const occurrenceIndex = opts.occurrenceIndex ?? 0;
+    const conditions = [`we.exercise_id = ?`, `w.state = 'completed'`, `w.deleted_at IS NULL`];
+    const params: unknown[] = [exerciseId];
+
+    if (opts.routineId !== undefined) {
+      conditions.push('w.routine_id = ?');
+      params.push(opts.routineId);
+    }
+
+    if (opts.beforeWorkoutId !== undefined) {
+      const beforeRow = this.driver.queryAll<{ start_time: number }>(
+        `SELECT start_time FROM workouts WHERE id = ?`,
+        [opts.beforeWorkoutId],
+      )[0];
+      if (beforeRow) {
+        conditions.push('w.id != ?', 'w.start_time <= ?');
+        params.push(opts.beforeWorkoutId, beforeRow.start_time);
+      }
+    }
+
+    const workoutRow = this.driver.queryAll<{ id: string }>(
+      `SELECT w.id FROM workouts w
+       INNER JOIN workout_exercises we ON we.workout_id = w.id
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY w.start_time DESC, w.created_at DESC
+       LIMIT 1`,
+      params,
+    )[0];
+    if (!workoutRow) {
+      return [];
+    }
+
+    const occurrenceRows = this.driver.queryAll<{ id: string }>(
+      `SELECT id FROM workout_exercises WHERE workout_id = ? AND exercise_id = ? ORDER BY position ASC`,
+      [workoutRow.id, exerciseId],
+    );
+    const targetWorkoutExercise = occurrenceRows[occurrenceIndex];
+    if (!targetWorkoutExercise) {
+      return [];
+    }
+
+    return this.driver.queryAll<SetRow>(
+      `SELECT * FROM sets WHERE workout_exercise_id = ? ORDER BY position ASC`,
+      [targetWorkoutExercise.id],
+    );
   }
 }

@@ -43,6 +43,33 @@ export class ActiveWorkoutExistsError extends Error {
   }
 }
 
-// M2-02 adds WorkoutExerciseNotFoundError, SetNotFoundError, and
-// ReorderMismatchError here, alongside the granular mutators that throw
-// them (addExercises/removeExercise/reorderExercises/addSet/updateSet/…).
+/** Thrown when a `workout_exercises` id (optionally scoped to a `workoutId`) does not resolve to a row. */
+export class WorkoutExerciseNotFoundError extends Error {
+  constructor(public readonly id: string) {
+    super(`Workout exercise "${id}" was not found.`);
+    this.name = 'WorkoutExerciseNotFoundError';
+  }
+}
+
+/** Thrown when a `sets` id does not resolve to a row. */
+export class SetNotFoundError extends Error {
+  constructor(public readonly id: string) {
+    super(`Set "${id}" was not found.`);
+    this.name = 'SetNotFoundError';
+  }
+}
+
+/**
+ * Thrown by `reorderExercises` when the supplied id list isn't exactly a
+ * permutation of the workout's current `workout_exercises` ids (missing,
+ * extra, or foreign ids) — a defensive guard against silently corrupting
+ * `position` ordering from a stale client-side list.
+ */
+export class ReorderMismatchError extends Error {
+  constructor(public readonly workoutId: string) {
+    super(
+      `reorderExercises: the supplied id list for workout "${workoutId}" does not exactly match its current exercises.`,
+    );
+    this.name = 'ReorderMismatchError';
+  }
+}

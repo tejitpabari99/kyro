@@ -18,7 +18,7 @@ Task count: **19**
 **Acceptance / test gate:** Integration tests: happy paths; one-active throw; auto-heal (08 §4.9); finish deletes unchecked + empty exercises and sets state/end_time (fixtures: unchanged/value-change/structural); soft delete hides from listCompleted.
 **Est:** 1.5 d
 
-### M2-02 — WorkoutRepository, part 2: granular mutators + previousSets
+### M2-02 — WorkoutRepository, part 2: granular mutators + previousSets [done]
 **Description:** The per-action mutators the store drives, plus the previous-values query.
 **How:** `addExercises` (with N pre-created set rows), `removeExercise`, `reorderExercises`, `replaceExercise` (keep set count, clear values), `addSet`, `updateSet`, `removeSet` (renumber positions), `setSetType`, `setCompleted`, `updateExercise` (notes/rest_seconds/superset_id), `updateMeta` (title/times/pause offset). `previousSets(exerciseId, {routineId?, beforeWorkoutId?})`: i-th checked non-warm-up set of the most recent completed workout containing the exercise (warm-up rows matched by warm-up index), optional routine restriction, **occurrence-aware** for duplicated exercises (02 §16.6). Uses `idx_we_exercise` + `idx_workouts_start` (05 §4).
 **References:** 05 §6; 02 §3–§6, §16.6.
