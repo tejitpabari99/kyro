@@ -61,7 +61,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "jest"
+    "test": "jest",
+    "ci": "pnpm run typecheck && pnpm run lint && pnpm test -- --coverage && npx expo-doctor && npx expo export --platform ios"
   },
   "private": true,
   "prettier": {

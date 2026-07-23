@@ -99,6 +99,41 @@ ever upgraded to ≥22 on this machine (see the M0-01 update above re: `pnpm@lat
 `better-sqlite3@latest` — the NAPI_VERSION=10 requirement should be satisfied natively there and
 the pin can likely be lifted.
 
+## Git remote (M0-04 finding)
+
+The M0-04 task brief assumed "no GitHub remote confirmed for this repo." That assumption is
+**outdated**: `git remote -v` shows `origin -> https://github.com/tejitpabari99/kyro.git`
+(fetch+push), and `git ls-remote origin` succeeds from this sandbox — `refs/heads/main` on the
+remote resolves to `f131f977956ee06fd91845f189673fd6e25276d6`, matching this repo's local
+history at the time of the check. So a real, reachable GitHub remote exists and the CI workflow
+(`.github/workflows/ci.yml`, M0-04) *would* run for real once pushed.
+
+Per the M0-04 task instructions, no push was attempted from this session (working on
+`users/tejitpabari/init`, no new branches, no push) — so an actual GitHub Actions run of
+`ci.yml` has **not** been triggered or observed; the workflow file has only been reviewed
+manually and YAML-parsed locally (`python3 -c "import yaml; yaml.safe_load(...)"`), not executed
+via `act` or a real Actions runner (neither is installed here). Whoever next pushes this branch
+(or opens the PR) should watch for the first real Actions run and report back if `ci.yml` behaves
+differently than the local `pnpm run ci` equivalent predicts.
+
+## `pnpm ci` vs `pnpm run ci` (M0-04 finding)
+
+`package.json` has a `"ci"` script (the local-equivalent gate for `.github/workflows/ci.yml`,
+per M0-04). However, **bare `pnpm ci` does not run it**: pnpm reserves the top-level verb `ci`
+for its own built-in command (alias of `clean-install`, mirroring `npm ci`) and intercepts it
+before consulting `package.json` scripts — on this machine's pnpm 9.15.9 that built-in isn't
+even implemented yet, so `pnpm ci` fails immediately with `ERR_PNPM_CI_NOT_IMPLEMENTED` (exit 1)
+instead of running the intended gate sequence. This is permanent pnpm CLI behavior (documented at
+`pnpm ci --help`: "Usage: pnpm ci … Clean install a project"), not an environment quirk, and it
+is not specific to this pnpm version — any script literally named `ci` is shadowed the same way.
+
+**The actual invocation is `pnpm run ci`** (explicit `run` disambiguates a script name from a
+built-in command) — verified to execute the full gate end-to-end and exit 0. Anyone reaching for
+"the local CI gate" should use `pnpm run ci`, not bare `pnpm ci`. The script was kept named `ci`
+rather than renamed (e.g. to `ci:local`) because that is what the task spec asked for verbatim
+and it is still the standard, discoverable name in `package.json` scripts — the caveat is just
+that pnpm requires the explicit `run`.
+
 ## Everything else
 
 Every other task — all of M0 through M7 except the six owner-gated tasks listed above — is
