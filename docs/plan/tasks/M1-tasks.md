@@ -52,7 +52,7 @@ caveat carries forward from this task.
 **Acceptance / test gate:** 08 §4.7 suite green: every muscle/equipment mapping entry, each heuristic branch via representative slugs, override precedence, enum-validation build failure, deterministic output hash (run twice, compare). Manual: report generated, spot-open 3 processed images.
 **Est:** 2 d
 
-### M1-05 — Dataset seeding at app boot
+### M1-05 — Dataset seeding at app boot [done]
 **Description:** First-launch (and version-bump) seed of built-ins into the `exercises` table.
 **How:** In the cold-start sequence after migrations (06 §5.1): compare bundled checksum vs `app_meta.dataset_version`; on mismatch, transactional upsert-by-id of all records (`ExerciseRepository.seedBuiltins`); removed built-ins → archived, never deleted; custom rows and user edits to nothing (built-ins immutable) untouched. Target < 1 s on device — use a single transaction with prepared statements.
 **References:** 03 §6.4 step 6; 05 §10 (dataset seeding is data, not schema).
