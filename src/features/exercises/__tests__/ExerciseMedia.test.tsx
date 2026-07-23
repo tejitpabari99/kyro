@@ -8,6 +8,16 @@
  * (built from the actual vendored `assets/exercise-db.json`) via a real
  * built-in id, not a mock — the same fidelity approach `exercise-fixtures.ts`
  * (M1-07) already established for this feature's tests.
+ *
+ * Regression (M1-12 catch-up review): the custom-exercise case passes a
+ * **bare relative file name** as its `images[]` entry — the real shape
+ * `Exercise.images[]` holds for a custom (05 §8) — and `@/lib/files` is
+ * mocked (its manual mock's `exercisePhotoUri`) so `exercise-media-source.ts`
+ * actually resolves it to an absolute URI, the same way it does for a real
+ * device. The previous version of this test passed an already-resolved
+ * `file://` URI directly, which matched a bug in `resolveImageSources` (it
+ * used a custom's `images[]` as-is, never joining with `documentDirectory`)
+ * without ever exercising the real resolution path.
  */
 import { act, render, screen } from '@testing-library/react-native';
 import React from 'react';
@@ -15,6 +25,8 @@ import React from 'react';
 import { ExerciseMedia, CROSSFADE_INTERVAL_MS, type ExerciseMediaExercise } from '../ExerciseMedia';
 import { BUILTIN_IMAGES } from '../exercise-image-registry.generated';
 import { ThemeProvider } from '@/ui/theme-provider';
+
+jest.mock('@/lib/files');
 
 const REAL_BUILTIN_ID = 'Barbell_Bench_Press_-_Medium_Grip';
 
@@ -82,12 +94,13 @@ describe('ExerciseMedia — custom exercise with 1 user-style image is static', 
     jest.useRealTimers();
   });
 
-  it('renders the single image and never attempts a crossfade', async () => {
+  it('renders the single image (resolved from a bare relative file name) and never attempts a crossfade', async () => {
     const customExercise = builtinExercise({
       id: 'custom-1',
       isCustom: true,
-      images: ['file:///mock/documents/photos/exercises/custom-1/abc.jpg'],
+      images: ['abc.jpg'],
     });
+    const resolvedUri = 'file:///mock-documents/photos/exercises/custom-1/abc.jpg';
 
     await render(
       <ThemeProvider preference="dark">
@@ -99,18 +112,14 @@ describe('ExerciseMedia — custom exercise with 1 user-style image is static', 
     // internally (its own real behavior, not a test artifact) — asserted
     // against that normalized shape rather than the raw string.
     const image = screen.getByTestId('media-image');
-    expect(image.props.source).toEqual({
-      uri: 'file:///mock/documents/photos/exercises/custom-1/abc.jpg',
-    });
+    expect(image.props.source).toEqual({ uri: resolvedUri });
     expect(image.props.transition).toBeFalsy();
 
     await act(async () => {
       jest.advanceTimersByTime(CROSSFADE_INTERVAL_MS * 3);
     });
     // Source is unchanged — a single-image tier has nothing to cycle to.
-    expect(screen.getByTestId('media-image').props.source).toEqual({
-      uri: 'file:///mock/documents/photos/exercises/custom-1/abc.jpg',
-    });
+    expect(screen.getByTestId('media-image').props.source).toEqual({ uri: resolvedUri });
   });
 });
 

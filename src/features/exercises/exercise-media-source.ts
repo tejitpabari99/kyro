@@ -13,15 +13,20 @@
  * resolving one by a runtime `id` needs the generated static-require
  * manifest (`./exercise-image-registry.generated.ts`, same workaround
  * `exercise-thumbnail.ts` already uses for the smaller `thumb.jpg`).
- * Customs are the opposite: `05 §8`'s on-device file-storage convention
- * stores images as user files (a real, directly-usable URI once `M1-09`'s
- * `lib/files.ts` lands the actual write/join-with-`documentDirectory` path)
- * — there is no bundled-asset/Metro problem for that case at all, so a
- * custom's `images[]` entries are used as-is, whatever shape the caller
- * already resolved them to (a `file://` URI once M1-09 exists; today always
- * `[]`, per `exercise-thumbnail.ts`'s header note that no custom exercise
- * can have a non-empty `images[]` yet).
+ * Customs are the opposite problem: `05 §8`'s on-device file-storage
+ * convention stores only the **bare relative file name** in `Exercise.images[]`
+ * (`saveExercisePhoto`'s return value, `M1-09`'s `lib/files.ts`) — never an
+ * absolute path, since the documents-dir container path changes across
+ * reinstalls/devices. That bare name isn't itself a usable `expo-image`
+ * `source` any more than a built-in's asset-key string is — it has to be
+ * joined with `documentDirectory` first (`exercisePhotoUri`, the exact same
+ * helper `ExerciseFormScreen`'s own image preview already calls for this
+ * reason). Resolved here, once, so every consumer of this module's output
+ * gets an already-loadable source, the same guarantee the built-in branch
+ * provides via the generated registry.
  */
+import { exercisePhotoUri } from '@/lib/files';
+
 import { BUILTIN_IMAGES } from './exercise-image-registry.generated';
 
 /** The subset of `Exercise` (`@/data/exercises/types`) `ExerciseMedia` needs to resolve a source. */
@@ -47,10 +52,14 @@ export interface ResolvedExerciseMedia {
   sources: readonly (number | string)[];
 }
 
-/** Built-in `images[]` entries resolved through the static-require manifest; customs used as-is (see file header). */
+/**
+ * Built-in `images[]` entries resolved through the static-require manifest;
+ * custom entries (bare relative file names) resolved to an absolute
+ * `file://` URI via `exercisePhotoUri` (see file header).
+ */
 function resolveImageSources(exercise: MediaSourceExercise): readonly (number | string)[] {
   if (exercise.isCustom) {
-    return exercise.images;
+    return exercise.images.map((fileName) => exercisePhotoUri(exercise.id, fileName));
   }
   return BUILTIN_IMAGES[exercise.id] ?? [];
 }

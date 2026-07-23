@@ -108,7 +108,7 @@ caveat carries forward from this task.
 **Acceptance / test gate:** Spot-check table committed with all 20 pass; curation report warnings all triaged (fixed or waived with reason); size number recorded + decision noted.
 **Est:** 1 d
 
-### M1-12 — M1 QA, bug iteration & exit gate
+### M1-12 — M1 QA, bug iteration & exit gate [done]
 **Description:** Milestone-close pass.
 **How:** Verify all M1 exit criteria + 03 §2/§3/§5 acceptance checklists manually on simulator (both themes); fix P0/P1 with regression tests; confirm `src/data` coverage ≥ 90% lines for implemented repos; `docs/qa/M1-checklist.md`; milestone tag.
 **References:** 09 M1 exit; 08 §7–8.

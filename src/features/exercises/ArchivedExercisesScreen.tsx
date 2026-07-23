@@ -17,9 +17,10 @@ import React from 'react';
 import { ArchiveRestore, ChevronLeft } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
 
 import type { Exercise, ExerciseRepository } from '@/data/exercises/types';
+import { DuplicateExerciseNameError } from '@/data/exercises/errors';
 import { EmptyState } from '@/ui/EmptyState';
 import { ListRow } from '@/ui/ListRow';
 import { useTheme } from '@/ui/theme-provider';
@@ -43,9 +44,26 @@ export function ArchivedExercisesScreen({
 
   const archived = (query.data ?? []).filter((exercise) => exercise.archivedAt != null);
 
+  // `repository.restore` can throw `DuplicateExerciseNameError` — restoring
+  // an archived exercise whose name now collides with an active one (a newly
+  // created/renamed exercise took the name in the meantime) must raise the
+  // same typed error `create`/`update` would (see that method's own comment)
+  // rather than a silent UNIQUE-constraint failure, so this UI needs to
+  // surface *something* to the user instead of an unhandled rejection.
   const handleRestore = async (exercise: Exercise): Promise<void> => {
-    await repository.restore(exercise.id);
-    await queryClient.invalidateQueries({ queryKey: ['exercises'] });
+    try {
+      await repository.restore(exercise.id);
+      await queryClient.invalidateQueries({ queryKey: ['exercises'] });
+    } catch (error) {
+      if (error instanceof DuplicateExerciseNameError) {
+        Alert.alert(
+          "Can't Restore This Exercise",
+          `An active exercise is already named "${exercise.name}". Rename or archive that one first.`,
+        );
+        return;
+      }
+      Alert.alert('Something went wrong', 'This exercise could not be restored. Please try again.');
+    }
   };
 
   return (

@@ -49,6 +49,14 @@ jest.mock('expo-router', () => ({
   router: { push: jest.fn() },
 }));
 
+// `ExerciseRow` -> `resolveExerciseThumbnailSource` (M1-12 fix) now resolves
+// a custom exercise's photo via `@/lib/files`'s `exercisePhotoUri`, so this
+// screen's require graph reaches `files.ts`'s real top-level native imports
+// (`expo-image-manipulator`/`expo-image-picker`) — mocked here the same way
+// `ExerciseFormScreen.test.tsx`/`ExerciseDetailScreen.actions.test.tsx`
+// already do for the same reason.
+jest.mock('@/lib/files');
+
 // A minimal, deterministic `FlashList` stand-in: renders every row via the
 // screen's own `renderItem`/`keyExtractor` in a plain `View`, and exposes a
 // `scrollToIndex` jest mock through the imperative ref — exactly the two

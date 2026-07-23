@@ -18,15 +18,20 @@
  *
  * Customs (`isCustom: true`): `03 §5`/`05 §8`'s on-device file-storage
  * convention (`documentDirectory` roots under `photos/exercises/{id}/`,
- * relative names stored in `images[]`) is `M1-09`'s scope (`src/lib/files.ts`
- * is still a stub, `M1-06`'s header note) — no custom exercise can have a
- * non-empty `images[]` yet, so this always returns `undefined` for customs
- * today, correctly falling through to the initial-letter placeholder (03
- * §2's acceptance criterion: "Placeholder thumbnails render for exercises
- * without images"). Once M1-09 lands a real file-URI convention, this is
- * the one function that needs updating to resolve it — everything else in
- * this feature (row, list) already treats the return value opaquely.
+ * `Exercise.images[]` holding only the bare relative file name —
+ * `saveExercisePhoto`'s return value, `M1-09`'s `src/lib/files.ts`) resolves
+ * via `exercisePhotoUri(exercise.id, exercise.images[0])`, the same helper
+ * `exercise-media-source.ts` (M1-08, fixed in the M1-12 catch-up review —
+ * see that file's header) and `ExerciseFormScreen`'s own image preview use
+ * for this exact join. A custom with an empty `images[]` still falls through
+ * to the initial-letter placeholder (03 §2's acceptance criterion:
+ * "Placeholder thumbnails render for exercises without images") — this
+ * function has no thumbnail-specific asset (only a full-size photo is ever
+ * stored), so the row thumbnail is the same file `expo-image` just renders
+ * smaller, not a separate 128px derivative like a built-in's `thumb.jpg`.
  */
+import { exercisePhotoUri } from '@/lib/files';
+
 import { BUILTIN_THUMBNAILS } from './exercise-thumbnail-registry.generated';
 
 /** The subset of `Exercise` (`@/data/exercises/types`) this resolver needs. */
@@ -38,13 +43,12 @@ export interface ThumbnailableExercise {
 
 export function resolveExerciseThumbnailSource(
   exercise: ThumbnailableExercise,
-): number | undefined {
+): number | string | undefined {
   if (exercise.images.length === 0) {
     return undefined;
   }
   if (exercise.isCustom) {
-    // See file header — no on-device file-URI convention exists yet (M1-09).
-    return undefined;
+    return exercisePhotoUri(exercise.id, exercise.images[0]);
   }
   return BUILTIN_THUMBNAILS[exercise.id];
 }

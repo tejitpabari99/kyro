@@ -84,6 +84,11 @@
     "ci": "pnpm run typecheck && pnpm run lint && pnpm test -- --coverage && npx expo-doctor && npx expo export --platform ios"
   },
   "private": true,
+  "expo": {
+    "install": {
+      "exclude": ["@shopify/flash-list"]
+    }
+  },
   "prettier": {
     "singleQuote": true,
     "trailingComma": "all",

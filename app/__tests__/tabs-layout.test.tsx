@@ -50,6 +50,13 @@ jest.mock('@/data/sqlite/boot', () => ({
   }),
 }));
 
+// The Exercises tab route (M1-07) renders `ExerciseRow`, whose thumbnail
+// resolution (`resolveExerciseThumbnailSource`, fixed M1-12) now reaches
+// `@/lib/files`'s real top-level native imports (`expo-image-manipulator`/
+// `expo-image-picker`) — mocked here for the same reason
+// `ExerciseBrowseScreen.test.tsx` mocks it.
+jest.mock('@/lib/files');
+
 describe('tab shell — boots to tabs, all 4 tabs navigable', () => {
   // M0-12 note: the default 5000 ms Jest test timeout was observed to flake
   // under full-suite (`pnpm run ci`) CPU contention specifically on the

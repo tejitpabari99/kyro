@@ -4,9 +4,25 @@
  * `BUILTIN_IMAGES` is the real generated registry built from the actual
  * vendored `assets/exercise-db.json` (873 real records, every one with 2
  * real images per M1-04's build run), not a mock.
+ *
+ * Regression (M1-12 catch-up review): the custom-exercise cases below now
+ * pass **bare relative file names** as `images[]` entries — the real shape
+ * `Exercise.images[]` actually holds for a custom (05 §8: DB stores relative
+ * names only, `saveExercisePhoto`'s real return value) — instead of an
+ * already-resolved `file://` URI. The previous version of this test file
+ * stubbed `images[]` with a pre-resolved URI, which silently matched
+ * `resolveImageSources`'s old (buggy) "use `images[]` as-is for customs"
+ * behavior instead of catching that it never actually joined the bare name
+ * with `documentDirectory` — meaning a real custom exercise's photo would
+ * have rendered `expo-image` with an unloadable bare-filename `source` on a
+ * real device. `@/lib/files` is mocked via the repo's existing manual mock
+ * seam (`src/lib/__mocks__/files.ts`, M1-09) so `exercisePhotoUri`'s
+ * resolution is exercised for real, not hand-simulated in this file.
  */
 import { BUILTIN_IMAGES } from '../exercise-image-registry.generated';
 import { resolveExerciseMediaSources, type MediaSourceExercise } from '../exercise-media-source';
+
+jest.mock('@/lib/files');
 
 const REAL_BUILTIN_ID = 'Barbell_Bench_Press_-_Medium_Grip';
 
@@ -43,27 +59,35 @@ describe('resolveExerciseMediaSources — priority order (03 §4)', () => {
     expect(result).toEqual({ tier: 'placeholder', sources: [] });
   });
 
-  it('a custom exercise with 1 user-style image resolves to the static tier', () => {
+  it('a custom exercise with 1 user-style image resolves to the static tier, joined into an absolute URI via exercisePhotoUri', () => {
+    // 'abc.jpg' — the bare relative file name `Exercise.images[]` actually
+    // stores (05 §8), not a pre-resolved URI (see file-header regression note).
     const result = resolveExerciseMediaSources({
       id: 'custom-1',
       isCustom: true,
-      images: ['file:///mock/documents/photos/exercises/custom-1/abc.jpg'],
+      images: ['abc.jpg'],
       animationUri: null,
     });
     expect(result).toEqual({
       tier: 'static',
-      sources: ['file:///mock/documents/photos/exercises/custom-1/abc.jpg'],
+      sources: ['file:///mock-documents/photos/exercises/custom-1/abc.jpg'],
     });
   });
 
-  it('a custom exercise with 2 user-style images resolves to the crossfade tier', () => {
+  it('a custom exercise with 2 user-style images resolves to the crossfade tier, both joined via exercisePhotoUri', () => {
     const result = resolveExerciseMediaSources({
       id: 'custom-2',
       isCustom: true,
-      images: ['file:///mock/a.jpg', 'file:///mock/b.jpg'],
+      images: ['a.jpg', 'b.jpg'],
       animationUri: null,
     });
-    expect(result).toEqual({ tier: 'crossfade', sources: ['file:///mock/a.jpg', 'file:///mock/b.jpg'] });
+    expect(result).toEqual({
+      tier: 'crossfade',
+      sources: [
+        'file:///mock-documents/photos/exercises/custom-2/a.jpg',
+        'file:///mock-documents/photos/exercises/custom-2/b.jpg',
+      ],
+    });
   });
 
   it('a custom exercise with 0 images resolves to the placeholder tier', () => {
@@ -80,9 +104,12 @@ describe('resolveExerciseMediaSources — priority order (03 §4)', () => {
     const result = resolveExerciseMediaSources({
       id: 'custom-4',
       isCustom: true,
-      images: ['file:///a.jpg', 'file:///b.jpg', 'file:///c.jpg'],
+      images: ['a.jpg', 'b.jpg', 'c.jpg'],
       animationUri: null,
     });
-    expect(result.sources).toEqual(['file:///a.jpg', 'file:///b.jpg']);
+    expect(result.sources).toEqual([
+      'file:///mock-documents/photos/exercises/custom-4/a.jpg',
+      'file:///mock-documents/photos/exercises/custom-4/b.jpg',
+    ]);
   });
 });

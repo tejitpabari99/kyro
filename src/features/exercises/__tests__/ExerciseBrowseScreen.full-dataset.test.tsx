@@ -36,6 +36,11 @@ jest.mock('expo-router', () => ({
   router: { push: jest.fn() },
 }));
 
+// See `ExerciseBrowseScreen.test.tsx`'s identical mock for why this is
+// needed post-M1-12: `ExerciseRow` now reaches `@/lib/files`'s real
+// top-level native imports via the fixed `resolveExerciseThumbnailSource`.
+jest.mock('@/lib/files');
+
 describe('ExerciseBrowseScreen — full 873-row dataset (M1-07 acceptance gate)', () => {
   it('loads, filters, and row-builds every one of the real 873 built-ins without crashing or hanging, using a fixed row height', async () => {
     const driver: SqliteDriver = openBetterSqlite3Driver(':memory:');

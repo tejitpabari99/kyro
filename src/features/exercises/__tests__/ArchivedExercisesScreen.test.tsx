@@ -7,6 +7,7 @@
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import React from 'react';
+import { Alert } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import type {
@@ -16,6 +17,7 @@ import type {
   ExerciseRepository,
   NewCustomExercise,
 } from '@/data/exercises/types';
+import { DuplicateExerciseNameError } from '@/data/exercises/errors';
 import type { MappedExerciseRecord } from '@/domain/exercise-mapping';
 import { ThemeProvider } from '@/ui/theme-provider';
 
@@ -43,7 +45,10 @@ function exercise(overrides: Partial<Exercise> & Pick<Exercise, 'id' | 'name'>):
 class FakeRepo implements ExerciseRepository {
   public restoreCalls: string[] = [];
 
-  constructor(private rows: Exercise[]) {}
+  constructor(
+    private rows: Exercise[],
+    private restoreError?: Error,
+  ) {}
 
   async list(filter?: ExerciseListFilter): Promise<Exercise[]> {
     if (filter?.includeArchived) return this.rows;
@@ -63,6 +68,9 @@ class FakeRepo implements ExerciseRepository {
   }
   async restore(id: string): Promise<void> {
     this.restoreCalls.push(id);
+    if (this.restoreError) {
+      throw this.restoreError;
+    }
     this.rows = this.rows.map((r) => (r.id === id ? { ...r, archivedAt: null } : r));
   }
   async delete(): Promise<void> {
@@ -126,5 +134,36 @@ describe('ArchivedExercisesScreen', () => {
     await waitFor(() => expect(repository.restoreCalls).toEqual(['archived-1']));
     await waitFor(() => expect(screen.queryByTestId('archived-row-archived-1')).toBeNull());
     expect(await screen.findByTestId('archived-empty')).toBeTruthy();
+  });
+
+  // Regression (M1-12 catch-up review): `repository.restore` can throw
+  // `DuplicateExerciseNameError` (see that method's own comment on
+  // `ExerciseRepository` — restoring must not silently violate active-name
+  // uniqueness) but the screen previously had no catch at all around the
+  // call, so this surfaced as a silent unhandled rejection with zero user
+  // feedback and the row staying in the list with no explanation. Now
+  // surfaced via `Alert.alert`, matching `ExerciseDetailScreen`'s existing
+  // error-Alert convention for repository failures.
+  it('Restore surfaces a DuplicateExerciseNameError as an Alert instead of an unhandled rejection', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    const repository = new FakeRepo(
+      [exercise({ id: 'archived-1', name: 'Archived One', archivedAt: 1000 })],
+      new DuplicateExerciseNameError('Archived One'),
+    );
+    await renderScreen(repository);
+
+    await fireEvent.press(await screen.findByTestId('archived-restore-archived-1'));
+
+    await waitFor(() => expect(repository.restoreCalls).toEqual(['archived-1']));
+    await waitFor(() =>
+      expect(alertSpy).toHaveBeenCalledWith(
+        "Can't Restore This Exercise",
+        expect.stringContaining('Archived One'),
+      ),
+    );
+    // The row is still there — the restore never actually applied.
+    expect(await screen.findByTestId('archived-row-archived-1')).toBeTruthy();
+
+    alertSpy.mockRestore();
   });
 });
