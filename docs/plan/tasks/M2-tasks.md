@@ -42,8 +42,7 @@ Task count: **19**
 **Acceptance / test gate:** 08 §4.2 full suite green (all listed values incl. 80×8=640, +10×8=80, assisted=0, weight_duration 20 kg 60 s=20, kg→lb display) and 08 §4.8 previous-values cases (any_workout vs same_routine, occurrence matching, fewer-previous-sets → `—`).
 **Est:** 1 d
 
-### M2-05 — Logger screen shell: header, meta row, stopwatch, footer [in-progress]
-**WIP status:** only auto-title logic, `useWorkoutStopwatch`, and `DurationEditSheet` exist so far. The `workout/active` route, `ActiveWorkoutScreen` itself, header/meta-row/footer, and tab entry point are not built yet.
+### M2-05 — Logger screen shell: header, meta row, stopwatch, footer [done]
 **Description:** The `workout/active` fullScreenModal route with everything except the set table.
 **How:** Route per 06 §3 (slide-from-bottom, 350 ms spring damping 0.85). Header: chevron-down minimize, tappable inline-edit title, Finish accent pill. Meta row: Duration (accent, live, 1 s hook mounted only here — display = `now − start_time − pause_offset`), Volume, Sets (checked count) via StatColumn. Duration tap → sheet: edit start date/time, duration, pause/resume stopwatch (mutates start_time / duration_pause_offset_ms via updateMeta). Footer: `+ Add Exercise` primary, `Settings` tonal (opens M2-17 subset), `Discard Workout` destructive with confirm. Auto-title by time of day (02 §1). Support the retro-log variant: `start_time` = chosen date 12:00, stopwatch **paused at 0** (entry points arrive M4-05; the logger honors the mode now). Start-while-active → Resume/Discard-and-start action sheet (second confirm on discard).
 **References:** 02 §1–§2; 06 §3, §6.1; 07 §6.
