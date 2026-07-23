@@ -32,6 +32,15 @@
  *    loaded on this path, so `ThemeProvider` stays uncontrolled here (its
  *    pre-M0-10 local-state fallback) — acceptable since there is no
  *    settings UI to reach behind a blocking error screen anyway.
+ *
+ * --- Sentry init (M0-11), deferred past first frame -----------------------
+ * 06 §5.1/§8: "After first frame (never gating boot)". The
+ * `requestAnimationFrame` callback below fires after this component's
+ * first commit — regardless of `gate.status` — and only then calls
+ * `initSentry()` (`src/lib/sentry.ts`), which itself no-ops entirely when
+ * `EXPO_PUBLIC_SENTRY_DSN` is unset (true today — no owner DSN exists yet,
+ * O-05 provides the real one by M6). This is deliberately independent of
+ * the DB-ready gate: Sentry must never block or be blocked by boot.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -40,6 +49,7 @@ import { Stack } from 'expo-router';
 import { getAppDriver, runDbBoot } from '@/data/sqlite/boot';
 import { SettingsRepository } from '@/data/settings/settings-repository';
 import { useSettingsStore } from '@/features/settings/settings-store';
+import { initSentry } from '@/lib/sentry';
 import { MigrationErrorScreen } from '@/ui/MigrationErrorScreen';
 import { ThemeProvider } from '@/ui/theme-provider';
 
@@ -84,6 +94,15 @@ export default function RootLayout(): React.JSX.Element | null {
   const retry = useCallback(() => {
     setGate({ status: 'pending' });
     setAttempt((current) => current + 1);
+  }, []);
+
+  // Sentry init, deferred past first frame (see file header) — never
+  // gated on `gate.status`, never awaited, never blocks boot.
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      initSentry();
+    });
+    return () => cancelAnimationFrame(frame);
   }, []);
 
   if (gate.status === 'pending') {
