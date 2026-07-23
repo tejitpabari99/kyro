@@ -51,28 +51,56 @@ jest.mock('@/data/sqlite/boot', () => ({
 }));
 
 describe('tab shell — boots to tabs, all 4 tabs navigable', () => {
-  it('redirects "/" to the Workout tab', async () => {
-    await renderRouter('app', { initialUrl: '/' });
-    expect(await screen.findByText('No active routines yet')).toBeTruthy();
-  });
+  // M0-12 note: the default 5000 ms Jest test timeout was observed to flake
+  // under full-suite (`pnpm run ci`) CPU contention specifically on the
+  // first `renderRouter(...)` call in this file (~2.9s in isolation, timed
+  // out under load) — `renderRouter` cold-builds the whole route tree via
+  // the require-context ponyfill (see file header), so it is the most
+  // CPU-sensitive render in the suite. Bumped to 15000 ms for every test in
+  // this file (not just the first) since any of them can land first
+  // depending on worker scheduling. Not a functional change.
+  it(
+    'redirects "/" to the Workout tab',
+    async () => {
+      await renderRouter('app', { initialUrl: '/' });
+      expect(await screen.findByText('No active routines yet')).toBeTruthy();
+    },
+    15000,
+  );
 
-  it('navigates to the Workout tab', async () => {
-    await renderRouter('app', { initialUrl: '/workout' });
-    expect(await screen.findByText('No active routines yet')).toBeTruthy();
-  });
+  it(
+    'navigates to the Workout tab',
+    async () => {
+      await renderRouter('app', { initialUrl: '/workout' });
+      expect(await screen.findByText('No active routines yet')).toBeTruthy();
+    },
+    15000,
+  );
 
-  it('navigates to the History tab', async () => {
-    await renderRouter('app', { initialUrl: '/history' });
-    expect(await screen.findByText('No workouts logged yet')).toBeTruthy();
-  });
+  it(
+    'navigates to the History tab',
+    async () => {
+      await renderRouter('app', { initialUrl: '/history' });
+      expect(await screen.findByText('No workouts logged yet')).toBeTruthy();
+    },
+    15000,
+  );
 
-  it('navigates to the Exercises tab', async () => {
-    await renderRouter('app', { initialUrl: '/exercises' });
-    expect(await screen.findByText('Exercise library coming soon')).toBeTruthy();
-  });
+  it(
+    'navigates to the Exercises tab',
+    async () => {
+      await renderRouter('app', { initialUrl: '/exercises' });
+      expect(await screen.findByText('Exercise library coming soon')).toBeTruthy();
+    },
+    15000,
+  );
 
-  it('navigates to the Profile tab', async () => {
-    await renderRouter('app', { initialUrl: '/profile' });
-    expect(await screen.findByText('Profile coming soon')).toBeTruthy();
-  });
+  it(
+    'navigates to the Profile tab',
+    async () => {
+      await renderRouter('app', { initialUrl: '/profile' });
+      expect(await screen.findByText('Profile coming soon')).toBeTruthy();
+    },
+    15000,
+  );
 });
