@@ -104,4 +104,26 @@ describe('sanitizeNumericInput (unit)', () => {
     expect(sanitizeNumericInput('...', 'decimal')).toBe('.');
     expect(sanitizeNumericInput('45', 'decimal')).toBe('45');
   });
+
+  // Edge cases not exercised above: neither mode has a dedicated affordance
+  // for a leading minus sign (weight/reps/measurements are never negative
+  // in this app's domain, 07 §5's stated use cases for this component), so
+  // `-` is simply stripped as a non-digit/non-dot character rather than
+  // preserved or rejected outright — pinning that behavior here so a future
+  // change can't silently start accepting negative values unnoticed.
+  it('strips a leading minus sign in both modes (no negative-number support)', () => {
+    expect(sanitizeNumericInput('-12', 'integer')).toBe('12');
+    expect(sanitizeNumericInput('-12.5', 'decimal')).toBe('12.5');
+  });
+
+  it('leaves leading zeros and a trailing/lone dot untouched (no numeric normalization)', () => {
+    // Sanitizing is character-filtering only, not numeric normalization —
+    // "007" stays "007" (the caller/consumer decides how to interpret it),
+    // and a trailing or lone "." is kept as-is (mid-typing states like the
+    // user having just pressed "." before the digits after it).
+    expect(sanitizeNumericInput('007', 'integer')).toBe('007');
+    expect(sanitizeNumericInput('00.50', 'decimal')).toBe('00.50');
+    expect(sanitizeNumericInput('12.', 'decimal')).toBe('12.');
+    expect(sanitizeNumericInput('.', 'decimal')).toBe('.');
+  });
 });
