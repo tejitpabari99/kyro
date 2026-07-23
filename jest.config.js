@@ -26,17 +26,19 @@
 //     `driver.better-sqlite3.ts` (the file that *is* Jest-testable) is
 //     covered by src/data/sqlite/__tests__/driver.test.ts.
 //
-// `src/domain/**` and `src/features/workout/**` thresholds are commented
-// out below rather than active-but-trivially-passing: Jest's per-path/glob
-// coverageThreshold checker only classifies a glob as PATH/GLOB (and checks
-// it) when at least one *covered* file matches it — with zero source files
-// under a glob (true today for both directories; real logic lands M1 for
-// domain, M2 for features/workout) there is nothing to classify, so Jest
-// hard-errors with "Coverage data for <glob> was not found" instead of
-// passing vacuously (confirmed empirically — see EXECUTION-LOG.md M0-03).
-// This is a mechanical Jest limitation, not a decision to weaken the bar:
-// the moment the first file lands in either directory, uncomment its entry
-// below (values already match 08 §3 verbatim — do not adjust them).
+// `src/features/workout/**`'s threshold is still commented out below rather
+// than active-but-trivially-passing: Jest's per-path/glob coverageThreshold
+// checker only classifies a glob as PATH/GLOB (and checks it) when at least
+// one *covered* file matches it — with zero source files under a glob (true
+// today for that directory; real logic lands M2) there is nothing to
+// classify, so Jest hard-errors with "Coverage data for <glob> was not
+// found" instead of passing vacuously (confirmed empirically — see
+// EXECUTION-LOG.md M0-03). This is a mechanical Jest limitation, not a
+// decision to weaken the bar: the moment the first file lands there,
+// uncomment its entry below (value already matches 08 §3 verbatim — do not
+// adjust it). `src/domain/**`'s entry was the same story until M1-01 landed
+// `src/domain/enums.ts`, its first source file — now active, per that
+// task's cross-reference note.
 //
 // `<rootDir>` resolves to the directory containing this file (Jest's
 // default) — deliberately not spelled out via `__dirname` here so this
@@ -142,8 +144,9 @@ module.exports = {
   ],
 
   coverageThreshold: {
-    // TODO(M1): uncomment once src/domain/** has its first source file.
-    // './src/domain/**/*.{ts,tsx}': { lines: 95, branches: 90 },
+    // M1-01: src/domain/enums.ts is the first src/domain/** source file —
+    // threshold activated per M0-03's TODO (values unchanged, 08 §3).
+    './src/domain/**/*.{ts,tsx}': { lines: 95, branches: 90 },
     './src/data/**/*.{ts,tsx}': { lines: 90, branches: 85 },
     // TODO(M2): uncomment once src/features/workout/** has its first source file.
     // './src/features/workout/**/*.{ts,tsx}': { lines: 85, branches: 80 },

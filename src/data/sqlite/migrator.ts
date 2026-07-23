@@ -38,8 +38,14 @@ export interface MigrationResult {
   applied: readonly string[];
 }
 
-/** Split a migration file's SQL into individually-executable statements. */
-function splitStatements(sql: string): string[] {
+/**
+ * Split a migration (or fixture — see `../migrations/__fixtures__/`) file's
+ * SQL into individually-executable statements on the shared
+ * `--> statement-breakpoint` marker. Exported so fixture-upgrade tests (08
+ * §5.3) can load a committed multi-statement fixture dump through the same
+ * splitting logic the real runner uses, rather than duplicating it.
+ */
+export function splitStatements(sql: string): string[] {
   return sql
     .split(STATEMENT_BREAKPOINT)
     .map((statement) => statement.trim())

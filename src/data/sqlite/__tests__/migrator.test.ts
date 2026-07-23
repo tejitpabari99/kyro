@@ -1,9 +1,13 @@
 /**
- * Migration runner integration test (M0-09 acceptance gate) — 05 §10 / 08
- * §5: runs the real generated migration SQL (`src/data/migrations/
- * 0000_app_meta_and_settings.sql`, via the manifest) against the
- * `better-sqlite3` backend, the same files the on-device `expo-sqlite`
- * driver would apply (parity is the point — no separate "test-only" SQL).
+ * Migration runner integration test (M0-09 + M1-01 acceptance gate) — 05
+ * §10 / 08 §5: runs the real generated migration SQL (`src/data/migrations/
+ * *.sql`, via the manifest) against the `better-sqlite3` backend, the same
+ * files the on-device `expo-sqlite` driver would apply (parity is the
+ * point — no separate "test-only" SQL). M1-01 added migration 0002 (the
+ * full v1 schema, 05 §3.1-3.4) to the manifest; the fixture-upgrade test
+ * for that specific migration lives in
+ * `../migrations/__tests__/0002-full-v1-schema.test.ts`, so this suite
+ * only needs updating to reflect the manifest now having two entries.
  */
 import { openBetterSqlite3Driver } from '../driver.better-sqlite3';
 import { migrate } from '../migrator';
@@ -16,7 +20,27 @@ function listTableNames(driver: SqliteDriver): string[] {
   return rows.map((row) => row.name);
 }
 
-describe('migration runner (better-sqlite3 integration, M0-09)', () => {
+/** Every table the full manifest (migrations 0001+0002) creates, sorted (sqlite_master order). */
+const ALL_TABLES = [
+  'app_meta',
+  'body_measurements',
+  'exercises',
+  'progress_photos',
+  'routine_exercises',
+  'routine_folders',
+  'routine_sets',
+  'routines',
+  'settings',
+  'sets',
+  // SQLite's own bookkeeping table for `INTEGER PRIMARY KEY AUTOINCREMENT`
+  // columns (`routine_folders.id`) — an implicit side effect of that column
+  // option, not something either migration creates directly.
+  'sqlite_sequence',
+  'workout_exercises',
+  'workouts',
+].sort();
+
+describe('migration runner (better-sqlite3 integration, M0-09 + M1-01)', () => {
   let driver: SqliteDriver;
 
   beforeEach(() => {
@@ -27,45 +51,51 @@ describe('migration runner (better-sqlite3 integration, M0-09)', () => {
     driver.close();
   });
 
-  it('migrates an empty database: creates app_meta + settings and records schema_version', () => {
+  it('migrates an empty database: creates the full v1 schema and records schema_version', () => {
     expect(listTableNames(driver)).toEqual([]);
 
     const result = migrate(driver);
 
     expect(result.fromVersion).toBe(0);
-    expect(result.toVersion).toBe(1);
-    expect(result.applied).toEqual(['0000_app_meta_and_settings']);
+    expect(result.toVersion).toBe(2);
+    expect(result.applied).toEqual([
+      '0000_app_meta_and_settings',
+      '0001_exercises_workouts_routines_measurements',
+    ]);
 
-    expect(listTableNames(driver)).toEqual(['app_meta', 'settings']);
+    expect(listTableNames(driver)).toEqual(ALL_TABLES);
 
     const versionRows = driver.queryAll<{ value: string }>(
       `SELECT value FROM app_meta WHERE key = 'schema_version'`,
     );
-    expect(versionRows).toEqual([{ value: '1' }]);
+    expect(versionRows).toEqual([{ value: '2' }]);
 
-    // Both tables are actually usable (not just present) — round-trip a row
-    // through each, matching 05 §3.5's DDL exactly.
+    // Both original tables are actually usable (not just present) —
+    // round-trip a row through each, matching 05 §3.5's DDL exactly.
     driver.execute(`INSERT INTO settings (key, value) VALUES (?, ?)`, ['theme', '"dark"']);
     expect(
       driver.queryAll<{ value: string }>(`SELECT value FROM settings WHERE key = 'theme'`),
     ).toEqual([{ value: '"dark"' }]);
   });
 
-  it('this migration creates ONLY app_meta + settings (M1-01 owns the full v1 schema)', () => {
+  it('the full manifest creates exactly the M0-09 + M1-01 tables (no more, no less)', () => {
     migrate(driver);
-    expect(listTableNames(driver)).toEqual(['app_meta', 'settings']);
+    expect(listTableNames(driver)).toEqual(ALL_TABLES);
   });
 
   it('re-running against an already-migrated database is a no-op (idempotent)', () => {
     const first = migrate(driver);
-    expect(first.applied).toEqual(['0000_app_meta_and_settings']);
+    expect(first.applied).toEqual([
+      '0000_app_meta_and_settings',
+      '0001_exercises_workouts_routines_measurements',
+    ]);
 
     const second = migrate(driver);
 
-    expect(second.fromVersion).toBe(1);
-    expect(second.toVersion).toBe(1);
+    expect(second.fromVersion).toBe(2);
+    expect(second.toVersion).toBe(2);
     expect(second.applied).toEqual([]);
-    expect(listTableNames(driver)).toEqual(['app_meta', 'settings']);
+    expect(listTableNames(driver)).toEqual(ALL_TABLES);
   });
 
   it('applies out-of-order migration entries in ascending version order', () => {
