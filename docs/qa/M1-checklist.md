@@ -247,3 +247,34 @@ were fixed within this same pass, with regression tests; not carried forward as 
 unchanged from every prior milestone's caveat): 60 fps scroll measurement, on-device visual
 QA in both themes, and any physical-device interaction. These are owner re-measurement items
 once a device/simulator is available, same posture as M0's checklist.
+
+## 5. Independent milestone-wide review (post-close, per the current one-review-per-milestone process)
+
+A separate reviewing agent independently re-verified this checklist's claims from scratch
+(not a re-read of §1–4 above) — full details logged as the `M1 | reviewed | d0b0342` row in
+`docs/plan/EXECUTION-LOG.md`. Summary:
+
+- `pnpm run ci` re-run fresh: still green end-to-end (typecheck, lint, 61 suites/567 tests +
+  coverage, expo-doctor 21/21, expo export ~46 MB).
+- `npm run build:exercises` re-run twice more, independently: same sha256
+  `80f567c7270d7c5454753094f48db51bd4e49d7a3f618a3d38523181c9936810`, 0/0 curation warnings —
+  a third independent confirmation of determinism.
+- 10 new exercises spot-checked (disjoint from M1-11's 21 and any prior sample), covering all
+  6 `exercise_type` values the real dataset actually contains: **10/10 correct** against the
+  raw source record and 03 §6.3's mapping table.
+- The M1-12 photo-rendering fix (§2.1/§2.2 above) was independently retraced end-to-end and a
+  **new** integration-style test (`custom-exercise-photo-e2e.test.ts`) was added that chains
+  the real `lib/files.ts`, a real `ExerciseRepositoryImpl`/better-sqlite3 round-trip, and the
+  real thumbnail/media-source resolvers together (only the native module trio is mocked) —
+  confirming the fix holds across all three seams composed, not just at each seam individually.
+- **One new P2 found and fixed**: `ExerciseDetailScreen.performArchive()` had no error handling
+  around `repository.archive()` — the same unhandled-promise-rejection class as §2.4's
+  `ArchivedExercisesScreen.handleRestore` bug, just a sibling call site that pass didn't check.
+  Fixed with the same Alert-on-catch convention + a regression test.
+- `git fsck --full --strict`: clean (two benign dangling objects from an old tag re-point, no
+  corruption). `.git` is 184 MB (expected, given the vendored dataset's binary history).
+- 05 §8's orphan sweep confirmed correctly deferred to `M5-03`, not a silently-dropped M1 gap.
+
+**Revised verdict: unchanged — M1 exit criteria met, zero P0/P1 open**, now confirmed by a
+second, independent reviewing pass rather than resting on §1–4's own self-report. M1 is ready
+to build M2 on top of.
