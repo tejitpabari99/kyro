@@ -84,6 +84,21 @@ Node is ever upgraded to ≥22.13 on this machine, `pnpm@latest` can be re-tried
 (no `packageManager` field was added to `package.json`, so a fresh shell must re-run
 `corepack prepare pnpm@9 --activate` if corepack's global state is ever reset).
 
+**Update (M0-03):** `better-sqlite3`'s latest release (13.0.1) ships prebuilt binaries compiled
+with `NAPI_VERSION=10`. Loading that binary (or any from-scratch N-API addon built with
+`NAPI_VERSION=10`, confirmed independently of better-sqlite3's own code) segfaults immediately
+inside Node's own `napi_module_register_by_symbol` on this machine's Node v20.20.1 — whose
+actual napi version is 9 (`process.versions.napi === '9'`) — instead of failing gracefully.
+Root-caused via `gdb` backtrace (crash is inside Node internals, not the addon). A plain N-API
+addon built without an explicit `NAPI_VERSION` define loads and runs fine, confirming this is
+specifically the NAPI_VERSION-10-on-Node-20 combination, not native addons in general.
+Workaround: pinned `better-sqlite3` to `12.4.1` (declares `"engines": {"node": "20.x || 22.x ||
+23.x || 24.x"}`, ships a `prebuild-install`-fetched binary compiled against a Node-20-compatible
+napi version) — verified working (create/insert/select/rollback round-trip passes). If Node is
+ever upgraded to ≥22 on this machine (see the M0-01 update above re: `pnpm@latest` too), retest
+`better-sqlite3@latest` — the NAPI_VERSION=10 requirement should be satisfied natively there and
+the pin can likely be lifted.
+
 ## Everything else
 
 Every other task — all of M0 through M7 except the six owner-gated tasks listed above — is

@@ -24,7 +24,7 @@ Task count: **12**
 **Acceptance / test gate:** A deliberate violation (e.g. `src/domain/x.ts` importing `react`) fails `pnpm lint`; clean tree passes lint + prettier check.
 **Est:** 0.5 d
 
-### M0-03 — Test infrastructure: Jest, RNTL, better-sqlite3 harness, fixtures
+### M0-03 — Test infrastructure: Jest, RNTL, better-sqlite3 harness, fixtures [done]
 **Description:** Stand up the whole test toolchain so every later task can add tests without setup work.
 **How:** Two jest projects: (a) node env for `src/domain/**` + `src/data/**` (no RN preset), (b) `jest-expo` + RNTL for UI. Install `better-sqlite3` as devDependency; create the driver shim in `src/data/sqlite/driver.ts` that abstracts expo-sqlite (device) vs better-sqlite3 (tests) — same API surface used by Drizzle (08 §5). Create `src/test/fixtures/` with builder helpers skeleton (`aWorkout().with(exercise('bench').sets('80x8','W:40x10'))` per 08 §1 — implement incrementally; land the builder shape now). Configure `coverageThreshold` per 08 §3 (domain 95/90, data 90/85, features/workout 85/80, overall 75/70) — thresholds active from day one, trivially met while dirs are near-empty. Mock seams for natives (notifications/haptics/keep-awake/files) via `src/lib/` module mocks.
 **References:** 08 §1, §3, §5; 05 (P1 dual-driver rationale).
