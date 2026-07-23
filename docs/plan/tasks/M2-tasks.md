@@ -42,7 +42,8 @@ Task count: **19**
 **Acceptance / test gate:** 08 §4.2 full suite green (all listed values incl. 80×8=640, +10×8=80, assisted=0, weight_duration 20 kg 60 s=20, kg→lb display) and 08 §4.8 previous-values cases (any_workout vs same_routine, occurrence matching, fewer-previous-sets → `—`).
 **Est:** 1 d
 
-### M2-05 — Logger screen shell: header, meta row, stopwatch, footer
+### M2-05 — Logger screen shell: header, meta row, stopwatch, footer [in-progress]
+**WIP status:** only auto-title logic, `useWorkoutStopwatch`, and `DurationEditSheet` exist so far. The `workout/active` route, `ActiveWorkoutScreen` itself, header/meta-row/footer, and tab entry point are not built yet.
 **Description:** The `workout/active` fullScreenModal route with everything except the set table.
 **How:** Route per 06 §3 (slide-from-bottom, 350 ms spring damping 0.85). Header: chevron-down minimize, tappable inline-edit title, Finish accent pill. Meta row: Duration (accent, live, 1 s hook mounted only here — display = `now − start_time − pause_offset`), Volume, Sets (checked count) via StatColumn. Duration tap → sheet: edit start date/time, duration, pause/resume stopwatch (mutates start_time / duration_pause_offset_ms via updateMeta). Footer: `+ Add Exercise` primary, `Settings` tonal (opens M2-17 subset), `Discard Workout` destructive with confirm. Auto-title by time of day (02 §1). Support the retro-log variant: `start_time` = chosen date 12:00, stopwatch **paused at 0** (entry points arrive M4-05; the logger honors the mode now). Start-while-active → Resume/Discard-and-start action sheet (second confirm on discard).
 **References:** 02 §1–§2; 06 §3, §6.1; 07 §6.
@@ -50,7 +51,8 @@ Task count: **19**
 **Acceptance / test gate:** 02 §1–2 acceptance: empty start < 500 ms with correct auto-title; stopwatch correct after 10 min background + force-quit relaunch (manual); duration/pause edits persist (RNTL + repo assertion); discard flow clears active state.
 **Est:** 1.5 d
 
-### M2-06 — SetTable column engine, SetRow, SetCell, set types
+### M2-06 — SetTable column engine, SetRow, SetCell, set types [in-progress]
+**WIP status:** `SetTable`/`SetRow`/`SetCell`/`SetTypeBadge` primitives, `set-table-columns`/`set-cell-values` domain logic, `ConnectedSetRow`, and `ExerciseSetTableSection` all exist with tests, but `pnpm run ci` is not green — `set-cell-values.ts`, `ConnectedSetRow.tsx`, `ExerciseSetTableSection.tsx` (shared with M2-05's `DurationEditSheet.tsx`) miss their `jest.config.js` coverage thresholds. See `docs/plan/EXECUTION-LOG.md` M2-05/M2-06 WIP entry for exact numbers.
 **Description:** The crown jewel: the type-driven set table with badges, renumbering, swipe-delete.
 **How:** `src/ui/SetTable|SetRow|SetCell|SetTypeBadge` + feature wiring. Column layouts per 02 §4 table for all 8 types + CUSTOM column when `uses_custom_metric` + RPE column when enabled (rep-based types only). SET cell: working-set index skipping warm-ups (W,1,2,W,3 valid); badges W/D/F colored per 07 §2.4; tap → set-type menu sheet (Warm Up/Normal/Failure/Drop/Remove). PREVIOUS cell: grey compact summary formats per type (`45kg × 9`, `+10kg × 8`, `−20kg × 12`, `1:30`, `5km / 28:00`, `60kg / 20m`) or `—`; tap autofills inputs. Value cells: NumericInput, placeholders grey = previous/target; weight 1 decimal, reps integer, TIME mm:ss (M1-02 parser), distance decimal; input clamps per 02 §16.7 (weight ≤ 1000 kg, reps ≤ 1000, duration ≤ 24 h, distance ≤ 1000 km; warn > 50 sets/exercise). Swipe-left delete → renumber. No virtualization inside logger; memoized rows with per-set selectors (06 §8). Assisted weight entered positive, displayed `−20kg`, stored positive in weight_kg.
 **References:** 02 §4, §16.7; 07 §2.4, §5; 05 §3.2.
