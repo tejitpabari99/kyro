@@ -7,6 +7,13 @@
  * from the real data); tab switching (`SegmentedControl` behavioral test);
  * History/Charts/Records `EmptyState` placeholders; the customs-with-no-
  * instructions empty-state copy; RNTL smoke both themes.
+ *
+ * M1-10 update: `ExerciseDetailScreen` now imports `@/lib/files`
+ * (`deleteExercisePhotos`, wired into the delete flow) — that module's own
+ * real top-level native imports (`expo-file-system/legacy`/
+ * `expo-image-manipulator`/`expo-image-picker`) are unavailable under Jest
+ * (08 §5), so it's mocked wholesale here the same way every other consumer
+ * of that seam does.
  */
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import React from 'react';
@@ -27,6 +34,8 @@ import rawDataset from '../../../../assets/exercise-db.json';
 
 import { ExerciseDetailScreen } from '../ExerciseDetailScreen';
 import { FIXTURE_CUSTOM_NO_IMAGES, FakeExerciseRepository } from './exercise-fixtures';
+
+jest.mock('@/lib/files');
 
 const REAL_ID = 'Barbell_Bench_Press_-_Medium_Grip';
 const realRecord = rawDataset.exercises.find((exercise) => exercise.id === REAL_ID);

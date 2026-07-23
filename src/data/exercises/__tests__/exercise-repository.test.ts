@@ -520,6 +520,34 @@ describe('ExerciseRepositoryImpl (M1-06 integration, better-sqlite3)', () => {
   });
 
   // -------------------------------------------------------------------
+  // hasLoggedSets (M1-10 — public wrapper around `update`'s internal gate,
+  // needed by the custom-exercise edit form to disable the type picker
+  // *before* a save attempt, 03 §5)
+  // -------------------------------------------------------------------
+  describe('hasLoggedSets', () => {
+    it('is false for a freshly-created exercise with no workout activity at all', async () => {
+      const created = await repo.create(makeCustomInput());
+      expect(await repo.hasLoggedSets(created.id)).toBe(false);
+    });
+
+    it('is false when a workout_exercises row exists but no set was ever logged (matches update\'s finer-grained gate)', async () => {
+      const created = await repo.create(makeCustomInput());
+      insertCompletedWorkout('workout-hls-1', created.id, 1000);
+      expect(await repo.hasLoggedSets(created.id)).toBe(false);
+    });
+
+    it('is true once at least one set has been logged', async () => {
+      const created = await repo.create(makeCustomInput());
+      insertCompletedWorkout('workout-hls-2', created.id, 1000, { withSet: true });
+      expect(await repo.hasLoggedSets(created.id)).toBe(true);
+    });
+
+    it('throws ExerciseNotFoundError for an unknown id', async () => {
+      await expect(repo.hasLoggedSets('nope')).rejects.toBeInstanceOf(ExerciseNotFoundError);
+    });
+  });
+
+  // -------------------------------------------------------------------
   // recentlyUsed
   // -------------------------------------------------------------------
   describe('recentlyUsed', () => {

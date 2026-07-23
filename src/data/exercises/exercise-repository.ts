@@ -251,7 +251,7 @@ export class ExerciseRepositoryImpl implements ExerciseRepository {
     }
 
     if (patch.exerciseType !== undefined && patch.exerciseType !== existing.exercise_type) {
-      if (this.hasLoggedSets(id)) {
+      if (this.hasLoggedSetsSync(id)) {
         throw new ExerciseTypeImmutableError(id);
       }
     }
@@ -356,6 +356,11 @@ export class ExerciseRepositoryImpl implements ExerciseRepository {
     return this.countReferences(id);
   }
 
+  async hasLoggedSets(id: string): Promise<boolean> {
+    this.requireRow(id);
+    return this.hasLoggedSetsSync(id);
+  }
+
   async recentlyUsed(limit: number): Promise<Exercise[]> {
     const rows = this.driver.queryAll<ExerciseRow>(
       `SELECT e.* FROM exercises e
@@ -406,8 +411,8 @@ export class ExerciseRepositoryImpl implements ExerciseRepository {
     }
   }
 
-  /** `true` when at least one `sets` row exists for any `workout_exercises` slot referencing `id` (05 §6 / 03 §5's type-immutability rule). */
-  private hasLoggedSets(id: string): boolean {
+  /** `true` when at least one `sets` row exists for any `workout_exercises` slot referencing `id` (05 §6 / 03 §5's type-immutability rule). Sync core shared by `update`'s internal gate and the public async `hasLoggedSets` (M1-10). */
+  private hasLoggedSetsSync(id: string): boolean {
     const rows = this.driver.queryAll<{ n: number }>(
       `SELECT COUNT(*) AS n FROM sets s
        INNER JOIN workout_exercises we ON we.id = s.workout_exercise_id

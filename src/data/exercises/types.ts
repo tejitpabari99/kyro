@@ -76,6 +76,18 @@ export interface ExerciseRepository {
   restore(id: string): Promise<void>;
   delete(id: string): Promise<void>;
   referenceCount(id: string): Promise<number>;
+  /**
+   * `true` once at least one `sets` row has ever been logged against `id`
+   * (05 §6 / 03 §5's type-immutability rule — the exact, finer-grained
+   * check `update` already gates `exerciseType` changes on internally,
+   * M1-06). Exposed publicly (M1-10) so the custom-exercise edit form
+   * (`src/features/exercises/ExerciseFormScreen.tsx`) can disable the type
+   * picker with an explanation *before* a save attempt, rather than only
+   * discovering the lock via a thrown `ExerciseTypeImmutableError`.
+   * Deliberately not `referenceCount > 0` — see `exercise-repository.ts`'s
+   * header note on why those two signals differ.
+   */
+  hasLoggedSets(id: string): Promise<boolean>;
   recentlyUsed(limit: number): Promise<Exercise[]>;
   seedBuiltins(dataset: readonly MappedExerciseRecord[], version: string): Promise<void>;
 }

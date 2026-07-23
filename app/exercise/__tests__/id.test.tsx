@@ -9,8 +9,14 @@
  * needs to prove the route renders the real detail screen for the param it
  * receives, matching M1-07's confirmed navigation contract
  * (`router.push('/exercise/${exercise.id}')`, a plain string path).
+ *
+ * M1-10 update: `ExerciseDetailScreen` now imports `@/lib/files` (the
+ * delete flow's `deleteExercisePhotos` call) — mocked wholesale here too,
+ * same as every other consumer of that native-touching seam (08 §5).
  */
 import { renderRouter, screen } from 'expo-router/testing-library';
+
+jest.mock('@/lib/files');
 
 const FIXTURE_EXERCISE = {
   id: 'Barbell_Squat',

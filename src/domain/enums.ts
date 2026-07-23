@@ -74,6 +74,28 @@ export const EXERCISE_TYPE_OPTIONS = EXERCISE_TYPE_VALUES.map((value) => ({
   label: EXERCISE_TYPE_LABELS[value],
 }));
 
+/**
+ * Short "column-preview" explanation per `exercise_type` value (M1-09, 03
+ * §5: "picker with column-preview explanation") — one line naming the set
+ * columns that type logs, so the create/edit form's type picker can show a
+ * plain-language preview instead of just the bare label. Derived from the
+ * same `02` §4 set-table column layout `EXERCISE_TYPE_LABELS`'s own doc
+ * comment already cites per type — kept here (not duplicated in a
+ * feature-layer file) so it stays under `src/domain/**`'s coverage gate and
+ * single-source-of-truth guarantee like every other enum-derived table in
+ * this module.
+ */
+export const EXERCISE_TYPE_DESCRIPTIONS: Record<ExerciseType, string> = {
+  weight_reps: 'Logs weight and reps per set.',
+  reps_only: 'Logs reps per set — no weight column.',
+  bodyweight_reps: 'Logs reps, plus optional added weight on top of bodyweight.',
+  bodyweight_assisted_reps: 'Logs reps, plus optional assistance weight subtracted from bodyweight.',
+  duration: 'Logs time under tension per set — no weight column.',
+  weight_duration: 'Logs weight held and time under tension per set.',
+  distance_duration: 'Logs distance covered and time — for cardio.',
+  short_distance_weight: 'Logs weight carried over a short distance per set.',
+};
+
 // ---------------------------------------------------------------------------
 // set_type (05 §2.2) — 4 values
 // ---------------------------------------------------------------------------

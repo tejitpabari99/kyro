@@ -31,6 +31,19 @@ describe('ProfileScreen — Settings link + dev-gallery link __DEV__ gate', () =
     expect(router.push).toHaveBeenCalledWith('/profile/settings');
   });
 
+  it('shows the Archived Exercises row (M1-10) and navigates to it on press', async () => {
+    await render(
+      <ThemeProvider>
+        <ProfileScreen />
+      </ThemeProvider>,
+    );
+
+    const archivedLink = screen.getByTestId('archived-exercises-link');
+    expect(archivedLink).toBeTruthy();
+    fireEvent.press(archivedLink);
+    expect(router.push).toHaveBeenCalledWith('/profile/exercises-archived');
+  });
+
   it('shows the Design Gallery row under __DEV__', async () => {
     await render(
       <ThemeProvider>

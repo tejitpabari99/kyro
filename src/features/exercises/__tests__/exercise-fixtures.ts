@@ -170,6 +170,11 @@ export class FakeExerciseRepository implements ExerciseRepository {
       'FakeExerciseRepository.referenceCount is not implemented — unused by ExerciseBrowseScreen.',
     );
   }
+  async hasLoggedSets(): Promise<boolean> {
+    throw new Error(
+      'FakeExerciseRepository.hasLoggedSets is not implemented — unused by ExerciseBrowseScreen/ExerciseDetailScreen.',
+    );
+  }
   async seedBuiltins(): Promise<void> {
     throw new Error(
       'FakeExerciseRepository.seedBuiltins is not implemented — unused by ExerciseBrowseScreen.',

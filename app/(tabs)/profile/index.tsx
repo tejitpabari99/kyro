@@ -1,15 +1,16 @@
 /**
  * Profile tab placeholder (M0-08, +M0-10's Settings link) — statistics,
  * measures, settings hub (06 §3). Real screen lands in later milestones;
- * for now the only functional row is the Settings link (M0-10's minimal
- * theme + weight-unit screen at `profile/settings/`).
+ * for now the functional rows are Settings (M0-10's minimal theme +
+ * weight-unit screen at `profile/settings/`) and Archived Exercises
+ * (M1-10, 03 §5 / 04 §7's "Profile → Exercises → Archived" shortcut).
  *
  * Dev-only "Design Gallery" row: the *only* in-app link to `app/dev/
  * gallery.tsx`, rendered exclusively when `__DEV__` — production/TestFlight
  * builds show no way to reach it (M0-08's dev-gallery access guard).
  */
 import React from 'react';
-import { FlaskConical, Settings as SettingsIcon, User } from 'lucide-react-native';
+import { ArchiveRestore, FlaskConical, Settings as SettingsIcon, User } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
@@ -34,8 +35,16 @@ export default function ProfileScreen(): React.JSX.Element {
           subtitle="Theme, units"
           leading={<SettingsIcon size={20} strokeWidth={1.75} color={colors.text.secondary} />}
           chevron
-          hideSeparator={!__DEV__}
           onPress={() => router.push('/profile/settings')}
+        />
+        <ListRow
+          testID="archived-exercises-link"
+          title="Archived Exercises"
+          subtitle="Restore exercises you've archived"
+          leading={<ArchiveRestore size={20} strokeWidth={1.75} color={colors.text.secondary} />}
+          chevron
+          hideSeparator={!__DEV__}
+          onPress={() => router.push('/profile/exercises-archived')}
         />
         {__DEV__ ? (
           <ListRow
