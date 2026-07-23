@@ -96,13 +96,19 @@ describe.each(THEMES)('token contrast (%s theme, 07 §2.6)', (theme) => {
       ['bg.surface', compositeOverlayOverHex(overlay, t.bg.surface)],
     ];
 
-    it.each(tintedBackgrounds)('text.primary on accentSubtle-over-%s is >= 4.5:1', (_name, tintedHex) => {
-      expect(contrastRatio(t.text.primary, tintedHex)).toBeGreaterThanOrEqual(4.5);
-    });
+    it.each(tintedBackgrounds)(
+      'text.primary on accentSubtle-over-%s is >= 4.5:1',
+      (_name, tintedHex) => {
+        expect(contrastRatio(t.text.primary, tintedHex)).toBeGreaterThanOrEqual(4.5);
+      },
+    );
 
-    it.each(tintedBackgrounds)('text.secondary on accentSubtle-over-%s is >= 4.5:1', (_name, tintedHex) => {
-      expect(contrastRatio(t.text.secondary, tintedHex)).toBeGreaterThanOrEqual(4.5);
-    });
+    it.each(tintedBackgrounds)(
+      'text.secondary on accentSubtle-over-%s is >= 4.5:1',
+      (_name, tintedHex) => {
+        expect(contrastRatio(t.text.secondary, tintedHex)).toBeGreaterThanOrEqual(4.5);
+      },
+    );
   });
 });
 
