@@ -84,7 +84,7 @@ caveat carries forward from this task.
 **Acceptance / test gate:** Media fallback-tier tests (built-in with 2 images crossfades; custom with 1 user photo static; custom with none → placeholder) per 03 §3 acceptance; RNTL smoke both themes; tabs switch.
 **Est:** 1.5 d
 
-### M1-09 — lib/files.ts + custom exercise create/edit
+### M1-09 — lib/files.ts + custom exercise create/edit [done]
 **Description:** File-storage seam and the custom exercise form (create, edit, image pick/store).
 **How:** `src/lib/files.ts`: documentDirectory roots `photos/exercises/{exerciseId}/{uuid}.jpg` (and `photos/progress/` for M5), store **relative names only** in DB, re-encode via `expo-image-manipulator` (square-crop for exercise images), delete-file helpers. Form (route `app/exercise/new.tsx` / `[id]/edit.tsx`): image (library/camera via expo-image-picker), name (required, unique-among-active, inline duplicate error), exercise type (picker with column-preview explanation; **immutable after first logged set** — disable with explanation), equipment (default none), primary muscle (required), secondary multi-select, instructions multiline (split on newlines), "Track extra metric" toggle → uses_custom_metric.
 **References:** 03 §5; 05 §8 (file storage).
@@ -92,7 +92,7 @@ caveat carries forward from this task.
 **Acceptance / test gate:** Create → appears in browse/picker instantly; duplicate name rejected case-insensitively (RNTL + repo test); image stored under documents dir with relative name in DB; type-lock behavior unit-tested at repo level (M1-06) + UI disabled state.
 **Est:** 1.5 d
 
-### M1-10 — Custom exercise delete/archive/restore, duplicate-as-custom, archived screen
+### M1-10 — Custom exercise delete/archive/restore, duplicate-as-custom, archived screen [done]
 **Description:** Lifecycle completion for customs + built-in duplication.
 **How:** Delete: zero references → hard delete + remove image files; referenced → dialog explaining + offer Archive. Archived exercises: hidden from browse/picker, still render in history/stats/old routines (query paths already exclude-by-default per M1-06). Archived management screen under Profile → Exercises → Archived with Restore. `Duplicate as Custom` on built-in detail ⋯ menu → pre-fills M1-09 form (name + " (Copy)"). Detail nav: customs show Edit + ⋯ Edit/Delete; built-ins show ⋯ Duplicate as Custom.
 **References:** 03 §5 (delete/archive rules, parity guarantee), §3 (menu placement); 04 §7 (Profile shortcut).
