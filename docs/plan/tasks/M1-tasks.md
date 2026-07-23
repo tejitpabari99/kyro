@@ -8,7 +8,7 @@ Task count: **12**
 
 ---
 
-### M1-01 — Full v1 schema: Drizzle schema.ts + migration 0002
+### M1-01 — Full v1 schema: Drizzle schema.ts + migration 0002 [done]
 **Description:** Land the complete 05 §3 DDL — exercises, workouts, workout_exercises, sets, routines, routine_folders, routine_exercises, routine_sets, body_measurements, progress_photos — even though most UI arrives later.
 **How:** Mirror 05 §3.1–3.4 exactly in `src/data/schema.ts` (snake_case, TEXT uuid/slug PKs, INTEGER epoch-ms timestamps, CHECK-constrained enums incl. RPE domain, JSON-array TEXT columns, `animation_uri` reserved column). All indexes verbatim, including the partial unique indexes `idx_one_active_workout` and `idx_exercises_name_active`, and the `routine_sets` reps-vs-range CHECK. Generate migration 0002 with drizzle-kit. Add enum constants module `src/domain/enums.ts` (exercise_type 8, set_type 4, muscle_group 20 with labels, equipment 9, rpe values, settings enums) — single source shared by DB/CSV/UI.
 **References:** 05 §2, §3 (source of truth — copy, don't improvise), §10.
