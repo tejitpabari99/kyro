@@ -102,12 +102,41 @@ describe('ExerciseSetTableSection — per-row typing isolation (06 §8)', () => 
       </QueryClientProvider>,
     );
 
-    // Wait for the `previousSets` query to settle *before* taking the
-    // baseline render count — otherwise its loading->success transition
-    // (an unrelated, one-time re-render of every row) can land inside the
-    // window we're about to measure and produce a false positive for "an
-    // edit re-rendered every row."
-    await waitFor(() => expect(renderSpy.mock.calls.length).toBeGreaterThanOrEqual(3));
+    // Wait for the `previousSets` query to actually settle *before* taking
+    // the baseline render count — otherwise its loading->success transition
+    // (an unrelated, one-time re-render of every row, once `previousResults`
+    // recomputes with a new array reference) can land inside the window
+    // we're about to measure and produce a false positive for "an edit
+    // re-rendered every row." A fixed `>= 3` call-count threshold isn't
+    // enough: it can be satisfied by the *first* render pass alone (before
+    // the query's data has landed), racing against that second pass under
+    // slower/coverage-instrumented timing and clearing the spy too early —
+    // reproduced directly under `pnpm test -- --coverage`. Wait for the
+    // query's own cache entry to reach `success` first (a signal tied to
+    // the actual async fetch, not a guess about render-pass count), then
+    // wait for the render-count to stop changing (two consecutive equal
+    // polls) so the resulting re-render has actually committed too.
+    const previousSetsQueryKey = ['workout', 'previousSets', exercise.id, 'any_workout', null];
+    await waitFor(() => {
+      expect(queryClient.getQueryState(previousSetsQueryKey)?.status).toBe('success');
+    });
+    let previousCount = -1;
+    let stableReads = 0;
+    await waitFor(
+      () => {
+        const count = renderSpy.mock.calls.length;
+        if (count === previousCount) {
+          stableReads += 1;
+        } else {
+          stableReads = 0;
+          previousCount = count;
+        }
+        if (stableReads < 1) {
+          throw new Error(`renderSpy call count still settling (currently ${count})`);
+        }
+      },
+      { interval: 20 },
+    );
     renderSpy.mockClear();
 
     // Simulate "typing in row A and committing" — the exact store call
