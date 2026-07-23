@@ -15,6 +15,19 @@ import type { SqliteDriver, SqliteRow, SqliteRunResult } from './driver';
  */
 export function openBetterSqlite3Driver(databaseName: string): SqliteDriver {
   const db = new Database(databaseName);
+  // `PRAGMA foreign_keys` is a per-connection setting (SQLite does not
+  // persist it in the database file, and it is OFF by default per the
+  // SQLite C library unless the library happens to be compiled with
+  // `SQLITE_DEFAULT_FOREIGN_KEYS=1` — true of the prebuilt `better-sqlite3`
+  // binary in this environment, but that is an accident of this particular
+  // build, not something to rely on, and almost certainly NOT true of the
+  // on-device `expo-sqlite` backend, `driver.expo.ts`, which needs this
+  // same statement for the same reason). Set explicitly on every open so
+  // `workout_exercises`/`sets`/`routine_exercises`/`routine_sets`/
+  // `progress_photos`'s `REFERENCES ... ON DELETE CASCADE` (05 §3.1-3.4)
+  // are actually enforced on both backends, not just the one that happens
+  // to default it on.
+  db.pragma('foreign_keys = ON');
   db.pragma('journal_mode = WAL');
 
   const driver: SqliteDriver = {

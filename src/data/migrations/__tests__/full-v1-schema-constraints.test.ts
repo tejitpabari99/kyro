@@ -6,6 +6,20 @@
  * workout_exercises → sets chain, and a valid routine_sets row) so the
  * rejections are known to be about the specific bad value, not some
  * unrelated FK/NOT NULL failure.
+ *
+ * Also covers FK enforcement itself (review of M1-01): `PRAGMA foreign_keys`
+ * is a per-connection setting, OFF by default in stock SQLite, and NOT
+ * persisted in the database file — every `REFERENCES ... ON DELETE CASCADE`
+ * in 05 §3.1-3.4 (`workout_exercises`, `sets`, `routine_exercises`,
+ * `routine_sets`, `progress_photos`) is silently unenforced unless the
+ * driver explicitly runs `PRAGMA foreign_keys = ON` on every open (both
+ * `driver.better-sqlite3.ts` and `driver.expo.ts` now do). This suite runs
+ * against `better-sqlite3`, whose prebuilt binary in this environment
+ * happens to default the pragma on regardless (see that driver's comment)
+ * — so these tests alone can't prove the on-device `expo-sqlite` backend
+ * also enforces it, but they do prove the schema's declared FKs behave
+ * correctly whenever the pragma is on, which is what both drivers now
+ * guarantee explicitly rather than by accident.
  */
 import { openBetterSqlite3Driver } from '../../sqlite/driver.better-sqlite3';
 import { migrate } from '../../sqlite/migrator';
@@ -227,6 +241,65 @@ describe('full v1 schema CHECK constraints (M1-01)', () => {
       expect(() =>
         insertExercise({ id: 'bench-press-2', name: 'Bench Press', archived_at: NOW }),
       ).not.toThrow();
+    });
+  });
+
+  describe('foreign key enforcement (PRAGMA foreign_keys, review of M1-01)', () => {
+    it('rejects a workout_exercises row referencing a nonexistent workout_id', () => {
+      insertExercise();
+      expect(() =>
+        driver.execute(
+          `INSERT INTO workout_exercises (id, workout_id, exercise_id, position)
+           VALUES ('we-orphan', 'no-such-workout', 'bench-press', 0)`,
+        ),
+      ).toThrow(/FOREIGN KEY constraint failed/i);
+    });
+
+    it('rejects a workout_exercises row referencing a nonexistent exercise_id', () => {
+      driver.execute(
+        `INSERT INTO workouts (id, title, state, start_time, created_at, updated_at)
+         VALUES ('w-fk', 'Workout', 'active', ?, ?, ?)`,
+        [NOW, NOW, NOW],
+      );
+      expect(() =>
+        driver.execute(
+          `INSERT INTO workout_exercises (id, workout_id, exercise_id, position)
+           VALUES ('we-orphan', 'w-fk', 'no-such-exercise', 0)`,
+        ),
+      ).toThrow(/FOREIGN KEY constraint failed/i);
+    });
+
+    it('rejects a sets row referencing a nonexistent workout_exercise_id', () => {
+      expect(() =>
+        driver.execute(
+          `INSERT INTO sets (id, workout_exercise_id, position)
+           VALUES ('s-orphan', 'no-such-we', 0)`,
+        ),
+      ).toThrow(/FOREIGN KEY constraint failed/i);
+    });
+
+    it('ON DELETE CASCADE actually fires: deleting a workout removes its workout_exercises and sets', () => {
+      insertExercise();
+      driver.execute(
+        `INSERT INTO workouts (id, title, state, start_time, created_at, updated_at)
+         VALUES ('w-cascade', 'Workout', 'completed', ?, ?, ?)`,
+        [NOW, NOW, NOW],
+      );
+      driver.execute(
+        `INSERT INTO workout_exercises (id, workout_id, exercise_id, position)
+         VALUES ('we-cascade', 'w-cascade', 'bench-press', 0)`,
+      );
+      driver.execute(
+        `INSERT INTO sets (id, workout_exercise_id, position, reps, weight_kg)
+         VALUES ('s-cascade', 'we-cascade', 0, 5, 100)`,
+      );
+
+      driver.execute(`DELETE FROM workouts WHERE id = 'w-cascade'`);
+
+      expect(driver.queryAll(`SELECT id FROM workout_exercises WHERE id = 'we-cascade'`)).toEqual(
+        [],
+      );
+      expect(driver.queryAll(`SELECT id FROM sets WHERE id = 's-cascade'`)).toEqual([]);
     });
   });
 });

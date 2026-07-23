@@ -18,6 +18,17 @@ import type { SqliteDriver, SqliteRow, SqliteRunResult } from './driver';
 /** Open an `expo-sqlite`-backed driver for the on-device database. */
 export function openExpoSqliteDriver(databaseName: string): SqliteDriver {
   const db = openDatabaseSync(databaseName);
+  // `PRAGMA foreign_keys` is per-connection, not persisted in the database
+  // file, and OFF by default in stock SQLite (must be re-set every time a
+  // connection opens) — without this, every `REFERENCES ... ON DELETE
+  // CASCADE` in the schema (05 §3.1-3.4: workout_exercises, sets,
+  // routine_exercises, routine_sets, progress_photos) is silently
+  // unenforced on-device: orphaned child rows could be inserted and cascade
+  // deletes would not fire. Mirrors the same statement in
+  // `driver.better-sqlite3.ts` (see its comment for why that backend
+  // cannot be trusted to demonstrate this is needed — its prebuilt binary
+  // happens to default this pragma on).
+  db.execSync('PRAGMA foreign_keys = ON;');
 
   const driver: SqliteDriver = {
     dialect: 'expo-sqlite',
