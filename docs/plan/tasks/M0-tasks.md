@@ -32,7 +32,7 @@ Task count: **12**
 **Acceptance / test gate:** `pnpm test` runs both projects green; a sample domain test and a sample RNTL render test exist and pass; coverage report generated with thresholds enforced.
 **Est:** 1 d
 
-### M0-04 — CI PR workflow
+### M0-04 — CI PR workflow [done]
 **Description:** GitHub Actions `ci.yml` running the full static + test gate on every PR/push to `main`.
 **How:** Steps per 08 §9: checkout → pnpm install (with cache) → `tsc --noEmit` → eslint → jest (both projects) with coverage gate → `npx expo-doctor` → `npx expo export` sanity (bundle compiles). Target < 8 min. Also add the local equivalent `pnpm ci` script so the gate is runnable without GitHub. Add branch-protection notes to the workflow README comment (activation itself is a repo-settings step, see O-06). `nightly.yml` and `release.yml` come later (M2-18, M7-03).
 **References:** 08 §9; 09 M0 scope ("CI PR workflow live from day one").
