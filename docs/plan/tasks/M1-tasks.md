@@ -16,7 +16,7 @@ Task count: **12**
 **Acceptance / test gate:** Migration fixture test: DB at 0001 with seeded settings → migrate → all tables/indexes exist, data intact (08 §5.3 pattern; commit the 0001 fixture dump under `src/data/migrations/__fixtures__/`). CHECK constraints verified by insert-rejection tests (bad enum, rpe=6.2, reps+range both set).
 **Est:** 1.5 d
 
-### M1-02 — domain/units.ts + conversion test suite
+### M1-02 — domain/units.ts + conversion test suite [done]
 **Description:** The single conversion module used at every display/input boundary.
 **How:** Per 05 §5: `kgToLb` (×2.2046226218) with display rounding nearest 0.5 lb ≥ 10 lb else 0.1; `lbToKg` stored full precision; m↔km/miles (miles = m/1609.344, 2 decimals), meters/feet (whole ft); seconds → mm:ss under 1 h, h:mm:ss above; cm↔in (1 decimal). Include mm:ss **parsing**: digit-fill seconds→minutes ("130" → 1:30 → 90 s) and normalize bare seconds ≥ 60 ("90" → 1:30/90 s per 08 §4.5 resolution). Pure TS, zero RN imports.
 **References:** 05 §5; 02 §4 (TIME entry); 08 §4.5 (named cases).
