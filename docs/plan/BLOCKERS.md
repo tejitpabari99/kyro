@@ -134,6 +134,27 @@ rather than renamed (e.g. to `ci:local`) because that is what the task spec aske
 and it is still the standard, discoverable name in `package.json` scripts — the caveat is just
 that pnpm requires the explicit `run`.
 
+## Network access (M1-03 finding)
+
+The M1-03 task brief hedged that this sandbox "likely has NO general internet access for
+arbitrary downloads" and asked the agent to actually test before assuming either way. Tested
+2026-07-23: `curl -sI https://github.com` → `200`; `curl -sI https://raw.githubusercontent.com`
+→ `301` (redirect to `github.com`, expected for a bare host request, not a block);
+`curl -sI https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/dist/exercises.json`
+→ `200` with real content-length; and a real
+`git clone --depth 1 https://github.com/yuhonas/free-exercise-db /tmp/fedb-check` succeeded in
+~6 s, producing a full working tree (`git rev-parse HEAD` → `b0eed061e1c832b3ed815fbaa4b45b3cdc14df49`).
+**So this machine DOES have outbound internet access to at least github.com /
+raw.githubusercontent.com** (whether that's true for arbitrary other hosts wasn't tested here —
+only what M1-03 needed). This corrects the general "no internet access" assumption baked into
+several task briefs' blocker-hedges; a future task that assumes no network access should still
+verify it directly (per this same test pattern) rather than trusting that assumption blindly,
+since it does not hold uniformly.
+
+Practical effect: M1-03 vendored the **real** free-exercise-db dataset (873 exercises, 1746
+images, pinned commit hash — see `data/free-exercise-db/VENDORED.md`), not a synthetic
+placeholder. M1-04 onward build against real data.
+
 ## Everything else
 
 Every other task — all of M0 through M7 except the six owner-gated tasks listed above — is

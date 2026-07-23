@@ -1,0 +1,21 @@
+{
+  "overrides": {
+    "Stairmaster": {
+      "uses_custom_metric": true
+    },
+    "Decline_Push-Up": {
+      "exercise_type": "bodyweight_reps"
+    },
+    "Handstand_Push-Ups": {
+      "exercise_type": "bodyweight_reps"
+    }
+  },
+  "aliases": {
+    "OHP": "Barbell_Shoulder_Press",
+    "RDL": "Romanian_Deadlift",
+    "BP": "Barbell_Bench_Press_-_Medium_Grip",
+    "DL": "Barbell_Deadlift",
+    "GM": "Good_Morning",
+    "Pull-Up": "Pullups"
+  }
+}

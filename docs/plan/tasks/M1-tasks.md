@@ -24,8 +24,20 @@ Task count: **12**
 **Acceptance / test gate:** 08 §4.5 suite green: kg↔lb round-trip stability (100 random values × 3 round trips, epsilon-bounded), display rounding rules, mm:ss parse cases, miles/km, cm/in, 0-and-null passthrough. **Also:** this is the first source file under `src/domain/**` — uncomment the `'./src/domain/**/*.{ts,tsx}': { lines: 95, branches: 90 }` `coverageThreshold` entry in `jest.config.js` (currently commented out with a `TODO(M1)`, per M0-03's review — Jest hard-errors on a zero-covered-file glob, which is why it was deferred, not weakened) and confirm `pnpm test -- --coverage` still passes with it active.
 **Est:** 0.5 d
 
-### M1-03 — Vendor free-exercise-db + curation scaffolding
+### M1-03 — Vendor free-exercise-db + curation scaffolding [done]
 **Description:** Commit the dataset and the curation override machinery as build inputs.
+
+**Execution note (2026-07-23):** the task brief's blocker-hedge assumed this sandbox likely has
+no general internet access; that assumption was **incorrect this session** — `curl -sI
+https://github.com`, `curl -sI https://raw.githubusercontent.com`, and a real
+`git clone --depth 1 https://github.com/yuhonas/free-exercise-db` all succeeded (see
+`docs/plan/BLOCKERS.md` "Network access (M1-03 finding)"). **The REAL dataset was vendored**,
+not a synthetic placeholder: `data/free-exercise-db/exercises.json` (873 records, verbatim
+upstream `dist/exercises.json`) + `data/free-exercise-db/images/` (1746 JPGs, verbatim, ~102 MB
+raw/uncompressed — compression is M1-04's job), pinned to upstream commit
+`b0eed061e1c832b3ed815fbaa4b45b3cdc14df49` per `data/free-exercise-db/VENDORED.md`. M1-04
+onward will build against the **real ~870-exercise dataset**, not a placeholder — no data-source
+caveat carries forward from this task.
 **How:** Vendor `data/free-exercise-db/exercises.json` + `images/` from github.com/yuhonas/free-exercise-db (Unlicense; pin the commit hash in a `VENDORED.md` note — no network at build time). Create `data/curation/overrides.json` schema: per-id partials `{exercise_type?, uses_custom_metric?, name?, aliases?, exclude?: true}` + global alias entries (seed with a starter set: "OHP" → Overhead Press etc.); Zod-validate its shape. Seed the initial override entries the heuristics are known to need (stair machine → uses_custom_metric, push-up variants → bodyweight_reps per 03 §6.3 rule 6 note).
 **References:** 03 §6.1–6.2, §6.4 steps 1–2.
 **Dependencies:** M0-02.
