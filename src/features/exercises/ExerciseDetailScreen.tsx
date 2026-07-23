@@ -258,11 +258,23 @@ export function ExerciseDetailScreen({
     }
   };
 
+  // Milestone review (M1 whole-milestone pass): `repository.archive` can
+  // throw `ExerciseNotFoundError` (`requireRow`, `exercise-repository.ts`) —
+  // e.g. the row was hard-deleted from elsewhere between the referenced-
+  // delete attempt above and the user confirming this Archive offer. Before
+  // this fix, that call had no error handling at all, the exact same
+  // unhandled-promise-rejection class the M1-12 catch-up review already
+  // found and fixed for `ArchivedExercisesScreen.handleRestore` — same
+  // Alert-on-catch convention applied here for consistency.
   const performArchive = async (): Promise<void> => {
     if (!exercise) return;
-    await repository.archive(exercise.id);
-    await invalidateExerciseQueries();
-    router.back();
+    try {
+      await repository.archive(exercise.id);
+      await invalidateExerciseQueries();
+      router.back();
+    } catch {
+      Alert.alert('Something went wrong', 'This exercise could not be archived. Please try again.');
+    }
   };
 
   const offerArchiveInstead = (referenceCount: number): void => {

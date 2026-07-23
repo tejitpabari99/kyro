@@ -64,11 +64,17 @@ class FakeRepo implements ExerciseRepository {
   public deleteCalls: string[] = [];
   public archiveCalls: string[] = [];
   private referencedCount: number | null = null;
+  private archiveError: Error | null = null;
 
   constructor(private rows: Exercise[]) {}
 
   simulateReferenced(count: number): void {
     this.referencedCount = count;
+  }
+
+  /** Milestone review: makes `archive` throw, to test the Archive-offer flow's own error path. */
+  simulateArchiveFailure(error: Error): void {
+    this.archiveError = error;
   }
 
   async list(_filter?: ExerciseListFilter): Promise<Exercise[]> {
@@ -85,6 +91,9 @@ class FakeRepo implements ExerciseRepository {
   }
   async archive(id: string): Promise<void> {
     this.archiveCalls.push(id);
+    if (this.archiveError) {
+      throw this.archiveError;
+    }
     this.rows = this.rows.map((r) => (r.id === id ? { ...r, archivedAt: Date.now() } : r));
   }
   async restore(): Promise<void> {
@@ -226,6 +235,41 @@ describe('ExerciseDetailScreen — delete/archive-offer flow (M1-10, 03 §5)', (
     const afterList = await repository.list();
     expect(afterList.map((e) => e.id)).not.toContain('custom-1');
     expect(await repository.get('custom-1')).not.toBeNull();
+  });
+
+  // Milestone review (M1 whole-milestone pass): `repository.archive` can
+  // throw (e.g. `ExerciseNotFoundError` if the row was removed elsewhere
+  // between the referenced-delete attempt and this confirm) — before this
+  // fix, `performArchive` had no try/catch at all, the same unhandled-
+  // promise-rejection class the M1-12 catch-up review already found and
+  // fixed for `ArchivedExercisesScreen.handleRestore`.
+  it('surfaces an archive failure as an Alert instead of an unhandled rejection, and does not navigate back', async () => {
+    const repository = new FakeRepo([exercise()]);
+    repository.simulateReferenced(2);
+    repository.simulateArchiveFailure(new Error('row vanished'));
+    await renderDetail(repository, 'custom-1');
+
+    await fireEvent.press(await screen.findByTestId('detail-menu'));
+    await fireEvent.press(await screen.findByTestId('detail-actions-delete'));
+    pressAlertButton('Delete');
+
+    await waitFor(() =>
+      expect(Alert.alert).toHaveBeenCalledWith(
+        "Can't Delete This Exercise",
+        expect.stringContaining('2 workout/routine'),
+        expect.any(Array),
+      ),
+    );
+    pressAlertButton('Archive');
+
+    await waitFor(() => expect(repository.archiveCalls).toEqual(['custom-1']));
+    await waitFor(() =>
+      expect(Alert.alert).toHaveBeenCalledWith(
+        'Something went wrong',
+        expect.stringContaining('could not be archived'),
+      ),
+    );
+    expect(router.back).not.toHaveBeenCalled();
   });
 });
 
