@@ -60,7 +60,7 @@ caveat carries forward from this task.
 **Acceptance / test gate:** Integration tests: fresh DB seeds N rows; re-run no-op (no duplicates, no updated_at churn); version bump updates a changed built-in, archives a removed one, leaves a custom row + a fake history row untouched. Manual: first-launch timing logged < 1 s-equivalent on simulator.
 **Est:** 1 d
 
-### M1-06 — ExerciseRepository + integration suite
+### M1-06 — ExerciseRepository + integration suite [done]
 **Description:** Complete `ExerciseRepository` per the 05 §6 interface against Drizzle.
 **How:** Implement `list` (filter: query — case/diacritic-insensitive substring on name **and aliases**; muscle; equipment; includeArchived), `get`, `create` (UUID, is_custom=1, name-unique-among-active check), `update` (patch custom fields; enforce type-immutable-after-first-logged-set at repo level via referenceCount of sets), `archive`/`restore`, `delete` (throws IfReferenced), `referenceCount`, `recentlyUsed` (last N distinct from completed workouts), `seedBuiltins` (used by M1-05). Search normalization helper in `src/domain/` (diacritic strip) so it's unit-testable.
 **References:** 05 §6; 03 §2 (search/alias semantics), §5 (constraints).
