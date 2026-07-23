@@ -31,6 +31,17 @@
  *     SettingsRepository(getAppDriver()))` — the settings store is fully
  *     populated (not just seeded with code defaults) before any screen
  *     renders.
+ *  3. (M2-03) `useActiveWorkoutStore.getState().rehydrate(new
+ *     WorkoutRepositoryImpl(getAppDriver(), { onAutoHeal }))` — restores
+ *     any in-progress workout from `state='active'` (06 §5.1: "rehydrate
+ *     active workout + timer" is the cold-start step right after settings
+ *     load). `WorkoutRepositoryImpl` is constructed here, not inside
+ *     `activeWorkoutStore.ts` itself — mirrors `SettingsRepository`'s own
+ *     construction site one line above (`activeWorkoutStore.ts`'s header
+ *     explains this choice) — with `onAutoHeal` wired to
+ *     `recordBreadcrumb`/`captureError` (`src/lib/sentry.ts`) for the 06 §9
+ *     "log to Sentry as warning" requirement `WorkoutRepositoryDeps
+ *     .onAutoHeal`'s own doc comment describes.
  * Either step throwing rejects the same boot promise as a migration failure
  * would, landing on the same blocking error screen below (06 §9) — dataset
  * seeding is exactly as boot-critical as migrations: the exercise library
@@ -62,8 +73,10 @@ import { Stack } from 'expo-router';
 import { seedBundledBuiltinExercises } from '@/data/exercises/seed-builtins';
 import { getAppDriver, runDbBoot } from '@/data/sqlite/boot';
 import { SettingsRepository } from '@/data/settings/settings-repository';
+import { WorkoutRepositoryImpl } from '@/data/workouts/workout-repository';
 import { useSettingsStore } from '@/features/settings/settings-store';
-import { initSentry } from '@/lib/sentry';
+import { useActiveWorkoutStore } from '@/features/workout/activeWorkoutStore';
+import { captureError, initSentry, recordBreadcrumb } from '@/lib/sentry';
 import { MigrationErrorScreen } from '@/ui/MigrationErrorScreen';
 import { ThemeProvider } from '@/ui/theme-provider';
 
@@ -95,6 +108,23 @@ export default function RootLayout(): React.JSX.Element | null {
         // just sequenced before the settings load below.
         seedBundledBuiltinExercises(getAppDriver());
         await useSettingsStore.getState().load(new SettingsRepository(getAppDriver()));
+        // M2-03: restore any in-progress workout right after settings load
+        // (06 §5.1 cold-start ordering) — `onAutoHeal` reports the rare
+        // multiple-active-workouts auto-heal path (06 §9) to Sentry via the
+        // same breadcrumb + handled-error convention `reportBoundaryError`
+        // (`src/lib/error-reporting.ts`) already established for
+        // `ErrorBoundary`.
+        const workoutRepository = new WorkoutRepositoryImpl(getAppDriver(), {
+          onAutoHeal: (event) => {
+            recordBreadcrumb('workout.autoHeal');
+            captureError(
+              new Error(
+                `WorkoutRepository auto-healed ${event.healedWorkoutIds.length} extra active workout(s) (kept "${event.keptWorkoutId}").`,
+              ),
+            );
+          },
+        });
+        await useActiveWorkoutStore.getState().rehydrate(workoutRepository);
         if (!cancelled) {
           setGate({ status: 'ready' });
         }

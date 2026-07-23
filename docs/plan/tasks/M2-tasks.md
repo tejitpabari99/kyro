@@ -26,7 +26,7 @@ Task count: **19**
 **Acceptance / test gate:** Integration test per mutator incl. position renumbering and single-transaction atomicity; previousSets: any_workout vs same_routine, occurrence matching, fewer-previous-sets → missing entries (feeds 08 §4.8 previous-values cases together with M2-04).
 **Est:** 1.5 d
 
-### M2-03 — activeWorkoutStore + crash-safety suite
+### M2-03 — activeWorkoutStore + crash-safety suite [done]
 **Description:** The Zustand store: optimistic in-memory draft, write-through to repo per action, rollback on failure, rehydrate from DB.
 **How:** `src/features/workout/activeWorkoutStore.ts`. Each action updates the draft AND awaits the matching repo mutator in the same call; repo failure → rollback + error toast (typed `DataError`, 06 §9). Rehydrate from `getActive()` on cold start (wire into root layout DB-ready gate). Per-set Zustand selectors so SetRow subscribes only to its slice (06 §8). No persistence middleware — DB is the durable copy.
 **References:** 06 §4.1, §5.3, §9; 02 §10.

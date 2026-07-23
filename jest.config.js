@@ -165,8 +165,10 @@ module.exports = {
     // threshold activated per M0-03's TODO (values unchanged, 08 §3).
     './src/domain/**/*.{ts,tsx}': { lines: 95, branches: 90 },
     './src/data/**/*.{ts,tsx}': { lines: 90, branches: 85 },
-    // TODO(M2): uncomment once src/features/workout/** has its first source file.
-    // './src/features/workout/**/*.{ts,tsx}': { lines: 85, branches: 80 },
+    // M2-03: src/features/workout/activeWorkoutStore.ts is the first real
+    // source file under this glob — threshold activated per M0-03's
+    // TODO(M2) (value unchanged, 08 §3).
+    './src/features/workout/**/*.{ts,tsx}': { lines: 85, branches: 80 },
     global: { lines: 75, branches: 70 },
   },
 };
