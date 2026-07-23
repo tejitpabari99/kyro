@@ -12,11 +12,22 @@
  * `schema_version`, `dataset_version`, `last_backup_at`, 05 §3.5) — no
  * relations, no indexes beyond the primary key.
  *
- * Not yet wired into a live query client (`drizzle(...)`): nothing in this
- * task needs one (the migration runner works directly against the raw
- * `SqliteDriver`, `06` §10/`08` §5 parity). `SettingsRepository` (M0-10) is
- * the first consumer that needs typed query-builder access — it should
- * import this schema when it wires its own `drizzle-orm` client.
+ * Not wired into a live query client (`drizzle(...)`): the migration runner
+ * works directly against the raw `SqliteDriver` (`06` §10/`08` §5 parity),
+ * and M0-10's `SettingsRepository` (`src/data/settings/settings-repository.ts`)
+ * deliberately did the same rather than standing up a second, backend-
+ * specific Drizzle client (`drizzle-orm/expo-sqlite` vs `drizzle-orm/
+ * better-sqlite3` — neither takes a `SqliteDriver`) for two trivial
+ * statements (`SELECT * FROM settings`, upsert-by-key) — see that file's
+ * header for the full rationale. This file's exported `settings`/`appMeta`
+ * table objects are therefore reviewed-and-intentionally-unused at runtime
+ * today, consumed only by drizzle-kit (`drizzle.config.ts`) for schema-diff
+ * codegen — **not** stale/orphaned, just not yet a live query-builder
+ * source. M1-01 is expected to be the first consumer that actually imports
+ * this schema into a live `drizzle(...)` client, once it lands the full v1
+ * tables (workouts/exercises/etc., 05 §3.1-3.4) whose queries are complex
+ * enough that a query builder earns its keep — a bar the settings table's
+ * two-statement repository never cleared.
  */
 import { sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
