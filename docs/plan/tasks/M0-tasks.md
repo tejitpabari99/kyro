@@ -16,7 +16,7 @@ Task count: **12**
 **Acceptance / test gate:** `npx expo start` boots the template on iOS Simulator; `pnpm typecheck` clean; repo committed structure matches 06 §2 top level.
 **Est:** 0.5 d
 
-### M0-02 — Folder structure, ESLint/Prettier, import-boundary rules
+### M0-02 — Folder structure, ESLint/Prettier, import-boundary rules [done]
 **Description:** Create the full `src/` feature-folder skeleton and enforce the dependency rule with lint.
 **How:** Create `app/`, `src/features/{workout,exercises,routines,history,stats,measurements,settings,data-transfer}`, `src/domain`, `src/data`, `src/ui`, `src/lib`, `assets/exercises/`, `data/`, `scripts/`, `e2e/` (with `.gitkeep`/index files). ESLint flat config + Prettier; add `eslint-plugin-import` (or `eslint-plugin-boundaries`) rules encoding: `app → features → {domain,data,ui,lib}`; `domain` imports nothing app-side (no `react`, no `expo-*`); `data` imports `domain` types only; `ui` imports tokens only. Add the single lint-allowed list for `Platform.OS` branching in `src/lib/` only (06 §10).
 **References:** 06 §2 (structure + dependency rule), 06 §10 (portability), 01 E2/E3.

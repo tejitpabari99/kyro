@@ -1,0 +1,16 @@
+node_modules/
+.expo/
+dist/
+web-build/
+coverage/
+ios/
+android/
+pnpm-lock.yaml
+
+# Vendored/generated content — not project-authored source.
+assets/
+data/
+
+# Planning docs predate this task's formatting setup; reformatting them is
+# out of scope for M0-02 and would create noise unrelated to the app code.
+docs/
