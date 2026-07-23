@@ -25,6 +25,8 @@ export type NumericInputMode = 'decimal' | 'integer';
 export interface NumericInputProps {
   value: string;
   onChangeText: (text: string) => void;
+  /** Fires on blur (focus loss) — the set-table's cells commit their local, uncommitted typed value to the store on this event rather than on every keystroke (06 §5.3/§8: "input state local-first, committed on blur/check/next"). Optional; omit for call sites (measurements, calculators) that don't need a commit boundary. */
+  onBlur?: () => void;
   mode?: NumericInputMode;
   placeholder?: string;
   autoFocus?: boolean;
@@ -55,6 +57,7 @@ export function sanitizeNumericInput(text: string, mode: NumericInputMode): stri
 export function NumericInput({
   value,
   onChangeText,
+  onBlur,
   mode = 'decimal',
   placeholder,
   autoFocus,
@@ -82,6 +85,7 @@ export function NumericInput({
       testID={testID}
       value={value}
       onChangeText={handleChangeText}
+      onBlur={onBlur}
       placeholder={placeholder}
       placeholderTextColor={colors.text.tertiary}
       keyboardType={mode === 'integer' ? 'number-pad' : 'decimal-pad'}

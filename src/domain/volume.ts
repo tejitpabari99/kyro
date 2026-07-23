@@ -55,15 +55,35 @@ export interface VolumeSetInput {
 }
 
 /**
+ * `true` when `set` counts toward any checked-sets-only, warm-up-gated
+ * statistic — the exact same "checked, and not a warm-up unless
+ * `warmupInStats`" test {@link setVolumeKg} applies before its per-type
+ * formula runs. Exported (M2-05) so the logger's meta-row **Sets** counter
+ * (02 §2: "count of checked sets... respect the warm-up-in-stats setting")
+ * can reuse the identical gating rule instead of re-deriving it — the doc's
+ * two counters (Volume, Sets) share one eligibility test, they just differ
+ * in what they do with an eligible set (sum a formula vs. count it).
+ */
+export function isStatsEligibleSet(
+  set: Pick<VolumeSetInput, 'isCompleted' | 'setType'>,
+  warmupInStats: boolean,
+): boolean {
+  if (!set.isCompleted) {
+    return false;
+  }
+  if (set.setType === 'warmup' && !warmupInStats) {
+    return false;
+  }
+  return true;
+}
+
+/**
  * Volume in canonical kg for one set, or `0` if it doesn't contribute
  * (unchecked; a gated-out warm-up; or a type that never contributes). See
  * file header for the exact per-type formula.
  */
 export function setVolumeKg(set: VolumeSetInput, warmupInStats: boolean): number {
-  if (!set.isCompleted) {
-    return 0;
-  }
-  if (set.setType === 'warmup' && !warmupInStats) {
+  if (!isStatsEligibleSet(set, warmupInStats)) {
     return 0;
   }
 

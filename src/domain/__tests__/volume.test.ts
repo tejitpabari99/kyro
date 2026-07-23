@@ -3,7 +3,13 @@
  * case implemented as its own `it`).
  */
 import type { ExerciseType } from '../enums';
-import { formatVolumeDisplay, setVolumeKg, totalVolumeKg, type VolumeSetInput } from '../volume';
+import {
+  formatVolumeDisplay,
+  isStatsEligibleSet,
+  setVolumeKg,
+  totalVolumeKg,
+  type VolumeSetInput,
+} from '../volume';
 
 function set(overrides: Partial<VolumeSetInput> = {}): VolumeSetInput {
   return {
@@ -152,5 +158,23 @@ describe('domain/volume — formatVolumeDisplay (display converts kg->lb correct
   it('0 volume formats as 0 in both units', () => {
     expect(formatVolumeDisplay(0, 'kg')).toBe(0);
     expect(formatVolumeDisplay(0, 'lbs')).toBe(0);
+  });
+});
+
+describe('domain/volume — isStatsEligibleSet (M2-05: the logger meta row’s Sets counter reuses this)', () => {
+  it('an unchecked set is never eligible, regardless of type/warmupInStats', () => {
+    expect(isStatsEligibleSet({ isCompleted: false, setType: 'normal' }, true)).toBe(false);
+    expect(isStatsEligibleSet({ isCompleted: false, setType: 'warmup' }, true)).toBe(false);
+  });
+
+  it('a checked non-warm-up set is always eligible', () => {
+    expect(isStatsEligibleSet({ isCompleted: true, setType: 'normal' }, false)).toBe(true);
+    expect(isStatsEligibleSet({ isCompleted: true, setType: 'failure' }, false)).toBe(true);
+    expect(isStatsEligibleSet({ isCompleted: true, setType: 'dropset' }, false)).toBe(true);
+  });
+
+  it('a checked warm-up set is eligible only when warmupInStats is true', () => {
+    expect(isStatsEligibleSet({ isCompleted: true, setType: 'warmup' }, false)).toBe(false);
+    expect(isStatsEligibleSet({ isCompleted: true, setType: 'warmup' }, true)).toBe(true);
   });
 });
