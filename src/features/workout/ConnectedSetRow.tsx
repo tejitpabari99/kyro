@@ -55,7 +55,8 @@ const SET_TYPE_MENU: { type: SetType; label: string }[] = [
   { type: 'dropset', label: 'Drop Set' },
 ];
 
-function readCanonical(set: { weightKg: number | null; reps: number | null; distanceMeters: number | null; durationSeconds: number | null; customMetric: number | null; rpe: number | null }, columnKey: string): number | null {
+/** Exported for direct exhaustiveness-guard testing — same rationale/pattern `domain/set-table-columns.ts`'s own `columnsForExerciseType` exhaustiveness test uses (cast an unrecognized key past the closed `SetColumnSpec['key']` union to exercise the `default` arm a real caller can never reach). */
+export function readCanonical(set: { weightKg: number | null; reps: number | null; distanceMeters: number | null; durationSeconds: number | null; customMetric: number | null; rpe: number | null }, columnKey: string): number | null {
   switch (columnKey) {
     case 'weight':
       return set.weightKg;
@@ -74,7 +75,8 @@ function readCanonical(set: { weightKg: number | null; reps: number | null; dist
   }
 }
 
-function writeCanonical(patch: UpdateSetInput, columnKey: string, value: number | null): void {
+/** Exported for direct exhaustiveness-guard testing — see {@link readCanonical}'s header note. */
+export function writeCanonical(patch: UpdateSetInput, columnKey: string, value: number | null): void {
   switch (columnKey) {
     case 'weight':
       patch.weightKg = value;

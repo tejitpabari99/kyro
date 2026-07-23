@@ -24,13 +24,16 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { ExerciseRepositoryImpl } from '@/data/exercises/exercise-repository';
 import type { Exercise } from '@/data/exercises/types';
+import type { UpdateSetInput } from '@/data/workouts/types';
 import { openBetterSqlite3Driver } from '@/data/sqlite/driver.better-sqlite3';
 import type { SqliteDriver } from '@/data/sqlite/driver';
 import { migrate } from '@/data/sqlite/migrator';
 import { WorkoutRepositoryImpl } from '@/data/workouts/workout-repository';
 import type { ExerciseType } from '@/domain/enums';
+import { columnsForExerciseType } from '@/domain/set-table-columns';
 import { ThemeProvider } from '@/ui/theme-provider';
 
+import { ConnectedSetRow, readCanonical, writeCanonical } from '../ConnectedSetRow';
 import { ExerciseSetTableSection } from '../ExerciseSetTableSection';
 import { useActiveWorkoutStore } from '../activeWorkoutStore';
 
@@ -301,5 +304,215 @@ describe('ExerciseSetTableSection — check toggle (basic, M2-07 owns validation
 
     const active = await workoutRepo.getActive();
     expect(active!.exercises[0]!.sets[0]!.isCompleted).toBe(true);
+  });
+});
+
+describe('ExerciseSetTableSection — unresolved workoutExerciseId renders nothing', () => {
+  it('returns null when the workoutExerciseId does not resolve in the active workout', async () => {
+    const { exercise } = await setupExercise('weight_reps');
+    await renderSection('nonexistent-workout-exercise-id', exercise);
+    expect(screen.queryByTestId('section')).toBeNull();
+  });
+});
+
+describe('ExerciseSetTableSection — many-sets warning (02 §16.7)', () => {
+  it('console.warns once the exercise has more than 50 sets', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { exercise, workoutExerciseId } = await setupExercise('weight_reps', { setCount: 51 });
+    await renderSection(workoutExerciseId, exercise);
+
+    await waitFor(() =>
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('51 sets')),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('does not warn at or under the 50-set threshold', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { exercise, workoutExerciseId } = await setupExercise('weight_reps', { setCount: 2 });
+    await renderSection(workoutExerciseId, exercise);
+
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+});
+
+describe('ExerciseSetTableSection — distance column blur commits distanceMeters', () => {
+  it('commits a typed km value to distanceMeters on blur (distance_duration type)', async () => {
+    const { exercise, workoutExerciseId, workoutRepo } = await setupExercise('distance_duration');
+    await renderSection(workoutExerciseId, exercise);
+
+    await fireEvent.changeText(screen.getByTestId('section-row-0-value-distance'), '5');
+    await fireEvent(screen.getByTestId('section-row-0-value-distance'), 'blur');
+
+    const active = await workoutRepo.getActive();
+    expect(active!.exercises[0]!.sets[0]!.distanceMeters).toBe(5000);
+  });
+});
+
+describe('ExerciseSetTableSection — CUSTOM column blur commits customMetric', () => {
+  it('commits a typed custom value on blur', async () => {
+    const { exercise, workoutExerciseId, workoutRepo } = await setupExercise('weight_reps', {
+      usesCustomMetric: true,
+    });
+    await renderSection(workoutExerciseId, exercise);
+
+    await fireEvent.changeText(screen.getByTestId('section-row-0-value-custom'), '12.5');
+    await fireEvent(screen.getByTestId('section-row-0-value-custom'), 'blur');
+
+    const active = await workoutRepo.getActive();
+    expect(active!.exercises[0]!.sets[0]!.customMetric).toBe(12.5);
+  });
+});
+
+describe('ExerciseSetTableSection — PREVIOUS tap with no previous data is a no-op', () => {
+  it('does nothing when there is no previous set to autofill from', async () => {
+    const { exercise, workoutExerciseId, workoutRepo } = await setupExercise('weight_reps');
+    await renderSection(workoutExerciseId, exercise);
+
+    await fireEvent.press(screen.getByTestId('section-row-0-previous'));
+
+    expect(screen.getByTestId('section-row-0-value-weight').props.value).toBe('');
+    const active = await workoutRepo.getActive();
+    expect(active!.exercises[0]!.sets[0]!.weightKg).toBeNull();
+  });
+});
+
+describe('ExerciseSetTableSection — PREVIOUS tap skips columns the previous set left empty', () => {
+  it('autofills weight/reps but leaves CUSTOM untouched when the previous set has no custom metric', async () => {
+    const driver = openBetterSqlite3Driver(':memory:');
+    migrate(driver);
+    const exerciseRepo = new ExerciseRepositoryImpl(driver);
+    const workoutRepo = new WorkoutRepositoryImpl(driver, {});
+    const exercise = await exerciseRepo.create({
+      name: 'Bench Press',
+      exerciseType: 'weight_reps',
+      primaryMuscleGroup: 'chest',
+      usesCustomMetric: true,
+    });
+
+    const previousWorkout = await workoutRepo.startEmpty({
+      title: 'Previous',
+      startTime: Date.now() - 100_000,
+    });
+    const [previousExercise] = await workoutRepo.addExercises(previousWorkout.id, [
+      { exerciseId: exercise.id },
+    ]);
+    const previousSet = previousExercise!.sets[0]!;
+    // customMetric deliberately left null — the previous session didn't fill it in.
+    await workoutRepo.updateSet(previousSet.id, { weightKg: 45, reps: 9 });
+    await workoutRepo.setCompleted(previousSet.id, true);
+    await workoutRepo.finish(previousWorkout.id);
+
+    await useActiveWorkoutStore.getState().rehydrate(workoutRepo);
+    await useActiveWorkoutStore.getState().startEmpty({ title: 'Now', startTime: Date.now() });
+    const [added] = await useActiveWorkoutStore.getState().addExercises([{ exerciseId: exercise.id }]);
+
+    await renderSection(added!.id, exercise);
+    await waitFor(() => expect(screen.getByText('45kg × 9')).toBeTruthy());
+
+    await fireEvent.press(screen.getByTestId('section-row-0-previous'));
+
+    expect(screen.getByTestId('section-row-0-value-weight').props.value).toBe('45');
+    expect(screen.getByTestId('section-row-0-value-reps').props.value).toBe('9');
+    expect(screen.getByTestId('section-row-0-value-custom').props.value).toBe('');
+
+    const active = await workoutRepo.getActive();
+    const committedSet = active!.exercises[0]!.sets[0]!;
+    expect(committedSet.weightKg).toBe(45);
+    expect(committedSet.reps).toBe(9);
+    expect(committedSet.customMetric).toBeNull();
+  });
+});
+
+describe('ExerciseSetTableSection — set-type sheet dismiss without selecting', () => {
+  it('dismissing via the scrim closes the sheet without changing the row', async () => {
+    const { exercise, workoutExerciseId } = await setupExercise('weight_reps', { setCount: 2 });
+    await renderSection(workoutExerciseId, exercise);
+
+    await fireEvent.press(screen.getByTestId('section-row-0-badge'));
+    expect(screen.getByTestId('section-row-0-set-type-sheet')).toBeTruthy();
+
+    await fireEvent.press(screen.getByTestId('section-row-0-set-type-sheet-scrim'));
+
+    expect(screen.queryByTestId('section-row-0-set-type-sheet')).toBeNull();
+    expect(screen.getByTestId('section-row-0-badge-number').props.children).toBe(1);
+    expect(screen.getByTestId('section-row-1-badge-number').props.children).toBe(2);
+  });
+});
+
+describe('ConnectedSetRow — unresolved set renders nothing', () => {
+  it('returns null when setId does not resolve to a set in the store', async () => {
+    const { exercise } = await setupExercise('weight_reps');
+    const columns = columnsForExerciseType(exercise.exerciseType, {
+      usesCustomMetric: false,
+      rpeEnabled: false,
+      weightUnit: 'kg',
+      distanceUnit: 'km',
+    });
+
+    await render(
+      <ThemeProvider preference="dark">
+        <ConnectedSetRow
+          testID="ghost-row"
+          setId="nonexistent-set-id"
+          columns={columns}
+          badgeKind="normal"
+          workingIndex={1}
+          previousResult={{ label: null, autofill: null, source: 'none', isRepRange: false }}
+          units={{ weightUnit: 'kg', distanceUnit: 'km' }}
+        />
+      </ThemeProvider>,
+    );
+
+    expect(screen.queryByTestId('ghost-row')).toBeNull();
+  });
+});
+
+describe('ConnectedSetRow — readCanonical/writeCanonical exhaustiveness guards', () => {
+  const SAMPLE_SET = {
+    weightKg: 45,
+    reps: 9,
+    distanceMeters: 5000,
+    durationSeconds: 90,
+    customMetric: 12.5,
+    rpe: 8,
+  };
+
+  it('readCanonical reads each known column key', () => {
+    expect(readCanonical(SAMPLE_SET, 'weight')).toBe(45);
+    expect(readCanonical(SAMPLE_SET, 'reps')).toBe(9);
+    expect(readCanonical(SAMPLE_SET, 'distance')).toBe(5000);
+    expect(readCanonical(SAMPLE_SET, 'duration')).toBe(90);
+    expect(readCanonical(SAMPLE_SET, 'custom')).toBe(12.5);
+    expect(readCanonical(SAMPLE_SET, 'rpe')).toBe(8);
+  });
+
+  it('readCanonical returns null for an unrecognized column key (never reachable via the real SetColumnSpec[] union, matching the SET_TYPE_MENU/set-table-columns exhaustiveness-test convention)', () => {
+    expect(readCanonical(SAMPLE_SET, 'not_a_real_key')).toBeNull();
+  });
+
+  it('writeCanonical writes each known column key onto the patch', () => {
+    const patch: UpdateSetInput = {};
+    writeCanonical(patch, 'weight', 10);
+    writeCanonical(patch, 'reps', 5);
+    writeCanonical(patch, 'distance', 100);
+    writeCanonical(patch, 'duration', 60);
+    writeCanonical(patch, 'custom', 3.5);
+    writeCanonical(patch, 'rpe', 7);
+    expect(patch).toEqual({
+      weightKg: 10,
+      reps: 5,
+      distanceMeters: 100,
+      durationSeconds: 60,
+      customMetric: 3.5,
+      rpe: 7,
+    });
+  });
+
+  it('writeCanonical is a no-op for an unrecognized column key', () => {
+    const patch: UpdateSetInput = {};
+    writeCanonical(patch, 'not_a_real_key', 5);
+    expect(patch).toEqual({});
   });
 });

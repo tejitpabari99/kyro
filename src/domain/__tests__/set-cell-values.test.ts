@@ -2,6 +2,7 @@
  * `domain/set-cell-values.ts` tests (M2-06): format/parse round-trips per
  * column kind + unit, and the 02 §16.7 clamps.
  */
+import type { SetColumnKind } from '../set-table-columns';
 import { formatCellValue, parseCellValue, type SetCellUnits } from '../set-cell-values';
 
 const KG_KM: SetCellUnits = { weightUnit: 'kg', distanceUnit: 'km' };
@@ -46,6 +47,12 @@ describe('formatCellValue', () => {
   it('short_distance: meters (km unit) rounds to whole; feet (miles unit) converts', () => {
     expect(formatCellValue('short_distance', 20.4, KG_KM)).toBe('20');
     expect(formatCellValue('short_distance', 1, LBS_MILES)).toBe('3');
+  });
+
+  it('throws for an unrecognized kind (exhaustiveness guard, never reachable via the real SetColumnKind union)', () => {
+    expect(() => formatCellValue('bogus' as unknown as SetColumnKind, 1, KG_KM)).toThrow(
+      /formatCellValue: unhandled kind "bogus"/,
+    );
   });
 });
 
@@ -99,6 +106,12 @@ describe('parseCellValue', () => {
     expect(parseCellValue('reps', 'abc', KG_KM)).toBeNull();
     expect(parseCellValue('distance', '-', KG_KM)).toBeNull();
     expect(parseCellValue('short_distance', '-', KG_KM)).toBeNull();
+  });
+
+  it('throws for an unrecognized kind (exhaustiveness guard, never reachable via the real SetColumnKind union)', () => {
+    expect(() => parseCellValue('bogus' as unknown as SetColumnKind, '1', KG_KM)).toThrow(
+      /parseCellValue: unhandled kind "bogus"/,
+    );
   });
 });
 
