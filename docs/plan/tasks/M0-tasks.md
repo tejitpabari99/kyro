@@ -40,7 +40,7 @@ Task count: **12**
 **Acceptance / test gate:** `pnpm ci` passes locally end-to-end; workflow file lints (actionlint or review); if a remote exists, first push shows green run.
 **Est:** 0.5 d
 
-### M0-05 — Design tokens, theme provider, contrast test
+### M0-05 — Design tokens, theme provider, contrast test [done]
 **Description:** Implement `src/ui/tokens.ts` with the complete 07 §2–4 token set (dark + light + semantic + superset palette, typography styles, spacing, radii) and a theme provider honoring System/Light/Dark.
 **How:** Token tables verbatim from 07 §2.1–2.5 (hex values are the source of truth — do not invent). Typography per 07 §3 incl. `fontVariant: ['tabular-nums']` on `statLarge/statSmall/setValue`; spacing scale + radii per 07 §4. Theme provider: React context exposing resolved tokens; `theme` setting `system|light|dark` (reads OS scheme via `useColorScheme` when `system`). Write the programmatic WCAG contrast unit test over the token tables per 07 §2.6 (text.primary ≥ 7:1, text.secondary ≥ 4.5:1, accent.text ≥ 4.5:1 on bg.base/surface, accent fills ≥ 3:1, checked-row tint keeps ≥ 4.5:1) — both themes.
 **References:** 07 §2–4 (source of truth), 08 §4.8 (token contrast test).

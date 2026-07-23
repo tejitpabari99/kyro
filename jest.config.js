@@ -53,6 +53,11 @@ module.exports = {
         '<rootDir>/src/domain/**/*.test.{ts,tsx}',
         '<rootDir>/src/data/**/*.test.{ts,tsx}',
         '<rootDir>/src/test/**/*.test.{ts,tsx}',
+        // src/ui/tokens.ts is pure data with zero RN imports (M0-05) — its
+        // contrast-math test belongs in the fast `node` project rather than
+        // jest-expo. Only this one file is carved out of `ui`'s testMatch
+        // below (see its testPathIgnorePatterns) so it isn't run twice.
+        '<rootDir>/src/ui/__tests__/tokens.test.{ts,tsx}',
       ],
       moduleFileExtensions: ['ts', 'tsx', 'js', 'json'],
       transform: {
@@ -79,6 +84,10 @@ module.exports = {
         '<rootDir>/src/lib/**/*.test.{ts,tsx}',
         '<rootDir>/app/**/*.test.{ts,tsx}',
       ],
+      // src/ui/tokens.ts's contrast test runs in the `node` project instead
+      // (see its testMatch entry above) since tokens.ts has zero RN
+      // imports — excluded here so it doesn't also run under jest-expo.
+      testPathIgnorePatterns: ['/node_modules/', '<rootDir>/src/ui/__tests__/tokens.test.ts'],
       moduleNameMapper: {
         '^@/(.*)$': '<rootDir>/src/$1',
       },
