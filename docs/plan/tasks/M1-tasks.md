@@ -76,7 +76,7 @@ caveat carries forward from this task.
 **Acceptance / test gate:** 60 fps scroll over 870 rows (manual on simulator + note); filters AND-compose with search (RNTL behavioral tests on the filter logic); A–Z rail jumps; empty-search shortcut navigates; placeholder thumbs render for image-less exercises.
 **Est:** 2 d
 
-### M1-08 — ExerciseMedia component + exercise detail page (About)
+### M1-08 — ExerciseMedia component + exercise detail page (About) [done]
 **Description:** The media-slot contract component and the detail screen with About tab live, History/Charts/Records as empty states.
 **How:** `ExerciseMedia({exercise, size})` resolves in priority order: `animation_uri` (future) → images[0..1] auto-crossfade (~1 s interval, expo-image) → images[0] static → branded placeholder (muscle-group glyph on bg.tertiary). This is the ONLY component touching exercise media (03 §4). Detail route `app/exercise/[id].tsx` (push; presentable as sheet mid-workout later): 16:9 media header, SegmentedControl tabs About | History | Charts | Records. About: type label, equipment label, primary muscle filled chip, secondary outline chips, numbered instructions ("No instructions added — edit to add" for bare customs). History/Charts/Records render EmptyState placeholders (go live M4-09).
 **References:** 03 §3, §4 (media contract); 07 §5, §7.
