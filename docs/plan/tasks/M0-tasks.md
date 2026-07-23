@@ -48,7 +48,7 @@ Task count: **12**
 **Acceptance / test gate:** Contrast test green for both themes; tokens module has zero React Native imports beyond types; theme switch re-renders consumers.
 **Est:** 1 d
 
-### M0-06 — Core primitives, batch 1: Button, Card, ListRow, Chip, SearchBar, EmptyState
+### M0-06 — Core primitives, batch 1: Button, Card, ListRow, Chip, SearchBar, EmptyState [done]
 **Description:** First half of the 07 §5 M0 primitive set, in `src/ui/`.
 **How:** `Button` with variants primary/tonal/ghost/destructive and sizes lg 50pt / md 40 / sm 32-pill per 07 §5; `Card` (bg.surface, radius md, padding 16); `ListRow` (leading icon/thumb, title/subtitle, trailing accessory, chevron, hairline inset 16); `Chip` (dropdown caret + active accent tint); `SearchBar` (bg.elevated, radius sm); `EmptyState` (icon + title + caption + CTA). Icons via `lucide-react-native` (1.75 pt stroke, 16/20/24). Hit targets ≥ 44 pt. All components consume tokens only — no raw hex (lint-guard if cheap).
 **References:** 07 §4 (iconography, hit targets), §5 (component inventory), §10 (content style).

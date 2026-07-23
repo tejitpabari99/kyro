@@ -90,6 +90,15 @@ module.exports = {
       testPathIgnorePatterns: ['/node_modules/', '<rootDir>/src/ui/__tests__/tokens.test.ts'],
       moduleNameMapper: {
         '^@/(.*)$': '<rootDir>/src/$1',
+        // `lucide-react-native`'s `"react-native"` package.json field (which
+        // Jest's RN resolver prefers) points at its ESM build
+        // (`dist/esm/lucide-react-native.mjs`, bare `export` syntax) — jest-expo's
+        // preset only registers a transform for `.[jt]sx?` files, so requiring
+        // that path raises "Unexpected token 'export'". Redirect resolution to
+        // the package's CJS build instead of widening the preset's transform
+        // config (M0-06 iconography, 07 §4).
+        '^lucide-react-native$':
+          '<rootDir>/node_modules/lucide-react-native/dist/cjs/lucide-react-native.js',
       },
     },
   ],
