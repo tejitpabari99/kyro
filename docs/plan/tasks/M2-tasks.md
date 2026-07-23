@@ -10,7 +10,7 @@ Task count: **19**
 
 ---
 
-### M2-01 — WorkoutRepository, part 1: lifecycle
+### M2-01 — WorkoutRepository, part 1: lifecycle [done]
 **Description:** Active-workout lifecycle methods with the one-active invariant.
 **How:** In `src/data/sqlite/`: `getActive`, `startEmpty({title,startTime})`, `discard`, `finish(id, meta)` (delete `is_completed=0` rows, drop exercises left with zero sets, set `end_time`/`state='completed'`, positions stay contiguous), `getFull`, `listCompleted({before?,limit})`, `softDelete`. One-active enforced by the partial unique index + repo guard: second `startEmpty` with an active present throws; auto-heal path per 06 §9 (keep newest active, complete the other with `end_time=updated_at`, Sentry warning). Every mutator = one transaction (06 §5.2). `startFromRoutine` lands in M3-05 (stub signature now).
 **References:** 05 §3.2, §6; 02 §1, §14; 06 §5.2, §9.

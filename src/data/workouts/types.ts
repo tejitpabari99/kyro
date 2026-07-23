@@ -1,0 +1,261 @@
+/**
+ * `WorkoutRepository`'s public shapes (M2-01/M2-02) — 05 §6's interface,
+ * scoped to exactly what M2 implements. 05 §6 also lists `update` (edit a
+ * past workout wholesale, M2-15/`02` §15), `workoutDates` (calendar, M4-06),
+ * and `statsFeed` (dashboard, M4) — those are deliberately **not** on this
+ * interface yet; they land with the tasks that first need them and get
+ * added here then, per that section's own "verbatim signatures, simplified"
+ * framing (it documents the interface's *eventual* end state, not a
+ * contract every milestone must implement in one shot — exactly how
+ * `startFromRoutine` below is present as a stub per M2-01's task text but
+ * not implemented until M3-05). `setsForExercise` (records/charts feed,
+ * M4) is the one exception kept off entirely for now since nothing in M2
+ * references it even as a stub.
+ *
+ * Field naming mirrors `src/data/sqlite/schema.ts`'s `workouts` /
+ * `workout_exercises` / `sets` tables (05 §3.2) field-for-field, camelCase
+ * here — the repository implementation owns the snake_case mapping at the
+ * SQL boundary, exactly like `src/data/exercises/types.ts` does for
+ * `exercises`.
+ */
+import type { Rpe, SetType } from '@/domain/enums';
+
+/** One row of the `sets` table (05 §3.2), decoded into TS-native shapes. */
+export interface WorkoutSet {
+  id: string;
+  position: number;
+  setType: SetType;
+  weightKg: number | null;
+  reps: number | null;
+  distanceMeters: number | null;
+  durationSeconds: number | null;
+  rpe: Rpe | null;
+  customMetric: number | null;
+  isCompleted: boolean;
+}
+
+/** One row of the `workout_exercises` table (05 §3.2), hydrated with its `sets` in position order. */
+export interface WorkoutExerciseFull {
+  id: string;
+  workoutId: string;
+  exerciseId: string;
+  position: number;
+  supersetId: number | null;
+  notes: string | null;
+  restSeconds: number | null;
+  sets: WorkoutSet[];
+}
+
+/** A full `workouts` row (05 §3.2) hydrated with its exercises (each hydrated with its sets), in position order — the shape `getActive`/`getFull`/`startEmpty`/`finish` return. */
+export interface WorkoutFull {
+  id: string;
+  title: string;
+  description: string | null;
+  routineId: string | null;
+  state: 'active' | 'completed';
+  startTime: number;
+  endTime: number | null;
+  durationPauseOffsetMs: number;
+  createdAt: number;
+  updatedAt: number;
+  exercises: WorkoutExerciseFull[];
+}
+
+/**
+ * The lightweight row `listCompleted` returns — deliberately **not**
+ * hydrated with exercises/sets (05 §4's query-performance note: "History
+ * pagination: `idx_workouts_start` + per-workout hydrate (2 queries/page via
+ * `IN` batching)" — that batched hydrate is a later History-screen concern,
+ * M4; M2's minimal-history caller, M2-14, can hydrate on demand via
+ * `getFull` per row it actually renders).
+ */
+export interface WorkoutSummary {
+  id: string;
+  title: string;
+  description: string | null;
+  routineId: string | null;
+  startTime: number;
+  endTime: number | null;
+  durationPauseOffsetMs: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** `WorkoutRepository.listCompleted`'s paging input (05 §6). */
+export interface ListCompletedPage {
+  /** Only workouts with `start_time` strictly before this epoch-ms value. */
+  before?: number;
+  /** Default 20 (matches `06` §8's History FlashList page size). */
+  limit?: number;
+}
+
+/** `WorkoutRepository.finish`'s meta input (05 §6 `FinishMeta`, 02 §14's save sheet: editable title/description/start-time/duration). `endTime` defaults to "now" when omitted; `duration_pause_offset_ms` is edited separately via `updateMeta` (02 §2's duration sheet), not here. */
+export interface FinishMeta {
+  title?: string;
+  description?: string | null;
+  startTime?: number;
+  endTime?: number;
+}
+
+/** `WorkoutRepository.addExercises`'s per-item input (02 §3). Row/set-count pre-creation is computed internally (02 §3: "same number of set rows as its most recent performance, else one empty normal set") — callers only supply exercise identity + this workout-local slot's own fields. */
+export interface AddExerciseItem {
+  exerciseId: string;
+  supersetId?: number | null;
+  notes?: string | null;
+  /** Defaults from Settings → Default Rest Timer at add-time (02 §3) — resolved by the caller (store), not this repository, since `src/data` has no settings dependency. */
+  restSeconds?: number | null;
+}
+
+/** `WorkoutRepository.addSet`'s input — every field optional; omitted value fields stay `NULL` (a bare unchecked row). */
+export type NewSetInput = Partial<{
+  setType: SetType;
+  weightKg: number | null;
+  reps: number | null;
+  distanceMeters: number | null;
+  durationSeconds: number | null;
+  rpe: Rpe | null;
+  customMetric: number | null;
+}>;
+
+/**
+ * `WorkoutRepository.updateSet`'s patch — value fields only (`setType` and
+ * `isCompleted` are separate mutators, `setSetType`/`setCompleted`, per 05
+ * §6's own split). A key's absence (`undefined`) means "leave unchanged";
+ * an explicit `null` clears that field — mirrors
+ * `ExerciseRepositoryImpl.update`'s `patch.field !== undefined` convention.
+ */
+export type UpdateSetInput = Partial<{
+  weightKg: number | null;
+  reps: number | null;
+  distanceMeters: number | null;
+  durationSeconds: number | null;
+  rpe: Rpe | null;
+  customMetric: number | null;
+}>;
+
+/** `WorkoutRepository.updateExercise`'s patch (notes / rest timer / superset grouping, 05 §6). Same undefined-vs-null convention as {@link UpdateSetInput}. */
+export type UpdateExerciseInput = Partial<{
+  notes: string | null;
+  restSeconds: number | null;
+  supersetId: number | null;
+}>;
+
+/** `WorkoutRepository.updateMeta`'s patch (title / times / pause offset, 05 §6, 02 §2's duration sheet). Same undefined-vs-null convention. */
+export type UpdateMetaInput = Partial<{
+  title: string;
+  description: string | null;
+  startTime: number;
+  endTime: number | null;
+  durationPauseOffsetMs: number;
+}>;
+
+/**
+ * `WorkoutRepository.previousSets`'s query options. 05 §6 lists this as
+ * `{routineId?; beforeWorkoutId?}` ("verbatim signatures, simplified" per
+ * that section's own header) — `occurrenceIndex` is an intentional addition
+ * on top of that simplified shape, required to actually implement 02
+ * §16.6's "duplicate exercise twice in one workout ... PREVIOUS matches by
+ * occurrence order (1st card ↔ 1st occurrence last session, etc.)": without
+ * it there is no way to ask "give me the *second* occurrence of exercise X
+ * in its most recent completed workout" for a workout that currently has X
+ * added twice. 0-based, default 0 (first/only occurrence — the common
+ * case). `beforeWorkoutId`: restricts the search to completed workouts
+ * strictly at-or-before that workout's own `start_time` and excludes that
+ * workout's own id — the "editing a past workout" case (M2-15/`02` §15),
+ * where PREVIOUS must not reference the workout being edited itself or
+ * anything chronologically after it. Unknown/absent `beforeWorkoutId`
+ * degrades to no restriction (documented on the implementation).
+ */
+export interface PreviousSetsQuery {
+  routineId?: string;
+  beforeWorkoutId?: string;
+  occurrenceIndex?: number;
+}
+
+/**
+ * One reference set from `previousSets` (02 §6/§16.6). `bucketIndex` is the
+ * 0-based position of this set **within its own type bucket** (warm-up sets
+ * are numbered separately from non-warm-up sets, 02 §6: "warm-up rows
+ * reference the previous session's warm-up sets by warm-up index") — the
+ * caller matches a current-row's own bucket-relative index (its working-set
+ * number for non-warm-ups, or its warm-up index for warm-ups) against this
+ * field, not against `position`. `setType` is the previous set's own type,
+ * carried through for display-formatting decisions (`04` M2-04's
+ * `previous-values.ts`) — it does not have to equal the current row's type.
+ */
+export interface PreviousSet {
+  bucketIndex: number;
+  isWarmup: boolean;
+  setType: SetType;
+  weightKg: number | null;
+  reps: number | null;
+  distanceMeters: number | null;
+  durationSeconds: number | null;
+  rpe: Rpe | null;
+  customMetric: number | null;
+}
+
+/**
+ * M2-01's slice of the workout repository interface — active-workout
+ * lifecycle. Split from {@link WorkoutRepositoryMutators} (M2-02) purely so
+ * `WorkoutRepositoryImpl` can `implements WorkoutRepositoryLifecycle` and
+ * compile cleanly as a standalone M2-01 commit before the M2-02 mutator
+ * methods exist on the class — mirrors how `ExerciseRepository`'s
+ * `hasLoggedSets` was added to that interface later, at M1-10, rather than
+ * everything being declared upfront in M1-06. {@link WorkoutRepository}
+ * below is the merged interface the rest of the app (M2-03 onward) actually
+ * consumes.
+ */
+export interface WorkoutRepositoryLifecycle {
+  getActive(): Promise<WorkoutFull | null>;
+  startEmpty(input: { title: string; startTime: number }): Promise<WorkoutFull>;
+  /** Stub — lands in M3-05 (05 §6, M2-01 task text). Always rejects today. */
+  startFromRoutine(routineId: string): Promise<WorkoutFull>;
+  discard(id: string): Promise<void>;
+  finish(id: string, meta?: FinishMeta): Promise<WorkoutFull>;
+  getFull(id: string): Promise<WorkoutFull | null>;
+  listCompleted(page?: ListCompletedPage): Promise<WorkoutSummary[]>;
+  softDelete(id: string): Promise<void>;
+}
+
+/** M2-02's slice of the workout repository interface — granular mutators + `previousSets`. See {@link WorkoutRepositoryLifecycle}'s header for why this is split out. */
+export interface WorkoutRepositoryMutators {
+  addExercises(workoutId: string, items: AddExerciseItem[]): Promise<WorkoutExerciseFull[]>;
+  removeExercise(workoutId: string, workoutExerciseId: string): Promise<void>;
+  reorderExercises(workoutId: string, orderedWorkoutExerciseIds: string[]): Promise<void>;
+  replaceExercise(workoutExerciseId: string, newExerciseId: string): Promise<WorkoutExerciseFull>;
+  addSet(workoutExerciseId: string, input?: NewSetInput): Promise<WorkoutSet>;
+  updateSet(setId: string, patch: UpdateSetInput): Promise<WorkoutSet>;
+  removeSet(setId: string): Promise<void>;
+  setSetType(setId: string, setType: SetType): Promise<WorkoutSet>;
+  setCompleted(setId: string, isCompleted: boolean): Promise<WorkoutSet>;
+  updateExercise(workoutExerciseId: string, patch: UpdateExerciseInput): Promise<WorkoutExerciseFull>;
+  updateMeta(workoutId: string, patch: UpdateMetaInput): Promise<WorkoutFull>;
+  previousSets(exerciseId: string, opts?: PreviousSetsQuery): Promise<PreviousSet[]>;
+}
+
+/**
+ * The workout repository interface — the M2 subset of 05 §6's full
+ * `WorkoutRepository` (see this file's header for what's deferred and why).
+ */
+export interface WorkoutRepository extends WorkoutRepositoryLifecycle, WorkoutRepositoryMutators {}
+
+/** One auto-heal event (06 §9) — reported via {@link WorkoutRepositoryDeps.onAutoHeal} when `getActive` finds more than one active workout and resolves it. */
+export interface AutoHealEvent {
+  keptWorkoutId: string;
+  healedWorkoutIds: string[];
+}
+
+/**
+ * Constructor deps for `WorkoutRepositoryImpl`. `onAutoHeal` is the seam for
+ * the 06 §9 "log to Sentry as warning" requirement: `src/data` cannot import
+ * `src/lib/sentry.ts` directly (06 §2's dependency-direction rule — data
+ * depends on domain only), so the repository accepts an injectable reporter
+ * instead and defaults to a `console.warn`. The real wiring (`src/lib/sentry`'s
+ * `recordBreadcrumb`/`captureError`) happens where the repository is
+ * constructed — `src/features/workout/activeWorkoutStore.ts` (M2-03), which
+ * is allowed to depend on both `src/data` and `src/lib`.
+ */
+export interface WorkoutRepositoryDeps {
+  onAutoHeal?: (event: AutoHealEvent) => void;
+}
