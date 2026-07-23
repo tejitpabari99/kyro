@@ -1,5 +1,5 @@
 /**
- * `ConnectedSetRow` (M2-06) — the store-connected wrapper around
+ * `ConnectedSetRow` (M2-06/M2-07) — the store-connected wrapper around
  * `src/ui/SetRow`: this is the component that actually subscribes to
  * `activeWorkoutStore`'s per-set selector (`selectWorkoutSet(setId)`, 06
  * §8), owns the local "typed-but-not-committed" text buffer (06 §5.3:
@@ -18,18 +18,52 @@
  * the *only* thing that can make its own instance re-render; sibling rows
  * never do (06 §8's "typing in one row doesn't re-render others").
  *
- * Basic check/remove/set-type wiring only (task scope note, M2-06): ✓ calls
- * `setCompleted` directly with no validation/blocking — the full
- * placeholder-commit / required-field-blocking semantics are M2-07's job,
- * layered on top of this same cell later without this file changing shape.
+ * ## Check/uncheck semantics (M2-07, 02 §4 / `00` P6)
+ *
+ * `handleToggleCompleted` is the one place both directions live:
+ *  - **Check** (`!set.isCompleted`): builds the check-commit decision via
+ *    the pure `domain/set-check.ts` engine, fed canonical (never
+ *    display-text-round-tripped) typed/placeholder values per column —
+ *    typed values come from this row's own `values` buffer parsed through
+ *    `parseCellValue`; placeholder values come straight from
+ *    `previousResult.autofill` via `readCanonical`, the same canonical
+ *    source `handlePreviousPress` below already uses (so a rep-range
+ *    target, whose `autofill.reps` `previous-values.ts` already nulls, is
+ *    correctly treated as "no placeholder" here too — no separate
+ *    rep-range flag needed, see `set-check.ts`'s own header). RPE is never
+ *    part of this — it's optional for every type and written only through
+ *    the RPE picker sheet below.
+ *    - Blocked: `notificationWarning` haptic + a `shakeSignal` bump (drives
+ *      `SetRow`'s 300 ms row shake, 07 §8) — no store write at all.
+ *    - Committed: `updateSet` (the resolved patch) then `setCompleted(true)`
+ *      — same fire-and-forget `void`-call pattern every other mutator in
+ *      this file already uses (the store's own `set()` call inside
+ *      `updateSet` runs synchronously before its first `await`, so by the
+ *      time `setCompleted` reads `get()` the optimistic patch is already
+ *      applied — ordering is safe without awaiting either call). Then:
+ *      `impactLight` haptic; volume/checked-set counters update for free
+ *      (`ActiveWorkoutScreen`'s meta row derives them live from
+ *      `workout.exercises`, no separate counter action to call). The
+ *      remaining four success-path items are each **hook points for a
+ *      later milestone that doesn't exist yet** — every one is a clearly
+ *      TODO-labeled no-op call site, not a fake implementation:
+ *      sound (M2-11's `src/lib/sound.ts`), rest-timer start (M2-10's
+ *      `restTimerStore`), live-PR check (M4-10's records provider, no-op
+ *      until then per the M2 task notes), smart-superset scroll (M2-12).
+ *  - **Uncheck** (`set.isCompleted` already `true`): just `setCompleted
+ *    (false)` — counters reverse for free (same live-derivation as above).
+ *    "Cancels its own timer only" is M2-10's job once a timer can exist at
+ *    all; the TODO call site below is where that cancel call lands.
  */
 import React, { useMemo, useState } from 'react';
 
 import type { UpdateSetInput } from '@/data/workouts/types';
 import { formatCellValue, parseCellValue, type SetCellUnits } from '@/domain/set-cell-values';
+import { evaluateSetCheck, type SetCheckColumnInput } from '@/domain/set-check';
 import type { SetColumnSpec } from '@/domain/set-table-columns';
 import type { PreviousValueResult } from '@/domain/previous-values';
-import type { SetType } from '@/domain/enums';
+import { RPE_VALUES, type ExerciseType, type Rpe, type SetType } from '@/domain/enums';
+import { triggerImpact, triggerNotificationFeedback } from '@/lib/haptics';
 import { ListRow } from '@/ui/ListRow';
 import { Sheet } from '@/ui/Sheet';
 import { SetRow, type SetBadgeKind } from '@/ui/SetRow';
@@ -44,6 +78,8 @@ export interface ConnectedSetRowProps {
   workingIndex: number | null;
   previousResult: PreviousValueResult;
   units: SetCellUnits;
+  /** Drives `domain/set-check.ts`'s per-type required-field rules (02 §4). */
+  exerciseType: ExerciseType;
   testID?: string;
 }
 
@@ -54,6 +90,21 @@ const SET_TYPE_MENU: { type: SetType; label: string }[] = [
   { type: 'failure', label: 'Failure Set' },
   { type: 'dropset', label: 'Drop Set' },
 ];
+
+/** Column keys the check-commit engine ever evaluates — every `SetColumnSpec.key` except `'rpe'` (see `domain/set-check.ts`'s header). */
+const CHECK_COLUMN_KEYS = new Set<SetColumnSpec['key']>(['weight', 'reps', 'distance', 'duration', 'custom']);
+
+/** 02 §5: helper text for each of the 8 enum RPE values; the `.5` steps are the doc's own "interpolate" instruction made concrete. */
+const RPE_HELPER_TEXT: Record<Rpe, string> = {
+  6: '4+ reps left',
+  7: '3 reps left',
+  7.5: '2–3 reps left',
+  8: '2 reps left',
+  8.5: '1–2 reps left',
+  9: '1 rep left',
+  9.5: '0–1 reps left',
+  10: 'Max effort',
+};
 
 /** Exported for direct exhaustiveness-guard testing — same rationale/pattern `domain/set-table-columns.ts`'s own `columnsForExerciseType` exhaustiveness test uses (cast an unrecognized key past the closed `SetColumnSpec['key']` union to exercise the `default` arm a real caller can never reach). */
 export function readCanonical(set: { weightKg: number | null; reps: number | null; distanceMeters: number | null; durationSeconds: number | null; customMetric: number | null; rpe: number | null }, columnKey: string): number | null {
@@ -125,10 +176,16 @@ function ConnectedSetRowImpl({
   workingIndex,
   previousResult,
   units,
+  exerciseType,
   testID,
 }: ConnectedSetRowProps): React.JSX.Element | null {
   const set = useActiveWorkoutStore(selectWorkoutSet(setId));
   const [menuVisible, setMenuVisible] = useState(false);
+  const [rpeSheetVisible, setRpeSheetVisible] = useState(false);
+  // Bumped on every blocked check attempt — `SetRow`'s `shakeSignal` prop
+  // reads this to replay the 300 ms row shake (07 §8); the value itself
+  // carries no meaning beyond "changed."
+  const [shakeSignal, setShakeSignal] = useState(0);
   const [values, setValues] = useState<Record<string, string>>(() =>
     set ? seedValues(set, columns, units) : {},
   );
@@ -239,12 +296,107 @@ function ConnectedSetRowImpl({
   };
 
   const handleToggleCompleted = (): void => {
-    void useActiveWorkoutStore.getState().setCompleted(setId, !set.isCompleted);
+    if (set.isCompleted) {
+      // Uncheck (02 §4: "allowed anytime before finish; reverses counters
+      // and cancels a running rest timer only if that timer was started by
+      // this set"). Volume/checked-set counters are derived live from
+      // `isCompleted` (`ActiveWorkoutScreen`'s meta row) — flipping this
+      // flag back reverses them for free, no separate counter action.
+      // TODO(M2-10): cancel *this set's own* rest timer, if it started one
+      // — `restTimerStore` doesn't exist yet, so there is nothing to
+      // cancel today; this is the call site M2-10 fills in.
+      void useActiveWorkoutStore.getState().setCompleted(setId, false);
+      return;
+    }
+
+    // Check: run the pure check-commit decision (`domain/set-check.ts`)
+    // over every value column (never 'rpe' — optional for every type,
+    // written only via the RPE picker). Placeholder values come from the
+    // same canonical `previousResult.autofill` source `handlePreviousPress`
+    // above uses — never a display-text round trip — so a rep-range
+    // target's already-nulled `autofill.reps` (04 §2.3) naturally falls
+    // through to "no placeholder," never auto-committing a range.
+    const autofill = previousResult.autofill;
+    const checkColumns: SetCheckColumnInput[] = columns
+      .filter((column) => CHECK_COLUMN_KEYS.has(column.key))
+      .map((column) => ({
+        key: column.key as SetCheckColumnInput['key'],
+        typedValue: parseCellValue(column.kind, values[column.key] ?? '', units),
+        placeholderValue: autofill
+          ? readCanonical(
+              {
+                weightKg: autofill.weightKg,
+                reps: autofill.reps,
+                distanceMeters: autofill.distanceMeters,
+                durationSeconds: autofill.durationSeconds,
+                customMetric: autofill.customMetric,
+                rpe: null,
+              },
+              column.key,
+            )
+          : null,
+      }));
+
+    const result = evaluateSetCheck(exerciseType, checkColumns);
+
+    if (!result.ok) {
+      // 02 §4 / 07 §8: blocked check → row shake (300 ms) + notificationWarning haptic. No store write.
+      setShakeSignal((n) => n + 1);
+      triggerNotificationFeedback('warning');
+      return;
+    }
+
+    const patch: UpdateSetInput = {};
+    for (const [key, value] of Object.entries(result.values)) {
+      writeCanonical(patch, key, value ?? null);
+    }
+    // Fire-and-forget, same pattern every other mutator in this file uses:
+    // `updateSet`'s own optimistic `set()` call runs synchronously before
+    // its first `await`, so `setCompleted` below reads the already-patched
+    // draft via `get()` even without awaiting `updateSet` first.
+    void useActiveWorkoutStore.getState().updateSet(setId, patch);
+    void useActiveWorkoutStore.getState().setCompleted(setId, true);
+
+    // 02 §4 / 07 §8: successful check → impactLight haptic. Counters
+    // (volume/checked-set count) update for free, same live-derivation as
+    // uncheck above.
+    triggerImpact('light');
+    // TODO(M2-11): play the set-check chime once `src/lib/sound.ts` exists
+    // (Settings → Sounds' set-check volume) — no-op today, this is the hook
+    // point M2-11 wires up.
+    // TODO(M2-10): start this exercise's rest timer here, unless the timer
+    // setting is Off or the next row (same exercise, next index) is a drop
+    // set — `restTimerStore` doesn't exist yet; no-op today.
+    // TODO(M4-10): run the live-PR check against this newly-committed set
+    // and surface a PR banner — the records provider is intentionally a
+    // no-op until M4-10 (per the M2 task notes), so there is nothing to
+    // wire yet.
+    // TODO(M2-12): if this exercise is in a superset and Smart Superset
+    // Scrolling is on, scroll to the next member with sets remaining —
+    // supersets don't exist until M2-12; no-op today.
   };
 
   const handleSelectSetType = (type: SetType): void => {
     setMenuVisible(false);
     void useActiveWorkoutStore.getState().setSetType(setId, type);
+  };
+
+  const handleRpePress = (): void => {
+    setRpeSheetVisible(true);
+  };
+
+  const handleSelectRpe = (value: Rpe): void => {
+    setRpeSheetVisible(false);
+    const patch: UpdateSetInput = {};
+    writeCanonical(patch, 'rpe', value);
+    void useActiveWorkoutStore.getState().updateSet(setId, patch);
+  };
+
+  const handleClearRpe = (): void => {
+    setRpeSheetVisible(false);
+    const patch: UpdateSetInput = {};
+    writeCanonical(patch, 'rpe', null);
+    void useActiveWorkoutStore.getState().updateSet(setId, patch);
   };
 
   const handleRemove = (): void => {
@@ -272,7 +424,9 @@ function ConnectedSetRowImpl({
         onPreviousPress={handlePreviousPress}
         onSetCellPress={() => setMenuVisible(true)}
         onToggleCompleted={handleToggleCompleted}
+        onRpePress={handleRpePress}
         onDelete={handleDelete}
+        shakeSignal={shakeSignal}
       />
       <Sheet
         visible={menuVisible}
@@ -292,6 +446,27 @@ function ConnectedSetRowImpl({
           title="Remove Set"
           hideSeparator
           onPress={handleRemove}
+        />
+      </Sheet>
+      <Sheet
+        visible={rpeSheetVisible}
+        onDismiss={() => setRpeSheetVisible(false)}
+        testID={testID ? `${testID}-rpe-sheet` : undefined}
+      >
+        {RPE_VALUES.map((value) => (
+          <ListRow
+            key={value}
+            testID={testID ? `${testID}-rpe-${value}` : undefined}
+            title={String(value)}
+            subtitle={RPE_HELPER_TEXT[value]}
+            onPress={() => handleSelectRpe(value)}
+          />
+        ))}
+        <ListRow
+          testID={testID ? `${testID}-rpe-clear` : undefined}
+          title="Clear"
+          hideSeparator
+          onPress={handleClearRpe}
         />
       </Sheet>
     </>

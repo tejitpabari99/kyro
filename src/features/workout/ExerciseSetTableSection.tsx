@@ -151,6 +151,7 @@ export function ExerciseSetTableSection({
             workingIndex={bucket.isWarmup ? null : bucket.bucketIndex + 1}
             previousResult={previousResults[index]!}
             units={units}
+            exerciseType={exercise.exerciseType}
           />
         );
       })}

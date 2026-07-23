@@ -230,6 +230,24 @@ describe('SetRow — SET / PREVIOUS / ✓ / delete', () => {
   });
 });
 
+describe('SetRow — blocked-check row shake (07 §8: 300 ms shake)', () => {
+  it('accepts a shakeSignal prop and re-renders cleanly when it changes (the visual shake itself is a Reanimated worklet, not unit-testable — the behavioral half of this acceptance item, "blocked check never commits", is covered at the ConnectedSetRow/ExerciseSetTableSection level)', async () => {
+    const { rerender } = await render(
+      <ThemeProvider preference="dark">
+        <SetRow {...baseProps({ shakeSignal: 0 })} />
+      </ThemeProvider>,
+    );
+    expect(screen.getByTestId('row')).toBeTruthy();
+
+    await rerender(
+      <ThemeProvider preference="dark">
+        <SetRow {...baseProps({ shakeSignal: 1 })} />
+      </ThemeProvider>,
+    );
+    expect(screen.getByTestId('row')).toBeTruthy();
+  });
+});
+
 describe('SetRow — memoization (06 §8 unit-level check)', () => {
   it('is wrapped in React.memo', () => {
     expect((SetRow as unknown as { $$typeof?: symbol }).$$typeof).toBe(Symbol.for('react.memo'));

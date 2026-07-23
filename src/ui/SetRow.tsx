@@ -43,7 +43,7 @@
  * mirroring `src/ui/Sheet.tsx`'s (M0-07) established
  * `Gesture.Pan()`/`useSharedValue` pattern.
  */
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { Check, Trash2 } from 'lucide-react-native';
 import {
   Pressable,
@@ -55,7 +55,12 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { NumericInput } from './NumericInput';
 import { SetCell } from './SetCell';
@@ -84,6 +89,15 @@ export interface SetRowProps {
   onToggleCompleted: () => void;
   onRpePress?: () => void;
   onDelete: () => void;
+  /**
+   * Bump this (e.g. a monotonically increasing counter) to play the
+   * blocked-check row shake (02 §4 / 07 §8: "row shakes 300 ms +
+   * `notificationWarning` haptic"). The haptic itself is the caller's
+   * responsibility (`ConnectedSetRow`, since `src/ui/**` doesn't touch
+   * native seams) — this prop only drives the visual shake. `0`/unset never
+   * shakes (so mounting with a fixed initial value is a no-op).
+   */
+  shakeSignal?: number;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }
@@ -94,6 +108,9 @@ const CHECK_VISUAL_SIZE = 32;
 const DELETE_ACTION_WIDTH = 88;
 const SWIPE_ANIMATION_MS = 200;
 const SWIPE_OPEN_THRESHOLD = -60;
+/** 07 §8: "row shakes 300 ms" — five short translateX ticks summing to 300 ms. */
+const SHAKE_TICK_MS = 60;
+const SHAKE_OFFSET = 8;
 
 const VALUE_PREFIX: Partial<Record<SetRowColumn['kind'], string>> = {
   weight_added: '+',
@@ -119,6 +136,7 @@ function SetRowImpl({
   onToggleCompleted,
   onRpePress,
   onDelete,
+  shakeSignal,
   style,
   testID,
 }: SetRowProps): React.JSX.Element {
@@ -133,10 +151,25 @@ function SetRowImpl({
   };
 
   const translateX = useSharedValue(0);
+  const shakeX = useSharedValue(0);
 
   /* eslint-disable react-hooks/immutability -- Reanimated's documented
    * shared-value mutation pattern, same exemption `Sheet.tsx` (M0-07)
    * already carries for the identical reason. */
+  useEffect(() => {
+    if (!shakeSignal) {
+      return;
+    }
+    shakeX.value = withSequence(
+      withTiming(-SHAKE_OFFSET, { duration: SHAKE_TICK_MS / 2 }),
+      withTiming(SHAKE_OFFSET, { duration: SHAKE_TICK_MS }),
+      withTiming(-SHAKE_OFFSET, { duration: SHAKE_TICK_MS }),
+      withTiming(SHAKE_OFFSET, { duration: SHAKE_TICK_MS }),
+      withTiming(0, { duration: SHAKE_TICK_MS * 1.5 }),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- shakeX is a stable Reanimated shared value ref, not reactive state.
+  }, [shakeSignal]);
+
   const panGesture = useMemo(
     () =>
       Gesture.Pan()
@@ -157,7 +190,7 @@ function SetRowImpl({
   /* eslint-enable react-hooks/immutability */
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
+    transform: [{ translateX: translateX.value + shakeX.value }],
   }));
 
   // No translateX reset needed here — the row unmounts once `onDelete`

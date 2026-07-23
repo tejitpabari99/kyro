@@ -18,7 +18,7 @@
  * `1:30`/90s; assisted weight displays `−20kg` while storing positive;
  * both-themes smoke.
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -31,6 +31,7 @@ import { migrate } from '@/data/sqlite/migrator';
 import { WorkoutRepositoryImpl } from '@/data/workouts/workout-repository';
 import type { ExerciseType } from '@/domain/enums';
 import { columnsForExerciseType } from '@/domain/set-table-columns';
+import { triggerImpact, triggerNotificationFeedback } from '@/lib/haptics';
 import { ThemeProvider } from '@/ui/theme-provider';
 
 import { ConnectedSetRow, readCanonical, writeCanonical } from '../ConnectedSetRow';
@@ -42,6 +43,8 @@ jest.mock('@sentry/react-native', () => ({
   addBreadcrumb: jest.fn(),
   captureException: jest.fn(),
 }));
+
+jest.mock('@/lib/haptics');
 
 function renderSection(
   workoutExerciseId: string,
@@ -295,15 +298,279 @@ describe('ExerciseSetTableSection — assisted weight (bodyweight_assisted_reps)
   });
 });
 
-describe('ExerciseSetTableSection — check toggle (basic, M2-07 owns validation)', () => {
-  it('tapping the check cell calls setCompleted directly', async () => {
+describe('ExerciseSetTableSection — check flow (M2-07, 02 §4 / 00 P6)', () => {
+  it('blocks the check when a required field (reps) is empty with no placeholder: row stays unchecked, notificationWarning haptic fires, nothing is written', async () => {
     const { exercise, workoutExerciseId, workoutRepo } = await setupExercise('weight_reps');
     await renderSection(workoutExerciseId, exercise);
 
     await fireEvent.press(screen.getByTestId('section-row-0-check'));
 
+    expect(screen.getByTestId('section-row-0-check').props.accessibilityState.checked).toBe(false);
+    expect(triggerNotificationFeedback).toHaveBeenCalledWith('warning');
+    expect(triggerImpact).not.toHaveBeenCalled();
+
     const active = await workoutRepo.getActive();
-    expect(active!.exercises[0]!.sets[0]!.isCompleted).toBe(true);
+    expect(active!.exercises[0]!.sets[0]!.isCompleted).toBe(false);
+    expect(active!.exercises[0]!.sets[0]!.reps).toBeNull();
+  });
+
+  it('commits typed values as-is and checks the row, firing the impactLight haptic', async () => {
+    const { exercise, workoutExerciseId, workoutRepo } = await setupExercise('weight_reps');
+    await renderSection(workoutExerciseId, exercise);
+
+    await fireEvent.changeText(screen.getByTestId('section-row-0-value-weight'), '60');
+    await fireEvent.changeText(screen.getByTestId('section-row-0-value-reps'), '8');
+
+    await fireEvent.press(screen.getByTestId('section-row-0-check'));
+
+    expect(screen.getByTestId('section-row-0-check').props.accessibilityState.checked).toBe(true);
+    expect(triggerImpact).toHaveBeenCalledWith('light');
+
+    const active = await workoutRepo.getActive();
+    const committed = active!.exercises[0]!.sets[0]!;
+    expect(committed.weightKg).toBe(60);
+    expect(committed.reps).toBe(8);
+    expect(committed.isCompleted).toBe(true);
+  });
+
+  it('empty-with-placeholder commits the previous-session placeholder values on check', async () => {
+    const driver = openBetterSqlite3Driver(':memory:');
+    migrate(driver);
+    const exerciseRepo = new ExerciseRepositoryImpl(driver);
+    const workoutRepo = new WorkoutRepositoryImpl(driver, {});
+    const exercise = await exerciseRepo.create({
+      name: 'Bench Press',
+      exerciseType: 'weight_reps',
+      primaryMuscleGroup: 'chest',
+    });
+
+    const previousWorkout = await workoutRepo.startEmpty({ title: 'Previous', startTime: Date.now() - 100_000 });
+    const [previousExercise] = await workoutRepo.addExercises(previousWorkout.id, [{ exerciseId: exercise.id }]);
+    const previousSet = previousExercise!.sets[0]!;
+    await workoutRepo.updateSet(previousSet.id, { weightKg: 45, reps: 9 });
+    await workoutRepo.setCompleted(previousSet.id, true);
+    await workoutRepo.finish(previousWorkout.id);
+
+    await useActiveWorkoutStore.getState().rehydrate(workoutRepo);
+    await useActiveWorkoutStore.getState().startEmpty({ title: 'Now', startTime: Date.now() });
+    const [added] = await useActiveWorkoutStore.getState().addExercises([{ exerciseId: exercise.id }]);
+
+    await renderSection(added!.id, exercise);
+    await waitFor(() => expect(screen.getByText('45kg × 9')).toBeTruthy());
+
+    // Neither field typed — check should commit the 45/9 placeholders.
+    await fireEvent.press(screen.getByTestId('section-row-0-check'));
+
+    expect(screen.getByTestId('section-row-0-check').props.accessibilityState.checked).toBe(true);
+    const active = await workoutRepo.getActive();
+    const committed = active!.exercises[0]!.sets[0]!;
+    expect(committed.weightKg).toBe(45);
+    expect(committed.reps).toBe(9);
+    expect(committed.isCompleted).toBe(true);
+  });
+
+  it('a non-required, unresolved weight defaults to 0 rather than blocking (empty bar/bodyweight)', async () => {
+    const { exercise, workoutExerciseId, workoutRepo } = await setupExercise('weight_reps');
+    await renderSection(workoutExerciseId, exercise);
+
+    // Only reps typed — weight has no typed value and no placeholder.
+    await fireEvent.changeText(screen.getByTestId('section-row-0-value-reps'), '12');
+    await fireEvent.press(screen.getByTestId('section-row-0-check'));
+
+    expect(screen.getByTestId('section-row-0-check').props.accessibilityState.checked).toBe(true);
+    const active = await workoutRepo.getActive();
+    const committed = active!.exercises[0]!.sets[0]!;
+    expect(committed.weightKg).toBe(0);
+    expect(committed.reps).toBe(12);
+  });
+
+  it('leaves an unresolved custom metric null (never forced to 0) while a non-required weight still defaults to 0', async () => {
+    const { exercise, workoutExerciseId, workoutRepo } = await setupExercise('weight_reps', {
+      usesCustomMetric: true,
+    });
+    await renderSection(workoutExerciseId, exercise);
+
+    await fireEvent.changeText(screen.getByTestId('section-row-0-value-reps'), '10');
+    await fireEvent.press(screen.getByTestId('section-row-0-check'));
+
+    expect(screen.getByTestId('section-row-0-check').props.accessibilityState.checked).toBe(true);
+    const active = await workoutRepo.getActive();
+    const committed = active!.exercises[0]!.sets[0]!;
+    expect(committed.weightKg).toBe(0);
+    expect(committed.reps).toBe(10);
+    expect(committed.customMetric).toBeNull();
+  });
+
+  it('an RPE column present on the row is never part of the check-commit decision (RPE is optional, written only via its own picker)', async () => {
+    const { exercise, workoutExerciseId, workoutRepo } = await setupExercise('weight_reps');
+    await renderSection(workoutExerciseId, exercise, { rpeEnabled: true });
+
+    await fireEvent.changeText(screen.getByTestId('section-row-0-value-weight'), '60');
+    await fireEvent.changeText(screen.getByTestId('section-row-0-value-reps'), '8');
+    await fireEvent.press(screen.getByTestId('section-row-0-check'));
+
+    expect(screen.getByTestId('section-row-0-check').props.accessibilityState.checked).toBe(true);
+    const active = await workoutRepo.getActive();
+    const committed = active!.exercises[0]!.sets[0]!;
+    expect(committed.weightKg).toBe(60);
+    expect(committed.reps).toBe(8);
+    expect(committed.rpe).toBeNull();
+  });
+
+  it('unchecking reverses the row: setCompleted flips back to false, values untouched', async () => {
+    const { exercise, workoutExerciseId, workoutRepo } = await setupExercise('weight_reps');
+    await renderSection(workoutExerciseId, exercise);
+
+    await fireEvent.changeText(screen.getByTestId('section-row-0-value-weight'), '60');
+    await fireEvent.changeText(screen.getByTestId('section-row-0-value-reps'), '8');
+    await fireEvent.press(screen.getByTestId('section-row-0-check'));
+    expect(screen.getByTestId('section-row-0-check').props.accessibilityState.checked).toBe(true);
+
+    await fireEvent.press(screen.getByTestId('section-row-0-check'));
+
+    expect(screen.getByTestId('section-row-0-check').props.accessibilityState.checked).toBe(false);
+    const active = await workoutRepo.getActive();
+    const committed = active!.exercises[0]!.sets[0]!;
+    expect(committed.isCompleted).toBe(false);
+    expect(committed.weightKg).toBe(60);
+    expect(committed.reps).toBe(8);
+  });
+});
+
+describe('ConnectedSetRow — rep-range targets never auto-commit on check (04 §2.3)', () => {
+  it('blocks the check when the only PREVIOUS source is a rep-range target, even though a label shows', async () => {
+    const { exercise, workoutExerciseId, workoutRepo } = await setupExercise('reps_only');
+    const columns = columnsForExerciseType('reps_only', {
+      usesCustomMetric: false,
+      rpeEnabled: false,
+      weightUnit: 'kg',
+      distanceUnit: 'km',
+    });
+    const active = await workoutRepo.getActive();
+    const setId = active!.exercises[0]!.sets[0]!.id;
+
+    await render(
+      <ThemeProvider preference="dark">
+        <ConnectedSetRow
+          testID="range-row"
+          setId={setId}
+          columns={columns}
+          badgeKind="normal"
+          workingIndex={1}
+          // A rep-range target: a label shows ("6-8") but `autofill.reps`
+          // is null, exactly what `previous-values.ts`'s `autofillFrom`
+          // produces for a real rep-range routine target (04 §2.3).
+          previousResult={{
+            label: '6-8',
+            autofill: { weightKg: null, reps: null, distanceMeters: null, durationSeconds: null, customMetric: null },
+            source: 'routine_target',
+            isRepRange: true,
+          }}
+          units={{ weightUnit: 'kg', distanceUnit: 'km' }}
+          exerciseType={exercise.exerciseType}
+        />
+      </ThemeProvider>,
+    );
+
+    expect(screen.getByText('6-8')).toBeTruthy();
+
+    await fireEvent.press(screen.getByTestId('range-row-check'));
+
+    expect(screen.getByTestId('range-row-check').props.accessibilityState.checked).toBe(false);
+    expect(triggerNotificationFeedback).toHaveBeenCalledWith('warning');
+    const afterBlocked = await workoutRepo.getActive();
+    expect(afterBlocked!.exercises[0]!.sets[0]!.isCompleted).toBe(false);
+    expect(afterBlocked!.exercises[0]!.sets[0]!.reps).toBeNull();
+
+    // Typing an actual value still commits normally.
+    await fireEvent.changeText(screen.getByTestId('range-row-value-reps'), '7');
+    await fireEvent.press(screen.getByTestId('range-row-check'));
+
+    expect(screen.getByTestId('range-row-check').props.accessibilityState.checked).toBe(true);
+    const afterTyped = await workoutRepo.getActive();
+    expect(afterTyped!.exercises[0]!.sets[0]!.reps).toBe(7);
+  });
+});
+
+describe('ConnectedSetRow — RPE picker (02 §5)', () => {
+  it('offers only the 8 enum values with helper text, commits the picked value, and Clear removes it', async () => {
+    const { exercise, workoutExerciseId, workoutRepo } = await setupExercise('weight_reps');
+    await renderSection(workoutExerciseId, exercise, { rpeEnabled: true });
+
+    await fireEvent.press(screen.getByTestId('section-row-0-rpe'));
+    expect(screen.getByTestId('section-row-0-rpe-sheet')).toBeTruthy();
+
+    // Exactly the 8 enum values are enterable.
+    for (const value of ['6', '7', '7.5', '8', '8.5', '9', '9.5', '10']) {
+      expect(screen.getByTestId(`section-row-0-rpe-${value}`)).toBeTruthy();
+    }
+    expect(screen.getByText('Max effort')).toBeTruthy();
+
+    await fireEvent.press(screen.getByTestId('section-row-0-rpe-8.5'));
+
+    expect(screen.queryByTestId('section-row-0-rpe-sheet')).toBeNull();
+    await waitFor(async () => {
+      const active = await workoutRepo.getActive();
+      expect(active!.exercises[0]!.sets[0]!.rpe).toBe(8.5);
+    });
+    expect(screen.getByText('8.5')).toBeTruthy();
+
+    await fireEvent.press(screen.getByTestId('section-row-0-rpe'));
+    await fireEvent.press(screen.getByTestId('section-row-0-rpe-clear'));
+
+    await waitFor(async () => {
+      const active = await workoutRepo.getActive();
+      expect(active!.exercises[0]!.sets[0]!.rpe).toBeNull();
+    });
+  });
+
+  it('dismissing the RPE sheet via the scrim closes it without writing anything', async () => {
+    const { exercise, workoutExerciseId, workoutRepo } = await setupExercise('weight_reps');
+    await renderSection(workoutExerciseId, exercise, { rpeEnabled: true });
+
+    await fireEvent.press(screen.getByTestId('section-row-0-rpe'));
+    expect(screen.getByTestId('section-row-0-rpe-sheet')).toBeTruthy();
+
+    await fireEvent.press(screen.getByTestId('section-row-0-rpe-sheet-scrim'));
+
+    expect(screen.queryByTestId('section-row-0-rpe-sheet')).toBeNull();
+    const active = await workoutRepo.getActive();
+    expect(active!.exercises[0]!.sets[0]!.rpe).toBeNull();
+  });
+
+  it('toggling rpeEnabled mid-workout adds/removes the RPE column live while retaining the stored value', async () => {
+    const { exercise, workoutExerciseId, workoutRepo } = await setupExercise('weight_reps');
+    const { rerender } = await renderSection(workoutExerciseId, exercise, { rpeEnabled: false });
+
+    expect(screen.queryByText('RPE')).toBeNull();
+
+    await act(async () => {
+      await useActiveWorkoutStore.getState().updateSet(
+        (await workoutRepo.getActive())!.exercises[0]!.sets[0]!.id,
+        { rpe: 9 },
+      );
+    });
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { gcTime: 0 } } });
+    await rerender(
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider preference="dark">
+          <ExerciseSetTableSection
+            testID="section"
+            workoutExerciseId={workoutExerciseId}
+            exercise={exercise}
+            weightUnit="kg"
+            distanceUnit="km"
+            rpeEnabled
+            previousValuesMode="any_workout"
+            routineId={null}
+          />
+        </ThemeProvider>
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByText('RPE')).toBeTruthy();
+    expect(screen.getByText('9')).toBeTruthy();
   });
 });
 
@@ -461,6 +728,7 @@ describe('ConnectedSetRow — unresolved set renders nothing', () => {
           workingIndex={1}
           previousResult={{ label: null, autofill: null, source: 'none', isRepRange: false }}
           units={{ weightUnit: 'kg', distanceUnit: 'km' }}
+          exerciseType={exercise.exerciseType}
         />
       </ThemeProvider>,
     );

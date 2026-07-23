@@ -58,7 +58,7 @@ Task count: **19**
 **Acceptance / test gate:** RNTL behavioral: each of the 8 types renders exactly its columns; type change re-badges + renumbers; swipe-delete renumbers; PREVIOUS tap autofills; "130" → 1:30/90 s; assisted display. Both-themes smoke.
 **Est:** 2 d
 
-### M2-07 — Check flow (P6), validation, counters, RPE
+### M2-07 — Check flow (P6), validation, counters, RPE [done]
 **Description:** The check/uncheck semantics — commit path, required-field blocking, RPE picker.
 **How:** Check (✓): typed values save as-is; empty-with-placeholder commits placeholder **except rep-range targets** (`6-8` never auto-commits — reps must be typed, 04 §2.3); empty required field with no placeholder blocks with row shake 300 ms + `notificationWarning` haptic (required per type: reps for rep-types, duration for time-types, distance+duration for cardio, weight+distance for short_distance_weight; weight 0 valid; +KG optional = 0). Success: `impactLight` + optional sound, counters update, rest-timer start hook (M2-10), live-PR hook (no-op until M4-10), smart-superset hook (M2-12). Uncheck: reverses counters, cancels its own timer only. Checked rows tint bg.accentSubtle. RPE cell + picker sheet (6…10 in 0.5 steps with helper text, Clear); toggling the setting mid-workout adds/removes column live, values retained.
 **References:** 02 §4 (check behavior), §5; 00 P6; 07 §8 (haptics).
