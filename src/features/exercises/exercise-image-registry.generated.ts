@@ -3,7 +3,7 @@
  *
  * Produced by `scripts/generate-exercise-thumbnail-registry.ts` (M1-08
  * extension) from `assets/exercise-db.json` (dataset version
- * 9bf59514e6268e751a564206466316a4da714bc635643f26c0200411778107ab). One static `require(...)` per built-in exercise's
+ * 6b99c4cb4f2a44e93d7704d7152f16b6d74da96cc4feabefd28f620d979031c6). One static `require(...)` per built-in exercise's
  * full-size 600 px image(s) (`0.jpg`, and `1.jpg` when present) — same
  * static-require-manifest workaround as the thumbnail registry (Metro has
  * no `require.context`), used by `ExerciseMedia`

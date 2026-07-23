@@ -8,6 +8,48 @@
     },
     "Handstand_Push-Ups": {
       "exercise_type": "bodyweight_reps"
+    },
+    "Push_Press": {
+      "instructions": [
+        "Stand with feet shoulder-width apart, holding a barbell across the front of your shoulders in a front-rack position with elbows pointing slightly forward.",
+        "Bend your knees into a shallow quarter-dip, keeping your torso upright and heels down.",
+        "Explosively extend your hips and knees to drive upward, using that leg-drive momentum to press the bar off your shoulders.",
+        "Continue pressing with your arms until the bar is locked out fully overhead.",
+        "Lower the bar back to the shoulders under control and repeat."
+      ]
+    },
+    "Side_Bridge": {
+      "instructions": [
+        "Lie on your side with your legs stacked and extended, propped up on your forearm with your elbow directly under your shoulder.",
+        "Brace your core and lift your hips off the floor until your body forms a straight line from head to feet.",
+        "Hold the position, keeping your hips level and not letting them sag or rotate forward or back.",
+        "Hold for the prescribed time, then repeat on the other side."
+      ]
+    },
+    "Side_Jackknife": {
+      "instructions": [
+        "Lie on your side with your legs stacked and fully extended, supporting your head with your top hand.",
+        "In one smooth motion, simultaneously raise your legs and lift your upper torso off the floor, bringing your ribs and hips toward each other.",
+        "Squeeze your obliques at the top of the movement, then lower back down under control to the starting position.",
+        "Complete the prescribed reps, then repeat lying on the other side."
+      ]
+    },
+    "One-Arm_Kettlebell_Swings": {
+      "instructions": [
+        "Stand with feet shoulder-width apart with a kettlebell on the floor slightly in front of you.",
+        "Hinge at the hips, keeping your back flat, and grip the kettlebell handle with one hand.",
+        "Hike the kettlebell back between your legs, then drive your hips forward explosively to swing it up to roughly shoulder height, keeping that arm relaxed and straight.",
+        "Let the kettlebell swing back down between your legs under control, hinging at the hips again to absorb the momentum, and repeat.",
+        "Complete the set, then switch arms."
+      ]
+    },
+    "Iron_Cross": {
+      "instructions": [
+        "Stand with feet shoulder-width apart, holding a dumbbell in each hand at arm's length in front of your hips, palms facing each other.",
+        "Bend your hips and knees to squat down, keeping your torso upright and the dumbbells together in front of you.",
+        "As you drive back up to standing, raise both arms out to your sides to shoulder height, forming a \"T\"/cross shape with your body at the top of the movement.",
+        "Lower the arms back down as you descend into the next squat, and repeat."
+      ]
     }
   },
   "aliases": {

@@ -1,5 +1,5 @@
 {
-  "version": "9bf59514e6268e751a564206466316a4da714bc635643f26c0200411778107ab",
+  "version": "6b99c4cb4f2a44e93d7704d7152f16b6d74da96cc4feabefd28f620d979031c6",
   "sourceCommit": "b0eed061e1c832b3ed815fbaa4b45b3cdc14df49",
   "exerciseCount": 873,
   "exercises": [
@@ -8550,7 +8550,12 @@
         "traps"
       ],
       "equipment": "dumbbell",
-      "instructions": [],
+      "instructions": [
+        "Stand with feet shoulder-width apart, holding a dumbbell in each hand at arm's length in front of your hips, palms facing each other.",
+        "Bend your hips and knees to squat down, keeping your torso upright and the dumbbells together in front of you.",
+        "As you drive back up to standing, raise both arms out to your sides to shoulder height, forming a \"T\"/cross shape with your body at the top of the movement.",
+        "Lower the arms back down as you descend into the next squat, and repeat."
+      ],
       "images": [
         "exercises/Iron_Cross/0.jpg",
         "exercises/Iron_Cross/1.jpg"
@@ -12160,7 +12165,13 @@
         "shoulders"
       ],
       "equipment": "kettlebell",
-      "instructions": [],
+      "instructions": [
+        "Stand with feet shoulder-width apart with a kettlebell on the floor slightly in front of you.",
+        "Hinge at the hips, keeping your back flat, and grip the kettlebell handle with one hand.",
+        "Hike the kettlebell back between your legs, then drive your hips forward explosively to swing it up to roughly shoulder height, keeping that arm relaxed and straight.",
+        "Let the kettlebell swing back down between your legs under control, hinging at the hips again to absorb the momentum, and repeat.",
+        "Complete the set, then switch arms."
+      ],
       "images": [
         "exercises/One-Arm_Kettlebell_Swings/0.jpg",
         "exercises/One-Arm_Kettlebell_Swings/1.jpg"
@@ -13418,7 +13429,13 @@
         "triceps"
       ],
       "equipment": "barbell",
-      "instructions": [],
+      "instructions": [
+        "Stand with feet shoulder-width apart, holding a barbell across the front of your shoulders in a front-rack position with elbows pointing slightly forward.",
+        "Bend your knees into a shallow quarter-dip, keeping your torso upright and heels down.",
+        "Explosively extend your hips and knees to drive upward, using that leg-drive momentum to press the bar off your shoulders.",
+        "Continue pressing with your arms until the bar is locked out fully overhead.",
+        "Lower the bar back to the shoulders under control and repeat."
+      ],
       "images": [
         "exercises/Push_Press/0.jpg",
         "exercises/Push_Press/1.jpg"
@@ -15772,7 +15789,12 @@
         "shoulders"
       ],
       "equipment": "none",
-      "instructions": [],
+      "instructions": [
+        "Lie on your side with your legs stacked and extended, propped up on your forearm with your elbow directly under your shoulder.",
+        "Brace your core and lift your hips off the floor until your body forms a straight line from head to feet.",
+        "Hold the position, keeping your hips level and not letting them sag or rotate forward or back.",
+        "Hold for the prescribed time, then repeat on the other side."
+      ],
       "images": [
         "exercises/Side_Bridge/0.jpg",
         "exercises/Side_Bridge/1.jpg"
@@ -15813,7 +15835,12 @@
       "primary_muscle_group": "abdominals",
       "secondary_muscle_groups": [],
       "equipment": "none",
-      "instructions": [],
+      "instructions": [
+        "Lie on your side with your legs stacked and fully extended, supporting your head with your top hand.",
+        "In one smooth motion, simultaneously raise your legs and lift your upper torso off the floor, bringing your ribs and hips toward each other.",
+        "Squeeze your obliques at the top of the movement, then lower back down under control to the starting position.",
+        "Complete the prescribed reps, then repeat lying on the other side."
+      ],
       "images": [
         "exercises/Side_Jackknife/0.jpg",
         "exercises/Side_Jackknife/1.jpg"

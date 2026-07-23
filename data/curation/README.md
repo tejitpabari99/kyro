@@ -52,16 +52,48 @@ All seven ids referenced above (three overrides + six alias targets — `Barbell
 `Romanian_Deadlift`, `Barbell_Bench_Press_-_Medium_Grip`, `Barbell_Deadlift`, `Good_Morning`,
 `Pullups`) were confirmed present in `data/free-exercise-db/exercises.json` at seed time.
 
-## Deferred to M1-11 (curation pass)
+## M1-11 curation pass
 
-No `exclude` entries are seeded here: identifying exact-duplicate records in the real ~870-row
-dataset is an editorial judgment call the M1-11 task ("Curation pass + bundle-size decision
-point") explicitly owns ("fix via `overrides.json` entries ... excludes for exact duplicates"),
-working off the `curation-report.md` warnings M1-04's build emits. Fabricating an exclude entry
-now, without that report to justify it, would risk silently dropping a legitimate exercise.
-`ExerciseOverrideSchema` fully supports `exclude: true` today (covered by a synthetic case in
-the unit test) — it's simply unused by any real entry yet.
+M1-04's build surfaced exactly 5 missing-instructions warnings (`curation-report.md`) and 0
+missing-image warnings and 0 unmatched-value warnings — the full warning inventory triaged
+below, per the M1-11 task's acceptance gate ("zero unaddressed warnings").
 
-Likewise, no `name` overrides are seeded — 03 §6.3 mentions curation may append equipment
-qualifiers to disambiguate near-identical names (e.g. "(Barbell)"), but that's also an M1-11
-judgment call once the real duplicate/ambiguity list is known.
+**Fixed with real `instructions` overrides (all 5)** — the override schema
+(`src/domain/curation.ts`'s `ExerciseOverrideSchema`) gained a new optional `instructions`
+field for this pass: a non-empty ordered array of step strings that replaces the source
+record's empty `instructions[]` outright, with the exact same "override wins over source"
+precedence every other field already has. Each of the 5 was confirmed against its own bundled
+images (`data/free-exercise-db/images/{id}/{0,1}.jpg`) before writing the steps, to be
+confident the movement being described is actually the one depicted — not written from the
+name alone:
+
+| id | Movement confirmed from images | Why confident enough to write real instructions |
+|---|---|---|
+| `Push_Press` | Barbell front-rack dip-drive-press overhead | Standard, unambiguous barbell technique; images show the front-rack starting position and the overhead lockout finish, consistent with a textbook push press. |
+| `Side_Bridge` | Forearm side plank | The dataset's name for what's universally known as the side plank; images show the classic forearm-supported side-plank position. |
+| `Side_Jackknife` | Side-lying simultaneous leg-raise + torso-lift ("V" fold) | Images show the two frames of the fold (legs+torso together) unambiguously; a standard oblique bodyweight move. |
+| `One-Arm_Kettlebell_Swings` | Single-hand hip-hinge kettlebell swing | Images show the bottom-of-swing hip-hinge and the drive-through position, consistent with the standard one-arm kettlebell swing. |
+| `Iron_Cross` | Dumbbell squat-to-lateral-raise combo (not the gymnastics rings skill of the same name) | Images clearly show a squat holding two dumbbells together in front, then standing while raising both arms out to shoulder height forming a "T"/cross — a real, if less common, combo lift; confirmed via the images rather than assumed from the name (which is misleading — it is not the gymnastic rings "iron cross"). |
+
+No missing-instructions entry was waived instead of fixed — all 5 were well-known/clearly
+depicted enough to write accurate, brief steps for. `curation-report.md`'s "Missing-instructions
+warnings" count is 0 as of this pass.
+
+**No `exclude` entries added.** A pass over the mapped output (873 names) for exact/near-exact
+duplicates found no pair worth excluding — the dataset's apparent near-duplicates
+(`Barbell_Deadlift`/`Romanian_Deadlift`/`Sumo_Deadlift`, `Close-Grip_Barbell_Bench_Press`/
+`Barbell_Bench_Press_-_Medium_Grip`, etc.) are genuinely distinct exercises/variations, not
+duplicate records of the same one. `ExerciseOverrideSchema` fully supports `exclude: true`
+(covered by a synthetic case in the unit test) for if a real duplicate turns up later.
+
+Likewise, no `name` overrides were added — the 20-lift spot-check (`docs/qa/M1-curation.md`)
+found no ambiguous/collision-prone name needing a disambiguating suffix.
+
+## Bundle-size decision (M1-11)
+
+See `docs/qa/M1-curation.md`'s "Bundle-size decision" section for the full before/after
+numbers. Summary: the build pipeline's image settings were tuned down from 600px/q75 to
+500px/q68 (`scripts/build-exercise-db.ts`'s `MAX_WIDTH`/`JPEG_QUALITY` constants), bringing the
+bundled `assets/exercises/` + `assets/exercise-db.json` total from ~46.8 MB to ~32.1 MB (and
+`expo export`'s `dist/assets` from ~45.4 MB to ~30.8 MB) — comfortably clear of the 50 MB
+budget (03 §6.5) without needing the bigger thumbnails-only-bundled fallback (O-10a).

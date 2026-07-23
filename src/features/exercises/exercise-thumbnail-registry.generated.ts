@@ -2,7 +2,7 @@
  * GENERATED FILE — do not hand-edit.
  *
  * Produced by `scripts/generate-exercise-thumbnail-registry.ts` (M1-07) from
- * `assets/exercise-db.json` (dataset version 9bf59514e6268e751a564206466316a4da714bc635643f26c0200411778107ab). One static
+ * `assets/exercise-db.json` (dataset version 6b99c4cb4f2a44e93d7704d7152f16b6d74da96cc4feabefd28f620d979031c6). One static
  * `require(...)` per built-in exercise id that has at least one image — see
  * the generator script's header for why this has to be static requires
  * rather than a dynamic path (Metro has no `require.context`).

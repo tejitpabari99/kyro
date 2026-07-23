@@ -26,13 +26,24 @@ describe('CurationOverridesFileSchema — valid shapes', () => {
           uses_custom_metric: true,
           name: 'Renamed Exercise',
           aliases: ['Alias One', 'Alias Two'],
+          instructions: ['Step one.', 'Step two.'],
         },
       },
       aliases: { AO: 'Some_Id' },
     });
     expect(parsed.overrides.Some_Id.exercise_type).toBe('bodyweight_reps');
     expect(parsed.overrides.Some_Id.aliases).toEqual(['Alias One', 'Alias Two']);
+    expect(parsed.overrides.Some_Id.instructions).toEqual(['Step one.', 'Step two.']);
     expect(parsed.aliases.AO).toBe('Some_Id');
+  });
+
+  it('accepts an override with only instructions (M1-11 missing-instructions fix)', () => {
+    expect(() =>
+      parseCurationOverrides({
+        overrides: { Some_Id: { instructions: ['Step one.'] } },
+        aliases: {},
+      }),
+    ).not.toThrow();
   });
 
   it('accepts an override with only exclude: true', () => {
@@ -88,6 +99,18 @@ describe('CurationOverridesFileSchema — invalid shapes rejected', () => {
     ).toThrow();
   });
 
+  it('rejects an empty instructions array (must supply at least one step)', () => {
+    expect(() =>
+      parseCurationOverrides({ overrides: { X: { instructions: [] } }, aliases: {} }),
+    ).toThrow();
+  });
+
+  it('rejects an empty-string instruction step', () => {
+    expect(() =>
+      parseCurationOverrides({ overrides: { X: { instructions: [''] } }, aliases: {} }),
+    ).toThrow();
+  });
+
   it('rejects an unknown top-level key (strict)', () => {
     expect(() =>
       parseCurationOverrides({ overrides: {}, aliases: {}, extra: true }),
@@ -129,6 +152,25 @@ describe('data/curation/overrides.json (real committed file)', () => {
   it('seeds the "OHP" global alias (03 §2 worked example)', () => {
     const parsed = parseCurationOverrides(json);
     expect(parsed.aliases.OHP).toBe('Barbell_Shoulder_Press');
+  });
+
+  it('seeds real instructions overrides for the 5 M1-04 missing-instructions warnings (M1-11 curation pass)', () => {
+    const parsed = parseCurationOverrides(json);
+    const ids = [
+      'Push_Press',
+      'Side_Bridge',
+      'Side_Jackknife',
+      'One-Arm_Kettlebell_Swings',
+      'Iron_Cross',
+    ];
+    for (const id of ids) {
+      const instructions = parsed.overrides[id]?.instructions;
+      expect(instructions).toBeDefined();
+      expect(instructions?.length).toBeGreaterThan(0);
+      for (const step of instructions ?? []) {
+        expect(step.length).toBeGreaterThan(0);
+      }
+    }
   });
 
   it('every alias target and override id is a non-empty string key', () => {

@@ -21,7 +21,12 @@
  *    triaged during the M1-11 curation pass — none seeded yet, see
  *    `data/curation/README.md`). An override entry may carry its own
  *    `aliases` — extra search terms specific to *that* exercise, folded in
- *    when this override is applied.
+ *    when this override is applied. `instructions`, when present, replaces
+ *    the source record's (possibly empty) `instructions[]` outright — the
+ *    M1-11 curation pass's mechanism for supplying real instruction text on
+ *    the small number of vendored records that ship with none (see
+ *    `data/curation/README.md`'s "M1-11 curation pass" section for the
+ *    specific entries and the rationale behind each).
  *  - `aliases[term]` — **global** alias entries: a search term that isn't
  *    itself tied to any other override (e.g. "OHP" needs no field changes
  *    on `Barbell_Shoulder_Press`, just a search synonym). Value is the
@@ -43,9 +48,15 @@ import { EXERCISE_TYPE_VALUES } from './enums';
 // ---------------------------------------------------------------------------
 
 /**
- * `{ exercise_type?, uses_custom_metric?, name?, aliases?, exclude?: true }`
- * verbatim per 03 §6.4 step 2. `.strict()` so a typo'd key (e.g.
- * `exercize_type`) fails validation instead of silently doing nothing.
+ * `{ exercise_type?, uses_custom_metric?, name?, aliases?, exclude?: true,
+ * instructions? }` — the base shape is 03 §6.4 step 2 verbatim; `instructions`
+ * is an M1-11 curation-pass addition (a real, non-empty list of ordered
+ * step strings) for hand-writing accurate instruction text on the handful
+ * of vendored records that ship with an empty `instructions[]`, exactly the
+ * same "override-file wins over the source value" precedence every other
+ * field already has — not a new mechanism, just one more overridable field.
+ * `.strict()` so a typo'd key (e.g. `exercize_type`) fails validation
+ * instead of silently doing nothing.
  */
 export const ExerciseOverrideSchema = z
   .object({
@@ -54,6 +65,7 @@ export const ExerciseOverrideSchema = z
     name: z.string().min(1).optional(),
     aliases: z.array(z.string().min(1)).optional(),
     exclude: z.literal(true).optional(),
+    instructions: z.array(z.string().min(1)).min(1).optional(),
   })
   .strict();
 

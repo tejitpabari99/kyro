@@ -11,10 +11,14 @@
  *   3. Validate — every enum legal, primary muscle present (hard errors,
  *      `assertValidDataset` throws -> this script exits non-zero); image
  *      files exist on disk (warning only, this script's own fs check).
- *   4. Process every source image with `sharp`: resize to max 600px wide
- *      (never upscale), auto-orient + strip metadata, re-encode JPEG q75,
+ *   4. Process every source image with `sharp`: resize to max 500px wide
+ *      (never upscale), auto-orient + strip metadata, re-encode JPEG q68,
  *      plus one 128px `thumb.jpg` per exercise (from its first image) ->
  *      `assets/exercises/{id}/{0,1}.jpg` + `assets/exercises/{id}/thumb.jpg`.
+ *      (500px/q68 is an M1-11 bundle-size-budget adjustment down from the
+ *      original 600px/q75 — see `docs/qa/M1-curation.md`'s "Bundle-size
+ *      decision" section for the measured before/after numbers and why this
+ *      was chosen over the bigger thumbnails-only-bundled fallback.)
  *   5. Emit `assets/exercise-db.json` (mapped records + a sha256 checksum/
  *      version constant) and `data/curation/curation-report.md` (warnings).
  *
@@ -52,9 +56,15 @@ const CURATION_REPORT_PATH = path.join(REPO_ROOT, 'data/curation/curation-report
 /** Pinned upstream commit, `data/free-exercise-db/VENDORED.md` — static, not read at build time. */
 const SOURCE_COMMIT = 'b0eed061e1c832b3ed815fbaa4b45b3cdc14df49';
 
-const MAX_WIDTH = 600;
+/**
+ * M1-11 bundle-size-budget adjustment: 600 -> 500px max width, q75 -> q68
+ * JPEG quality (see the file-header comment above and
+ * `docs/qa/M1-curation.md`'s "Bundle-size decision" section for the
+ * measured before/after totals this was tuned against).
+ */
+const MAX_WIDTH = 500;
 const THUMB_WIDTH = 128;
-const JPEG_QUALITY = 75;
+const JPEG_QUALITY = 68;
 /** Bounded concurrency for the ~1750 `sharp` operations (image resize is CPU-bound). */
 const IMAGE_CONCURRENCY = 8;
 

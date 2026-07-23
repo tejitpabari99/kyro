@@ -100,7 +100,7 @@ caveat carries forward from this task.
 **Acceptance / test gate:** 03 §5 acceptance: referenced delete → archive path; archived still renders where referenced and is restorable; hard delete removes files (integration test with tmp files); duplicate flow produces an editable custom.
 **Est:** 1 d
 
-### M1-11 — Curation pass + bundle-size decision point
+### M1-11 — Curation pass + bundle-size decision point [done]
 **Description:** Human-in-the-loop data quality pass over the generated dataset, and the size checkpoint.
 **How:** Work through `curation-report.md` warnings: fix via `overrides.json` entries (types, names, aliases, excludes for exact duplicates), re-run build until warnings are triaged. Execute the 20-lift spot-check (bench, squat, deadlift, OHP, pull-up, plank, farmer's walk, treadmill run, …) verifying type/muscles/equipment/images; record results in `docs/qa/M1-curation.md`. Measure final bundled asset size: if > 50 MB → implement the documented fallback (thumbnails bundled, full images on-demand asset pack) — surface the call to the owner (O-10) but default to the fallback plan if no answer, so nothing blocks.
 **References:** 03 §6.4–6.5 + acceptance; 09 M1 scope; 00 open item 3.

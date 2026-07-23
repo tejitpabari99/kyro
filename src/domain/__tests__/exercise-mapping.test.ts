@@ -395,6 +395,16 @@ describe('override precedence — a real overrides.json entry changes the outcom
     expect(curation.overrides['Barbell_Bench_Press_-_Medium_Grip']).toBeUndefined();
     expect(classifyExerciseType(source, undefined)).toBe('weight_reps');
   });
+
+  it('Push_Press: M1-11 instructions override replaces the source record\'s empty instructions[]', () => {
+    const source = requireSource('Push_Press');
+    expect(source.instructions).toEqual([]); // real vendored record ships with none
+    const override = curation.overrides.Push_Press;
+    expect(override?.instructions?.length).toBeGreaterThan(0);
+    const mapped = buildMappedExercise(source, override, []);
+    expect(mapped.instructions).toEqual(override?.instructions);
+    expect(mapped.instructions.length).toBeGreaterThan(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -450,9 +460,30 @@ describe('buildExerciseDataset — real committed data', () => {
     expect(() => assertValidDataset(records)).not.toThrow();
   });
 
-  it('produces a warning for every record with zero instructions (5 known real cases)', () => {
-    expect(warnings.length).toBeGreaterThanOrEqual(5);
-    expect(warnings.some((w) => w.includes('Iron_Cross'))).toBe(true);
+  it('M1-11 curation pass fixed all 5 known real missing-instructions cases -> zero warnings today', () => {
+    // M1-04's build first surfaced 5 real vendored records with an empty
+    // instructions[] (Iron_Cross, One-Arm_Kettlebell_Swings, Push_Press,
+    // Side_Bridge, Side_Jackknife — data/curation/curation-report.md). M1-11
+    // triaged every one of them with a real `instructions` override (see
+    // data/curation/README.md's "M1-11 curation pass" section), so the real
+    // dataset produces zero missing-instructions warnings today.
+    expect(warnings).toEqual([]);
+  });
+
+  it('still produces a missing-instructions warning for a record with no override (synthetic case)', () => {
+    // Proves the warning mechanism itself still works post-fix — using a
+    // synthetic curation file so this doesn't regress to a false-green test
+    // once every real case above got an override.
+    const noInstructionsSource = sourceRecords.find(
+      (r) => r.instructions.length === 0 && !curation.overrides[r.id]?.instructions,
+    );
+    expect(noInstructionsSource).toBeUndefined(); // sanity: confirms the claim above — no real record is unfixed
+    const synthetic = makeSource({ id: 'Synthetic_No_Instructions', instructions: [] });
+    const { warnings: syntheticWarnings } = buildExerciseDataset([synthetic], {
+      overrides: {},
+      aliases: {},
+    });
+    expect(syntheticWarnings).toEqual(['Synthetic_No_Instructions: no instructions']);
   });
 
   it('drops excluded ids entirely (synthetic curation file)', () => {

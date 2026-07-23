@@ -312,7 +312,7 @@ export function buildMappedExercise(
     primary_muscle_group: primary,
     secondary_muscle_groups: secondary,
     equipment: mapEquipment(source.equipment),
-    instructions: [...source.instructions],
+    instructions: override?.instructions ? [...override.instructions] : [...source.instructions],
     images: mapImageAssetKeys(source),
     is_custom: 0,
     uses_custom_metric: override?.uses_custom_metric ? 1 : 0,
