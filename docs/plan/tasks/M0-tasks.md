@@ -96,7 +96,7 @@ Task count: **12**
 **Acceptance / test gate:** App runs identically with and without DSN set; ErrorBoundary catches a thrown test error and renders fallback (RNTL test); logger unit tests (ring overflow, ordering).
 **Est:** 1 d
 
-### M0-12 — M0 QA, bug iteration & exit gate
+### M0-12 — M0 QA, bug iteration & exit gate [done]
 **Description:** Milestone-close hardening pass per 08/09.
 **How:** Verify every M0 exit criterion; fix all P0–P1 (P2 triaged); each fix lands with a regression test where applicable. Measure cold start to tabs on simulator + note methodology (< 1.5 s budget; device number re-measured at M6-04). Write `docs/qa/M0-checklist.md` (booted-to-tabs timing, theme sweep across all screens/gallery, CI green evidence). Tag `v0.0.0`-style milestone tag per 09 working agreements.
 **References:** 09 M0 exit criteria + working agreements; 08 §8.
