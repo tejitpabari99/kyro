@@ -75,6 +75,15 @@ on-demand (`corepack enable && corepack prepare pnpm@latest --activate`) by the 
 that needs it (M0 scaffold), without owner intervention. Docker and the Supabase CLI have no
 such local workaround and require the owner to install them for MC cloud-integration testing.
 
+**Update (M0-01):** `corepack prepare pnpm@latest --activate` fails on this machine — current
+pnpm (11.x) requires Node ≥ 22.13, and this machine has Node v20.20.1 (`node:sqlite` builtin
+module error on startup). Worked around with `corepack prepare pnpm@9 --activate` (resolved to
+pnpm 9.15.9), which is Node-20-compatible and has worked cleanly for `pnpm install` since. If
+Node is ever upgraded to ≥22.13 on this machine, `pnpm@latest` can be re-tried; until then, all
+`pnpm` invocations on this repo resolve to the pinned 9.x line via corepack's local activation
+(no `packageManager` field was added to `package.json`, so a fresh shell must re-run
+`corepack prepare pnpm@9 --activate` if corepack's global state is ever reset).
+
 ## Everything else
 
 Every other task — all of M0 through M7 except the six owner-gated tasks listed above — is

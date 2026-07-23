@@ -8,7 +8,7 @@ Task count: **12**
 
 ---
 
-### M0-01 — Repo init: Expo SDK 56 TypeScript app
+### M0-01 — Repo init: Expo SDK 56 TypeScript app [done]
 **Description:** Initialize the Expo app in the repo root: Expo SDK 56 TS template, pnpm, expo-router v6, strict TypeScript, `@/` path alias.
 **How:** `pnpm create expo-app` with the TS template (or `npx create-expo-app`), then pin SDK 56. Add `expo-dev-client`. Configure `tsconfig.json` with `"strict": true` and `paths: {"@/*": ["src/*"]}` + `babel`/metro alias. `app.json`: name `Kyro`, slug `kyro`, iOS bundle id placeholder `com.tejitpabari.kyro`, `newArchEnabled` default, minimum iOS 16. Add `package.json` scripts: `start`, `ios`, `typecheck`, `lint`, `test`. Do NOT run `eas init` (needs an Expo account — owner-gated, M6).
 **References:** 06 §1 (platform & deps), 00 D2, 10 §1 (bundle id placeholder).
