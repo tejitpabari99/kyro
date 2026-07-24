@@ -41,6 +41,8 @@ const MANY_SETS_WARNING_THRESHOLD = 50;
 
 export interface ExerciseSetTableSectionProps {
   workoutExerciseId: string;
+  /** `workoutExercise.position` — threaded through to `ConnectedSetRow` for M2-08's Next-traversal order key (see `keyboardFocusStore.ts`'s header). */
+  exercisePosition: number;
   exercise: Exercise;
   weightUnit: WeightUnit;
   distanceUnit: DistanceUnit;
@@ -57,6 +59,7 @@ function badgeKindFor(setType: CurrentRowLike['setType']): SetBadgeKind {
 
 export function ExerciseSetTableSection({
   workoutExerciseId,
+  exercisePosition,
   exercise,
   weightUnit,
   distanceUnit,
@@ -153,6 +156,7 @@ export function ExerciseSetTableSection({
             units={units}
             exerciseType={exercise.exerciseType}
             exerciseId={exercise.id}
+            exercisePosition={exercisePosition}
             exerciseName={exercise.name}
             restSeconds={workoutExercise.restSeconds}
             nextSetType={workoutExercise.sets[index + 1]?.setType ?? null}

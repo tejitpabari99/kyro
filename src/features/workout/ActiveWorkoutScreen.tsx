@@ -79,6 +79,7 @@ import {
 } from '@/domain/volume';
 import { useSettingsStore } from '@/features/settings/settings-store';
 import { Button } from '@/ui/Button';
+import { KeyboardAccessoryBar } from '@/ui/KeyboardAccessoryBar';
 import { Snackbar } from '@/ui/Snackbar';
 import { StatColumn } from '@/ui/StatColumn';
 import { useTheme } from '@/ui/theme-provider';
@@ -87,6 +88,7 @@ import { AddToSupersetSheet } from './AddToSupersetSheet';
 import { DurationEditSheet } from './DurationEditSheet';
 import { ExerciseCard } from './ExerciseCard';
 import { ExercisePickerSheet, type ExercisePickerMode } from './ExercisePickerSheet';
+import { KEYBOARD_ACCESSORY_VIEW_ID, useKeyboardFocusStore } from './keyboardFocusStore';
 import { ReorderExercisesSheet } from './ReorderExercisesSheet';
 import { selectActiveWorkout, useActiveWorkoutStore } from './activeWorkoutStore';
 import { useWorkoutStopwatch } from './useWorkoutStopwatch';
@@ -124,6 +126,14 @@ export function ActiveWorkoutScreen({
   const previousValuesMode = useSettingsStore((state) => state.settings.previous_values_mode);
   const warmupInStats = useSettingsStore((state) => state.settings.warmup_in_stats);
   const defaultRestSeconds = useSettingsStore((state) => state.settings.default_rest_seconds);
+  const plateCalcEnabled = useSettingsStore((state) => state.settings.plate_calc.enabled);
+
+  // M2-08: the Calculator button in the shared `KeyboardAccessoryBar` shows
+  // only "when a weight field is focused and plate calculator is enabled"
+  // (02 §4) — the weight-focused half lives in `keyboardFocusStore`
+  // (subscribed here so this screen re-renders when it flips), the setting
+  // half is `plateCalcEnabled` above.
+  const focusedIsWeight = useKeyboardFocusStore((state) => state.focusedIsWeight);
 
   // Resolved exactly once (see file header) — the single source of truth
   // both the stopwatch's initial freeze point and the mount effect's
@@ -398,6 +408,19 @@ export function ActiveWorkoutScreen({
     void useActiveWorkoutStore.getState().removeExercise(workoutExerciseId);
   };
 
+  // M2-08 seam: the plate calculator UI itself is M2-15's job (not yet
+  // built) — this task's own brief calls for "the correct conditional
+  // hook/seam so M2-15 can wire in later," so `onCalculatorPress` is a
+  // labeled stub, same pattern `handleSettingsPress`/`ExerciseCard`'s own
+  // Add-Warm-Up-Sets item already use for their own not-yet-built targets.
+  const handleCalculatorPress = (): void => {
+    Alert.alert('Plate Calculator', 'The plate calculator arrives in M2-15.');
+  };
+
+  const handleNextPress = (): void => {
+    useKeyboardFocusStore.getState().focusNext();
+  };
+
   const handleSettingsPress = (): void => {
     // The workout-settings subset screen is M2-17's job.
     Alert.alert('Workout Settings', 'Workout settings arrive in M2-17.');
@@ -535,11 +558,12 @@ export function ActiveWorkoutScreen({
         <StatColumn testID={`${testID}-sets`} label="Sets" value={String(checkedSetsCount)} />
       </View>
 
-      {/* Body — exercise cards, in workout order (02 §3). */}
+      {/* Body — exercise cards, in workout order (02 §3). `keyboardShouldPersistTaps="handled"` (M2-08, 02 §4): tapping the ✓ check button (or anything else with its own `onPress`) while a set-table `NumericInput` is focused must commit and NOT dismiss the keyboard — RN's default `ScrollView` behavior ('never') swallows the very first tap outside the focused field purely to dismiss the keyboard, before it ever reaches a child `Pressable`; 'handled' lets any touchable that declares a responder (every `Pressable` in this tree does) receive the tap on the first press instead. */}
       <ScrollView
         testID={`${testID}-body`}
         style={styles.body}
         contentContainerStyle={{ padding: spacing['4'], gap: spacing['4'] }}
+        keyboardShouldPersistTaps="handled"
       >
         {workout.exercises.map((workoutExercise) => {
           if (workoutExercise.id in pendingRemovals) {
@@ -556,6 +580,7 @@ export function ActiveWorkoutScreen({
               key={workoutExercise.id}
               testID={`${testID}-exercise-${workoutExercise.id}`}
               workoutExerciseId={workoutExercise.id}
+              exercisePosition={workoutExercise.position}
               exercise={exercise}
               exerciseRepository={exerciseRepository}
               notes={workoutExercise.notes}
@@ -660,6 +685,15 @@ export function ActiveWorkoutScreen({
             position: workoutExercise.position,
           }))}
         onConfirm={handleAddToSupersetConfirm}
+      />
+
+      {/* M2-08: one shared accessory bar for every set-table `NumericInput` in this screen (each passes `KEYBOARD_ACCESSORY_VIEW_ID` as its own `inputAccessoryViewID` — `ConnectedSetRow.tsx`). Calculator shows only when a weight field is focused (`focusedIsWeight`) and the plate-calculator setting is on (02 §4); `onCalculatorPress` is the labeled M2-15 stub above. */}
+      <KeyboardAccessoryBar
+        testID={`${testID}-keyboard-accessory-bar`}
+        nativeID={KEYBOARD_ACCESSORY_VIEW_ID}
+        showCalculator={focusedIsWeight && plateCalcEnabled}
+        onCalculatorPress={handleCalculatorPress}
+        onNextPress={handleNextPress}
       />
     </View>
   );

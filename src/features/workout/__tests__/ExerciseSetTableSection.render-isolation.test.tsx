@@ -91,6 +91,7 @@ describe('ExerciseSetTableSection — per-row typing isolation (06 §8)', () => 
           <ExerciseSetTableSection
             testID="section"
             workoutExerciseId={added!.id}
+            exercisePosition={0}
             exercise={exercise}
             weightUnit="kg"
             distanceUnit="km"

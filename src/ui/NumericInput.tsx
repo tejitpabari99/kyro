@@ -14,6 +14,18 @@
  * "highlight the whole value so the next keystroke replaces it" affordance
  * as a native iOS numeric field — rather than a manual `setSelection` call,
  * since the platform already implements this exact behavior.
+ *
+ * `ref`-forwarded (M2-08) so callers can drive focus imperatively — the
+ * set table's `Next` traversal (`src/features/workout/keyboardFocusStore
+ * .ts`) needs to call `.focus()` on the next field directly rather than
+ * through any state-driven re-render, exactly so the keyboard never
+ * dismisses between fields (06 §8). `onFocus`/`inputAccessoryViewID` are
+ * the other two M2-08 additions: `onFocus` lets the set table track which
+ * field currently has focus (drives the accessory bar's contextual
+ * Calculator button); `inputAccessoryViewID` is what actually attaches a
+ * shared `KeyboardAccessoryBar` to this field. Both optional — omitted by
+ * every non-logger call site (measurements, calculators), which get no
+ * accessory bar and don't need focus tracking.
  */
 import React from 'react';
 import { TextInput, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
@@ -27,6 +39,10 @@ export interface NumericInputProps {
   onChangeText: (text: string) => void;
   /** Fires on blur (focus loss) — the set-table's cells commit their local, uncommitted typed value to the store on this event rather than on every keystroke (06 §5.3/§8: "input state local-first, committed on blur/check/next"). Optional; omit for call sites (measurements, calculators) that don't need a commit boundary. */
   onBlur?: () => void;
+  /** Fires on focus (M2-08) — the set table's `Next` traversal / Calculator-button visibility gate reads this to track which field is currently focused. */
+  onFocus?: () => void;
+  /** Shared `nativeID` of a mounted `KeyboardAccessoryBar` (M2-08, 07 §5) — omit for call sites that don't want an accessory bar. */
+  inputAccessoryViewID?: string;
   mode?: NumericInputMode;
   placeholder?: string;
   autoFocus?: boolean;
@@ -54,18 +70,23 @@ export function sanitizeNumericInput(text: string, mode: NumericInputMode): stri
   );
 }
 
-export function NumericInput({
-  value,
-  onChangeText,
-  onBlur,
-  mode = 'decimal',
-  placeholder,
-  autoFocus,
-  disabled = false,
-  style,
-  testID,
-  accessibilityLabel,
-}: NumericInputProps): React.JSX.Element {
+export const NumericInput = React.forwardRef<TextInput, NumericInputProps>(function NumericInput(
+  {
+    value,
+    onChangeText,
+    onBlur,
+    onFocus,
+    inputAccessoryViewID,
+    mode = 'decimal',
+    placeholder,
+    autoFocus,
+    disabled = false,
+    style,
+    testID,
+    accessibilityLabel,
+  }: NumericInputProps,
+  ref,
+): React.JSX.Element {
   const { colors, typography, spacing, radii } = useTheme();
 
   const handleChangeText = (text: string): void => {
@@ -82,10 +103,13 @@ export function NumericInput({
 
   return (
     <TextInput
+      ref={ref}
       testID={testID}
       value={value}
       onChangeText={handleChangeText}
       onBlur={onBlur}
+      onFocus={onFocus}
+      inputAccessoryViewID={inputAccessoryViewID}
       placeholder={placeholder}
       placeholderTextColor={colors.text.tertiary}
       keyboardType={mode === 'integer' ? 'number-pad' : 'decimal-pad'}
@@ -112,4 +136,4 @@ export function NumericInput({
       ]}
     />
   );
-}
+});

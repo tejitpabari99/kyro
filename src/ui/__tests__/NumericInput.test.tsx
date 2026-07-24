@@ -5,6 +5,7 @@
  */
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
+import type { TextInput } from 'react-native';
 
 import { NumericInput, sanitizeNumericInput } from '../NumericInput';
 import { ThemeProvider } from '../theme-provider';
@@ -35,6 +36,43 @@ describe('NumericInput — smoke render (both themes)', () => {
       </ThemeProvider>,
     );
     expect(screen.getByTestId('weight').props.value).toBe('135');
+  });
+});
+
+describe('NumericInput — M2-08 keyboard-flow seams', () => {
+  it('fires onFocus when focused', async () => {
+    const onFocus = jest.fn();
+    await render(
+      <ThemeProvider preference="dark">
+        <NumericInput value="" onChangeText={() => {}} onFocus={onFocus} testID="weight" />
+      </ThemeProvider>,
+    );
+    await fireEvent(screen.getByTestId('weight'), 'focus');
+    expect(onFocus).toHaveBeenCalledTimes(1);
+  });
+
+  it('forwards inputAccessoryViewID to the underlying TextInput', async () => {
+    await render(
+      <ThemeProvider preference="dark">
+        <NumericInput
+          value=""
+          onChangeText={() => {}}
+          inputAccessoryViewID="shared-bar"
+          testID="weight"
+        />
+      </ThemeProvider>,
+    );
+    expect(screen.getByTestId('weight').props.inputAccessoryViewID).toBe('shared-bar');
+  });
+
+  it('forwards a ref exposing an imperative .focus() to the underlying TextInput', async () => {
+    const ref = React.createRef<TextInput>();
+    await render(
+      <ThemeProvider preference="dark">
+        <NumericInput ref={ref} value="" onChangeText={() => {}} testID="weight" />
+      </ThemeProvider>,
+    );
+    expect(typeof ref.current?.focus).toBe('function');
   });
 });
 

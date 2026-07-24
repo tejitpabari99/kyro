@@ -42,13 +42,24 @@
  * note); the row content is what actually translates via Reanimated,
  * mirroring `src/ui/Sheet.tsx`'s (M0-07) established
  * `Gesture.Pan()`/`useSharedValue` pattern.
+ *
+ * **Keyboard flow (M2-08, 02 §4 / 06 §8):** `fieldRefs`/`onFocusValue`/
+ * `inputAccessoryViewID` are the seams `src/features/workout/
+ * keyboardFocusStore.ts`'s Next-traversal registry needs — this component
+ * stays "dumb" by only ever forwarding them to each value cell's
+ * `NumericInput`, never importing the store itself (`src/ui/**` tokens-only
+ * boundary, 06 §2). `inlineTimerEnabled`/`onDurationTimerPress` add a small
+ * stopwatch-icon button next to TIME-kind cells only (Settings → Inline
+ * Timer) — tapping it is the caller's job (`ConnectedSetRow` opens
+ * `DurationTimerSheet`), this component only renders the affordance.
  */
 import React, { useEffect, useMemo } from 'react';
-import { Check, Trash2 } from 'lucide-react-native';
+import { Check, Timer, Trash2 } from 'lucide-react-native';
 import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
   type StyleProp,
   type TextStyle,
@@ -84,11 +95,21 @@ export interface SetRowProps {
   isCompleted: boolean;
   onChangeValue: (columnKey: string, text: string) => void;
   onBlurValue: (columnKey: string) => void;
+  /** M2-08 — fires when a value cell's `NumericInput` gains focus (see file header). */
+  onFocusValue?: (columnKey: string) => void;
   onPreviousPress: () => void;
   onSetCellPress: () => void;
   onToggleCompleted: () => void;
   onRpePress?: () => void;
   onDelete: () => void;
+  /** M2-08 — per-column `ref` callbacks for each value cell's `NumericInput`, keyed by `column.key`. Supply a referentially-stable map (see `ConnectedSetRow.tsx`'s own `useMemo`) — an inline object recreated every render would thrash the registry (React detaches+reattaches on every ref-callback identity change). */
+  fieldRefs?: Record<string, (instance: TextInput | null) => void>;
+  /** M2-08 — shared `KeyboardAccessoryBar` `nativeID`, forwarded to every value cell's `NumericInput` as its `inputAccessoryViewID`. */
+  inputAccessoryViewID?: string;
+  /** M2-08, Settings → Inline Timer — shows a stopwatch-icon button next to TIME-kind cells when true. */
+  inlineTimerEnabled?: boolean;
+  /** M2-08 — fires when the inline-timer button is tapped, with the TIME column's key. */
+  onDurationTimerPress?: (columnKey: string) => void;
   /**
    * Bump this (e.g. a monotonically increasing counter) to play the
    * blocked-check row shake (02 §4 / 07 §8: "row shakes 300 ms +
@@ -131,11 +152,16 @@ function SetRowImpl({
   isCompleted,
   onChangeValue,
   onBlurValue,
+  onFocusValue,
   onPreviousPress,
   onSetCellPress,
   onToggleCompleted,
   onRpePress,
   onDelete,
+  fieldRefs,
+  inputAccessoryViewID,
+  inlineTimerEnabled,
+  onDurationTimerPress,
   shakeSignal,
   style,
   testID,
@@ -304,6 +330,7 @@ function SetRowImpl({
                     </Text>
                   ) : null}
                   <NumericInput
+                    ref={fieldRefs?.[column.key]}
                     testID={testID ? `${testID}-value-${column.key}` : undefined}
                     accessibilityLabel={`${column.label} field`}
                     mode={inputModeFor(column.kind)}
@@ -311,8 +338,22 @@ function SetRowImpl({
                     placeholder={placeholders[column.key]}
                     onChangeText={(text) => onChangeValue(column.key, text)}
                     onBlur={() => onBlurValue(column.key)}
+                    onFocus={onFocusValue ? () => onFocusValue(column.key) : undefined}
+                    inputAccessoryViewID={inputAccessoryViewID}
                     style={{ minWidth: 56 }}
                   />
+                  {column.kind === 'time' && inlineTimerEnabled && onDurationTimerPress ? (
+                    <Pressable
+                      testID={testID ? `${testID}-timer-${column.key}` : undefined}
+                      accessibilityRole="button"
+                      accessibilityLabel="Inline timer"
+                      onPress={() => onDurationTimerPress(column.key)}
+                      hitSlop={8}
+                      style={{ marginLeft: spacing['1'] }}
+                    >
+                      <Timer size={18} strokeWidth={1.75} color={colors.text.secondary} />
+                    </Pressable>
+                  ) : null}
                 </View>
               </SetCell>
             );

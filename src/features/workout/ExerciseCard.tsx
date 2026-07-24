@@ -40,6 +40,8 @@ import { useActiveWorkoutStore } from './activeWorkoutStore';
 
 export interface ExerciseCardProps {
   workoutExerciseId: string;
+  /** `workoutExercise.position` — threaded through to `ExerciseSetTableSection`/`ConnectedSetRow` for M2-08's Next-traversal order key. */
+  exercisePosition: number;
   exercise: Exercise;
   exerciseRepository: ExerciseRepository;
   notes: string | null;
@@ -59,6 +61,7 @@ export interface ExerciseCardProps {
 
 export function ExerciseCard({
   workoutExerciseId,
+  exercisePosition,
   exercise,
   exerciseRepository,
   notes,
@@ -178,6 +181,7 @@ export function ExerciseCard({
       <ExerciseSetTableSection
         testID={`${testID}-table`}
         workoutExerciseId={workoutExerciseId}
+        exercisePosition={exercisePosition}
         exercise={exercise}
         weightUnit={weightUnit}
         distanceUnit={distanceUnit}

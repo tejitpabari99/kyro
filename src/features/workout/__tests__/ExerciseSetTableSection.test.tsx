@@ -66,6 +66,7 @@ function renderSection(
         <ExerciseSetTableSection
           testID="section"
           workoutExerciseId={workoutExerciseId}
+          exercisePosition={0}
           exercise={exercise}
           weightUnit="kg"
           distanceUnit="km"
@@ -589,6 +590,7 @@ describe('ConnectedSetRow — rep-range targets never auto-commit on check (04 �
           units={{ weightUnit: 'kg', distanceUnit: 'km' }}
           exerciseType={exercise.exerciseType}
           exerciseId={exercise.id}
+          exercisePosition={0}
           exerciseName={exercise.name}
           restSeconds={null}
           nextSetType={null}
@@ -683,6 +685,7 @@ describe('ConnectedSetRow — RPE picker (02 §5)', () => {
           <ExerciseSetTableSection
             testID="section"
             workoutExerciseId={workoutExerciseId}
+            exercisePosition={0}
             exercise={exercise}
             weightUnit="kg"
             distanceUnit="km"
@@ -855,6 +858,7 @@ describe('ConnectedSetRow — unresolved set renders nothing', () => {
           units={{ weightUnit: 'kg', distanceUnit: 'km' }}
           exerciseType={exercise.exerciseType}
           exerciseId={exercise.id}
+          exercisePosition={0}
           exerciseName={exercise.name}
           restSeconds={null}
           nextSetType={null}

@@ -57,8 +57,28 @@
  *    .cancelForSet(setId)` (M2-10 — no-op unless the running timer, if
  *    any, was started by *this* set) then `setCompleted(false)` — counters
  *    reverse for free (same live-derivation as above).
+ *
+ * ## Keyboard flow (M2-08, 02 §4 / 06 §8)
+ *
+ * `fieldRefs` registers each value cell's `NumericInput` with
+ * `keyboardFocusStore`'s Next-traversal registry — memoized (deps: the
+ * stable `columns` reference plus the row's own identity/position) so a
+ * keystroke's re-render never re-triggers React's ref detach/reattach
+ * cycle (which would otherwise thrash `registerField`/`unregisterField` on
+ * every character typed). `handleFocusValue`/`handleBlurValue` mirror focus
+ * state into the store; `exercisePosition` (the exercise's own
+ * `workoutExercise.position`, threaded down from `ActiveWorkoutScreen`) is
+ * what makes traversal order survive an exercise reorder even though
+ * mount order doesn't (see `keyboardFocusStore.ts`'s own header). The
+ * inline-timer button (Settings → Inline Timer, `settings.inline_timer`,
+ * read live here rather than threaded as a prop — same "settings read at
+ * call time" convention M2-10's rest-timer hook already established)
+ * opens `DurationTimerSheet` for whichever TIME column was tapped; its
+ * `onCommit` writes the elapsed seconds through the exact same
+ * values-buffer + `updateSet` path `handlePreviousPress` already uses.
  */
 import React, { useMemo, useState } from 'react';
+import type { TextInput } from 'react-native';
 
 import type { UpdateSetInput } from '@/data/workouts/types';
 import { formatCellValue, parseCellValue, type SetCellUnits } from '@/domain/set-cell-values';
@@ -73,6 +93,8 @@ import { Sheet } from '@/ui/Sheet';
 import { SetRow, type SetBadgeKind } from '@/ui/SetRow';
 
 import { selectWorkoutSet, useActiveWorkoutStore } from './activeWorkoutStore';
+import { DurationTimerSheet } from './DurationTimerSheet';
+import { KEYBOARD_ACCESSORY_VIEW_ID, useKeyboardFocusStore } from './keyboardFocusStore';
 import { shouldStartRestTimer, useRestTimerStore } from './restTimerStore';
 
 export interface ConnectedSetRowProps {
@@ -87,6 +109,8 @@ export interface ConnectedSetRowProps {
   exerciseType: ExerciseType;
   /** The library exercise id (`exercise.id`, not the workout-local `workoutExerciseId`) — `restTimerStore`'s own `exerciseId` field (M2-10). */
   exerciseId: string;
+  /** `workoutExercise.position` — this exercise's own stable position within the workout (M2-08's Next-traversal order key; survives reorders unlike render/mount order, see `keyboardFocusStore.ts`'s header). */
+  exercisePosition: number;
   /** For the rest-timer notification body, "Rest over — set N of {exercise}" (M2-10, 06 §6.2). */
   exerciseName: string;
   /** This workout-exercise's own rest-timer duration (`workoutExercise.restSeconds`) — `null`/`<= 0` means the timer is Off (02 §7, M2-10). */
@@ -108,6 +132,11 @@ const SET_TYPE_MENU: { type: SetType; label: string }[] = [
 
 /** Column keys the check-commit engine ever evaluates — every `SetColumnSpec.key` except `'rpe'` (see `domain/set-check.ts`'s header). */
 const CHECK_COLUMN_KEYS = new Set<SetColumnSpec['key']>(['weight', 'reps', 'distance', 'duration', 'custom']);
+
+/** Column kinds the M2-08 Calculator-button seam treats as "a weight field" (02 §4: "when a weight field is focused"). */
+function isWeightColumnKind(kind: SetColumnSpec['kind']): boolean {
+  return kind === 'weight' || kind === 'weight_added' || kind === 'weight_assisted';
+}
 
 /** 02 §5: helper text for each of the 8 enum RPE values; the `.5` steps are the doc's own "interpolate" instruction made concrete. */
 const RPE_HELPER_TEXT: Record<Rpe, string> = {
@@ -193,6 +222,7 @@ function ConnectedSetRowImpl({
   units,
   exerciseType,
   exerciseId,
+  exercisePosition,
   exerciseName,
   restSeconds,
   nextSetType,
@@ -200,8 +230,10 @@ function ConnectedSetRowImpl({
   testID,
 }: ConnectedSetRowProps): React.JSX.Element | null {
   const set = useActiveWorkoutStore(selectWorkoutSet(setId));
+  const inlineTimerEnabled = useSettingsStore((state) => state.settings.inline_timer);
   const [menuVisible, setMenuVisible] = useState(false);
   const [rpeSheetVisible, setRpeSheetVisible] = useState(false);
+  const [durationTimerColumnKey, setDurationTimerColumnKey] = useState<string | null>(null);
   // Bumped on every blocked check attempt — `SetRow`'s `shakeSignal` prop
   // reads this to replay the 300 ms row shake (07 §8); the value itself
   // carries no meaning beyond "changed."
@@ -255,6 +287,32 @@ function ConnectedSetRowImpl({
     return out;
   }, [columns, previousResult.autofill, units]);
 
+  // M2-08 Next-traversal registry — see file header. `inputColumns` (RPE
+  // excluded, matching "RPE never registers at all" — its cell is a
+  // `Pressable`, not a `NumericInput`) is its own `useMemo` purely so the
+  // `fieldRefs` map below only rebuilds when `columns` itself actually
+  // changes (structurally stable across keystrokes, per
+  // `ExerciseSetTableSection`'s own memoization), never on every render.
+  const inputColumns = useMemo(() => columns.filter((c) => c.kind !== 'rpe'), [columns]);
+  const fieldRefs = useMemo(() => {
+    const map: Record<string, (instance: TextInput | null) => void> = {};
+    inputColumns.forEach((column, columnIndex) => {
+      const columnFieldId = `${setId}:${column.key}`;
+      map[column.key] = (instance) => {
+        if (instance) {
+          useKeyboardFocusStore.getState().registerField(columnFieldId, {
+            focus: () => instance.focus(),
+            order: { exercisePosition, rowIndex: setNumber - 1, columnIndex },
+            isWeight: isWeightColumnKind(column.kind),
+          });
+        } else {
+          useKeyboardFocusStore.getState().unregisterField(columnFieldId);
+        }
+      };
+    });
+    return map;
+  }, [inputColumns, setId, exercisePosition, setNumber]);
+
   if (!set) {
     return null;
   }
@@ -283,6 +341,49 @@ function ConnectedSetRowImpl({
     const canonical = parseCellValue(column.kind, values[columnKey] ?? '', units);
     const patch: UpdateSetInput = {};
     writeCanonical(patch, columnKey, canonical);
+    void useActiveWorkoutStore.getState().updateSet(setId, patch);
+    // M2-08: a real blur (as opposed to `focusNext` calling the *next*
+    // field's `.focus()`, whose resulting blur on this one arrives after
+    // the store already recorded the new field as focused) clears this
+    // field's own focus tracking — `handleBlur`'s own guard (see
+    // `keyboardFocusStore.ts`) no-ops if focus already moved elsewhere.
+    useKeyboardFocusStore.getState().handleBlur(`${setId}:${columnKey}`);
+  };
+
+  const handleFocusValue = (columnKey: string): void => {
+    useKeyboardFocusStore.getState().handleFocus(`${setId}:${columnKey}`);
+  };
+
+  const handleDurationTimerPress = (columnKey: string): void => {
+    setDurationTimerColumnKey(columnKey);
+  };
+
+  const handleDurationTimerDismiss = (): void => {
+    setDurationTimerColumnKey(null);
+  };
+
+  /**
+   * 02 §4: "stop writes the elapsed seconds into the field" — same
+   * values-buffer-then-`updateSet` shape `handlePreviousPress` below
+   * already uses, scoped to just the one TIME column the sheet was opened
+   * for. Non-null assertions rather than defensive early-returns: this
+   * callback only ever runs as `DurationTimerSheet`'s `onCommit`, which is
+   * only reachable while that sheet is visible — and it's only ever
+   * `visible={durationTimerColumnKey != null}` below — so
+   * `durationTimerColumnKey` is guaranteed set. `handleDurationTimerPress`
+   * (the only place that ever writes it) is only ever called by `SetRow`'s
+   * `onDurationTimerPress` with a `column.key` sourced from this row's own
+   * `columns` prop, so the `columns.find` below is guaranteed to resolve
+   * too. Same "genuinely unreachable through the real UI" reasoning
+   * `domain/text-links.ts`'s own coverage note documents, applied here
+   * instead of padding this file with an untestable branch.
+   */
+  const handleDurationTimerCommit = (seconds: number): void => {
+    const columnKey = durationTimerColumnKey!;
+    const column = columns.find((c) => c.key === columnKey)!;
+    setValues((prev) => ({ ...prev, [columnKey]: formatCellValue(column.kind, seconds, units) }));
+    const patch: UpdateSetInput = {};
+    writeCanonical(patch, columnKey, seconds);
     void useActiveWorkoutStore.getState().updateSet(setId, patch);
   };
 
@@ -458,12 +559,23 @@ function ConnectedSetRowImpl({
         isCompleted={set.isCompleted}
         onChangeValue={handleChangeValue}
         onBlurValue={handleBlurValue}
+        onFocusValue={handleFocusValue}
         onPreviousPress={handlePreviousPress}
         onSetCellPress={() => setMenuVisible(true)}
         onToggleCompleted={handleToggleCompleted}
         onRpePress={handleRpePress}
         onDelete={handleDelete}
         shakeSignal={shakeSignal}
+        fieldRefs={fieldRefs}
+        inputAccessoryViewID={KEYBOARD_ACCESSORY_VIEW_ID}
+        inlineTimerEnabled={inlineTimerEnabled}
+        onDurationTimerPress={handleDurationTimerPress}
+      />
+      <DurationTimerSheet
+        testID={testID ? `${testID}-duration-timer-sheet` : undefined}
+        visible={durationTimerColumnKey != null}
+        onDismiss={handleDurationTimerDismiss}
+        onCommit={handleDurationTimerCommit}
       />
       <Sheet
         visible={menuVisible}

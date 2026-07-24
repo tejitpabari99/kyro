@@ -67,6 +67,7 @@ async function renderCard(fixture: Fixture, overrides: Partial<ExerciseCardProps
   const props: ExerciseCardProps = {
     testID: 'card',
     workoutExerciseId: fixture.workoutExerciseId,
+    exercisePosition: 0,
     exercise: fixture.exercise,
     exerciseRepository: fixture.exerciseRepo,
     notes: null,

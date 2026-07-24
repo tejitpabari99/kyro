@@ -9,6 +9,7 @@
  */
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
+import type { TextInput } from 'react-native';
 
 import { SetRow, type SetRowProps } from '../SetRow';
 import { ThemeProvider } from '../theme-provider';
@@ -134,6 +135,85 @@ describe('SetRow — value columns', () => {
     expect(screen.getByTestId('row-value-duration').props.keyboardType).toBe('number-pad');
     expect(screen.getByTestId('row-value-distance').props.keyboardType).toBe('decimal-pad');
     expect(screen.getByTestId('row-value-custom').props.keyboardType).toBe('decimal-pad');
+  });
+});
+
+describe('SetRow — M2-08 keyboard-flow seams', () => {
+  it('fires onFocusValue with the column key when a value cell gains focus', async () => {
+    const onFocusValue = jest.fn();
+    await render(
+      <ThemeProvider preference="dark">
+        <SetRow {...baseProps({ onFocusValue })} />
+      </ThemeProvider>,
+    );
+    await fireEvent(screen.getByTestId('row-value-weight'), 'focus');
+    expect(onFocusValue).toHaveBeenCalledWith('weight');
+  });
+
+  it('forwards inputAccessoryViewID to every value cell', async () => {
+    await render(
+      <ThemeProvider preference="dark">
+        <SetRow {...baseProps({ inputAccessoryViewID: 'shared-bar' })} />
+      </ThemeProvider>,
+    );
+    expect(screen.getByTestId('row-value-weight').props.inputAccessoryViewID).toBe('shared-bar');
+    expect(screen.getByTestId('row-value-reps').props.inputAccessoryViewID).toBe('shared-bar');
+  });
+
+  it('wires fieldRefs as the ref callback for the matching column\'s NumericInput', async () => {
+    const captured: Record<string, TextInput | null> = {};
+    const fieldRefs = {
+      weight: (instance: TextInput | null) => {
+        captured.weight = instance;
+      },
+    };
+    await render(
+      <ThemeProvider preference="dark">
+        <SetRow {...baseProps({ fieldRefs })} />
+      </ThemeProvider>,
+    );
+    expect(captured.weight).not.toBeNull();
+    expect(typeof captured.weight?.focus).toBe('function');
+  });
+
+  it('shows no inline-timer button on TIME columns when inlineTimerEnabled is false/unset', async () => {
+    await render(
+      <ThemeProvider preference="dark">
+        <SetRow
+          {...baseProps({
+            columns: [{ key: 'duration', kind: 'time', label: 'TIME' }],
+          })}
+        />
+      </ThemeProvider>,
+    );
+    expect(screen.queryByTestId('row-timer-duration')).toBeNull();
+  });
+
+  it('shows an inline-timer button on TIME columns when inlineTimerEnabled is true, firing onDurationTimerPress with the column key', async () => {
+    const onDurationTimerPress = jest.fn();
+    await render(
+      <ThemeProvider preference="dark">
+        <SetRow
+          {...baseProps({
+            columns: [{ key: 'duration', kind: 'time', label: 'TIME' }],
+            inlineTimerEnabled: true,
+            onDurationTimerPress,
+          })}
+        />
+      </ThemeProvider>,
+    );
+    await fireEvent.press(screen.getByTestId('row-timer-duration'));
+    expect(onDurationTimerPress).toHaveBeenCalledWith('duration');
+  });
+
+  it('never shows an inline-timer button on non-TIME columns even when inlineTimerEnabled is true', async () => {
+    await render(
+      <ThemeProvider preference="dark">
+        <SetRow {...baseProps({ inlineTimerEnabled: true, onDurationTimerPress: jest.fn() })} />
+      </ThemeProvider>,
+    );
+    expect(screen.queryByTestId('row-timer-weight')).toBeNull();
+    expect(screen.queryByTestId('row-timer-reps')).toBeNull();
   });
 });
 
