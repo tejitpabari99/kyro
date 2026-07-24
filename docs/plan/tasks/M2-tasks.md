@@ -138,7 +138,7 @@ Task count: **19**
 **Acceptance / test gate:** 08 §4.3 suite green (default @100 kg → 20×10/40×8/60×5/80×3; boundary rounding; dumbbell path; floor at bar; percent 0; custom formulas; lb path). UI: rows inserted as W above existing, numbering intact.
 **Est:** 1 d
 
-### M2-17 — Workout settings screens
+### M2-17 — Workout settings screens [done]
 **Description:** Settings → Workouts surface for the M2 subset (storage already exists from M0-10).
 **How:** Screens under `app/(tabs)/profile/settings/`: Default Rest Timer (wheel), Previous Workout Values (any_workout/same_routine), RPE Tracking, Smart Superset Scrolling, Inline Timer, Keep Awake, Sounds (timer sound + 3 volumes), Warm-Up Sets in stats (storage-only effect until M4 stats; volume counter in logger already respects it via M2-04), Plate Calculator + Warm-up Calculator config entries (M2-15/16), Units (from M0-10). Every toggle applies live mid-workout (e.g. RPE column appears/disappears; kg→lb converts displayed values + placeholders with no DB drift).
 **References:** 02 §13 (the 12 settings); 04 §7.
