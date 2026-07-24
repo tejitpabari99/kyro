@@ -37,6 +37,25 @@ DevTools/timestamp profiling harness against. The keyboard-flow *logic* itself (
 order, no explicit blur/dismiss calls in this app's own code, `keyboardShouldPersistTaps`
 wiring) is fully covered by Jest/RNTL instead — see `docs/plan/EXECUTION-LOG.md`'s M2-08 row.
 
+**Update (M2-18, 2026-07-24):** authored `nightly.yml` (full jest + Maestro E2E on a `macos-14`
+runner + dataset-build determinism check) and `e2e/flows/{01,03,07}-*.yaml`. This doesn't
+surface a new blocker *category* — it's the same "no macOS/Xcode/Simulator/Maestro binary"
+constraint the Machine profile above already states — but is worth a precise note on exactly
+how far verification could go: `nightly.yml`'s `maestro` job (macOS runner, Xcode select,
+Maestro CLI install, simulator build via `expo run:ios`, `maestro test`) could only be checked
+by generic YAML parsing (`python3 -c "import yaml; yaml.safe_load(...)"`, same method the
+M0-04 row already used for `ci.yml`) and manual review against Maestro's/GitHub Actions'
+documented syntax from training knowledge — there is no way to dry-run even the job's *shape*
+(e.g. whether `maxim-lobanov/setup-xcode@v1` or `expo run:ios --device "iPhone 15"` actually
+succeed on a real `macos-14` runner) without an actual macOS runner, which this sandbox cannot
+provide under any workaround. By contrast, the `jest` and `dataset-determinism` jobs in that
+same file mirror steps that **were** run for real here (`pnpm test -- --coverage`;
+`pnpm run build:exercises` run twice with a `sha256sum`/`diff` byte-identity check) — see
+`docs/plan/EXECUTION-LOG.md`'s M2-18 row for the exact commands/output. Every testID referenced
+in the three new `e2e/flows/*.yaml` files was grep-confirmed against current source (also
+logged there), which is the furthest a flow file's *content* (as opposed to a real run against a
+rendered app) can be validated from here.
+
 ## Out-of-scope tasks for this autonomous run
 
 The following tasks are explicitly **skipped entirely** in this run. They are owner-gated per

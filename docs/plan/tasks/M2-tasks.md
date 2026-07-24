@@ -146,7 +146,7 @@ Task count: **19**
 **Acceptance / test gate:** 02 §13 acceptance: kg→lb mid-workout converts display + placeholders, DB unchanged, switch-back exact; each setting persists across relaunch; RNTL smoke of the settings screens.
 **Est:** 1 d
 
-### M2-18 — Maestro setup + flows 1 & 3 + nightly CI
+### M2-18 — Maestro setup + flows 1 & 3 + nightly CI [done]
 **Description:** E2E harness and the two critical flows.
 **How:** Maestro installed + `e2e/` structure; testIDs added where needed. Flow 1 (smoke): launch → start empty → add Bench Press → 60/8 → check (pill appears) → add set via previous-tap → check → finish → discard-unchecked dialog → History shows workout with correct volume. Flow 3 (kill-resume): start → check 2 sets → stop/relaunch → mini-bar present → expand → sets checked, duration sane → finish. Flow 7 (semi-manual): debug hook asserting notification scheduling (lock-screen delivery is owner drill O-09). `nightly.yml`: full jest + Maestro on macOS runner + dataset-build determinism check (08 §9). Tag a < 5 min smoke subset.
 **References:** 08 §6 (flows 1, 3, 7), §9 (nightly).
