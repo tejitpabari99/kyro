@@ -82,10 +82,12 @@
  *  - **On successful save, this screen always calls `router.back()`** —
  *    for both create and edit — rather than navigating to a routine-detail
  *    screen, because no such screen exists yet in this milestone (the same
- *    "don't fabricate a fake destination" posture `RoutinesHubScreen.tsx`'s
- *    header documents for its own `/routine/[id]/start` seam). The hub's
- *    own `['routines']`-prefixed queries are invalidated first, so the
- *    list/preview the user lands back on already reflects the save.
+ *    "don't fabricate a fake destination" posture that led `RoutinesHubScreen
+ *    .tsx` to push to a not-yet-built `/routine/[id]/start` route before
+ *    M3-05 landed real routine-starting — see that file's own header for how
+ *    it now works). The hub's own `['routines']`-prefixed queries are
+ *    invalidated first, so the list/preview the user lands back on already
+ *    reflects the save.
  */
 import React, { useMemo, useState } from 'react';
 import { router } from 'expo-router';

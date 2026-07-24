@@ -45,20 +45,25 @@
  * can be added later without this screen's public shape changing if it
  * ever becomes a measured problem.
  *
- * --- Deliberate navigation seams (M3-04/M3-05, don't build fake screens) --
+ * --- Deliberate navigation seams (M3-04, don't build fake screens) --------
  * `+` New Routine and a routine's ⋯ → Edit push to `/routine/new` /
- * `/routine/[id]/edit` — routes M3-04 builds; a routine's ⋯ → Start
- * Routine and the card's own bottom `Start Routine` button push to
- * `/routine/[id]/start` — a route M3-05 builds (starting a routine for
- * real, 04 §2.3, needs its own target screen this task must not fabricate;
- * `/routine/[id]/start` is this task's own choice of path, not spec text —
- * picked over reusing `/workout/active?routineId=...` because that route
- * already exists and would *silently* ignore an unrecognized `routineId`
- * param today, i.e. tapping "Start Routine" would launch a blank empty
- * workout with no error — exactly the "fabricate a fake working screen"
- * outcome the task text says to avoid; a 404-style not-yet-built route is
- * the honest seam instead, same convention `ExerciseBrowseScreen.tsx`
- * documents for `/exercise/new`).
+ * `/routine/[id]/edit` — routes M3-04 builds.
+ *
+ * --- Start Routine (M3-05, 02 §1/§6, 04 §2.3) -------------------------
+ * A routine's ⋯ → Start Routine and the card's own bottom `Start Routine`
+ * button both go through `handleStartRoutine`, which now (M3-05) actually
+ * works: gated by the exact same one-active-workout Resume/Discard-and-
+ * start sheet `handleStartEmptyPress` already implements (02 §1), then
+ * `navigateToLogger(routine.id)` pushes
+ * `/workout/active?routineId=<id>` — the same query-param convention
+ * `retro`/`startTime` already established for that route (`app
+ * /workout/active.tsx`'s own header), rather than a dedicated
+ * `/routine/[id]/start` route file: `ActiveWorkoutScreen`'s mount effect
+ * already owns "how do I start a workout" (resume / empty-start), so a
+ * routine-start is just its third branch, not a new screen to build. (An
+ * earlier version of this screen, before M3-05 landed, pushed to
+ * `/routine/[id]/start` — a route that was never built, i.e. a dead link;
+ * fixed here rather than carried forward.)
  *
  * --- Reorder mode (M3-03, 04 §1) --------------------------------------
  * Both routine and folder ⋯ menus' "Reorder" item now enters a single
@@ -159,8 +164,9 @@ export interface RoutinesHubScreenProps {
   testID?: string;
 }
 
-function navigateToLogger(): void {
-  router.push('/workout/active' as never);
+/** Pushes the active-workout logger — `routineId`, when given, is forwarded as the `?routineId=` query param (`app/workout/active.tsx`'s M3-05 routine-start branch), matching the `retro`/`startTime` param convention that route already established. */
+function navigateToLogger(routineId?: string): void {
+  router.push((routineId ? `/workout/active?routineId=${routineId}` : '/workout/active') as never);
 }
 
 type FolderNameSheetState =
@@ -233,8 +239,13 @@ export function RoutinesHubScreen({
   };
 
   // -- Quick Start / one-active-workout gate (02 §1) — verbatim logic from
-  // the M0-08/M2-05 placeholder this screen replaces, see file header. ----
-  const confirmDiscardAndStartNew = (): void => {
+  // the M0-08/M2-05 placeholder this screen replaces, see file header.
+  // `routineId` (M3-05): when the gate was triggered by "Start Routine"
+  // rather than "Start Empty Workout," this is the routine to actually
+  // start once any existing active workout is out of the way — omitted
+  // (undefined) for the plain empty-start path, matching
+  // `navigateToLogger`'s own optional param. ----------------------------
+  const confirmDiscardAndStartNew = (routineId?: string): void => {
     Alert.alert('Discard workout?', 'All entered data will be lost.', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -246,7 +257,7 @@ export function RoutinesHubScreen({
             .discard()
             .then(async () => {
               await useRestTimerStore.getState().skip();
-              navigateToLogger();
+              navigateToLogger(routineId);
             });
         },
       },
@@ -260,8 +271,8 @@ export function RoutinesHubScreen({
     }
     Alert.alert('Workout in Progress', `"${activeWorkout.title}" is still active.`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Resume', onPress: navigateToLogger },
-      { text: 'Discard & Start New', style: 'destructive', onPress: confirmDiscardAndStartNew },
+      { text: 'Resume', onPress: () => navigateToLogger() },
+      { text: 'Discard & Start New', style: 'destructive', onPress: () => confirmDiscardAndStartNew() },
     ]);
   };
 
@@ -367,11 +378,24 @@ export function RoutinesHubScreen({
     router.push('/routine/new' as never);
   };
 
+  // M3-05 (02 §1): the exact same one-active-workout Resume/Discard-and-
+  // start-new gate `handleStartEmptyPress` implements, scoped to `routine`
+  // instead of an empty start — see file header, "Start Routine".
   const handleStartRoutine = (routine: RoutineSummary): void => {
     setRoutineActions(null);
-    // Seam for M3-05 (starting a routine for real, not built yet) — see
-    // file header.
-    router.push(`/routine/${routine.id}/start` as never);
+    if (!activeWorkout) {
+      navigateToLogger(routine.id);
+      return;
+    }
+    Alert.alert('Workout in Progress', `"${activeWorkout.title}" is still active.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Resume', onPress: () => navigateToLogger() },
+      {
+        text: 'Discard & Start New',
+        style: 'destructive',
+        onPress: () => confirmDiscardAndStartNew(routine.id),
+      },
+    ]);
   };
 
   const handleEditRoutine = (routine: RoutineSummary): void => {

@@ -22,12 +22,28 @@
  * subscribes to the whole `WorkoutExerciseFull` to get the sets list) still
  * hands out the *same* `columns`/`workingIndices`/`previousResults`
  * references to every sibling row, and `React.memo` skips them.
+ *
+ * ## M3-05 routine-target wiring
+ *
+ * See this file's `routineSetToTarget`/`formatRepRangeLabel` helpers and the
+ * `routineTargetsByBucketKey` memo below for the full matching scheme
+ * (exercise-occurrence order, then the same warm-up/working bucket keying
+ * `computeCurrentRowBuckets`/`previous-values.ts` already use for history
+ * matches) — `docs/plan/EXECUTION-LOG.md`'s M3-05 entry has the full design
+ * writeup (fetch-once-per-screen via TanStack Query cache sharing, narrow
+ * `getRoutineFull` function prop rather than the whole `RoutineRepository`).
  */
 import React, { useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import type { Exercise } from '@/data/exercises/types';
-import { computeCurrentRowBuckets, computePreviousValues, type CurrentRowLike } from '@/domain/previous-values';
+import type { RoutineFull, RoutineSet } from '@/data/routines/types';
+import {
+  computeCurrentRowBuckets,
+  computePreviousValues,
+  type CurrentRowLike,
+  type RoutineTargetLike,
+} from '@/domain/previous-values';
 import { columnsForExerciseType } from '@/domain/set-table-columns';
 import type { DistanceUnit, PreviousValuesMode, WeightUnit } from '@/domain/enums';
 import { SetTable } from '@/ui/SetTable';
@@ -50,6 +66,25 @@ export interface ExerciseSetTableSectionProps {
   previousValuesMode: PreviousValuesMode;
   /** The active workout's own `routine_id` (null for empty-start workouts — same_routine then degrades to any_workout automatically, 02 §6, by simply not restricting the query). */
   routineId: string | null;
+  /**
+   * M3-05: this `workoutExerciseId`'s 0-based occurrence index among every
+   * `workout.exercises` sharing `exercise.id`, in position order — computed
+   * once by `ActiveWorkoutScreen` (which already iterates the whole
+   * workout) and threaded down, mirroring `exercisePosition`. Defaults to
+   * `0` (the common case — no duplicated exercise — and harmless whenever
+   * `routineId`/`getRoutineFull` are absent).
+   */
+  exerciseOccurrenceIndex?: number;
+  /**
+   * M3-05: `RoutineRepository.getFull`, unbound — a narrow function prop
+   * (not the whole `RoutineRepository`) mirroring the convention
+   * `RoutineExerciseCard.tsx`'s own `previousSets` prop already established.
+   * Optional: omitted (or `routineId` null) means "never resolve routine
+   * targets," so every row simply keeps `routineTarget: null` — identical
+   * to pre-M3-05 behavior, and how every non-routine (empty-start) workout
+   * still renders today.
+   */
+  getRoutineFull?: (routineId: string) => Promise<RoutineFull | null>;
   /** M2-12: threaded straight through to every `ConnectedSetRow` — fired after that row's own set is successfully checked (never uncheck), for `ActiveWorkoutScreen`'s Smart Superset Scrolling hook. */
   onSetChecked?: () => void;
   testID?: string;
@@ -57,6 +92,22 @@ export interface ExerciseSetTableSectionProps {
 
 function badgeKindFor(setType: CurrentRowLike['setType']): SetBadgeKind {
   return setType;
+}
+
+/** "6-8" combined rep-range label (04 §2.3) — `null` unless both bounds are set (mirrors the reps-XOR-range exclusivity `routine_sets` itself enforces, 05 §3.3). No existing helper formats this combined form — `RoutineSetRow.tsx` only renders the two bound cells separately. */
+function formatRepRangeLabel(start: number | null, end: number | null): string | null {
+  return start !== null && end !== null ? `${start}-${end}` : null;
+}
+
+function routineSetToTarget(routineSet: RoutineSet): RoutineTargetLike {
+  return {
+    weightKg: routineSet.weightKg,
+    reps: routineSet.reps,
+    repRangeLabel: formatRepRangeLabel(routineSet.repRangeStart, routineSet.repRangeEnd),
+    distanceMeters: routineSet.distanceMeters,
+    durationSeconds: routineSet.durationSeconds,
+    customMetric: routineSet.customMetric,
+  };
 }
 
 export function ExerciseSetTableSection({
@@ -68,6 +119,8 @@ export function ExerciseSetTableSection({
   rpeEnabled,
   previousValuesMode,
   routineId,
+  exerciseOccurrenceIndex = 0,
+  getRoutineFull,
   onSetChecked,
   testID,
 }: ExerciseSetTableSectionProps): React.JSX.Element | null {
@@ -108,26 +161,75 @@ export function ExerciseSetTableSection({
         ),
   });
 
-  const currentRows: CurrentRowLike[] = useMemo(
+  // M3-05: fetched once per screen for free via TanStack Query's own
+  // cache-sharing (see file header) — every exercise card started from the
+  // same routine reuses this one cache entry under the same key.
+  const routineQuery = useQuery({
+    queryKey: ['routine', 'full', routineId],
+    queryFn: () => getRoutineFull!(routineId!),
+    enabled: routineId != null && getRoutineFull != null,
+  });
+
+  // Buckets keyed off the sets' own `setType` sequence only (never
+  // `routineTarget`, which is what this bucket map is used to resolve) —
+  // computed ahead of `currentRows` so both `currentRows` (routineTarget
+  // lookup) and the render body (`workingIndex`) can share it.
+  const buckets = useMemo(
     () =>
       workoutExercise
-        ? workoutExercise.sets.map((s) => ({ id: s.id, setType: s.setType, routineTarget: null }))
+        ? computeCurrentRowBuckets(workoutExercise.sets.map((s) => ({ id: s.id, setType: s.setType })))
         : [],
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the structural signature, not the sets array reference (see file header).
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the structural signature, not workoutExercise's own reference (see file header).
     [rowSignature],
   );
 
-  const buckets = useMemo(
-    () => computeCurrentRowBuckets(currentRows),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rowSignature],
+  // M3-05: the matched routine_exercise's own sets, bucketed the identical
+  // way (see file header, "Bucket matching") — `null` whenever there is no
+  // routine, no matching occurrence, or the routine query hasn't resolved
+  // yet, in which case every row below simply falls back to
+  // `routineTarget: null` (identical to pre-M3-05 behavior).
+  const routineTargetsByBucketKey = useMemo(() => {
+    const routine = routineQuery.data;
+    if (!routine) {
+      return null;
+    }
+    const matchingRoutineExercises = routine.exercises.filter((re) => re.exerciseId === exercise.id);
+    const routineExercise = matchingRoutineExercises[exerciseOccurrenceIndex];
+    if (!routineExercise) {
+      return null;
+    }
+    const routineBuckets = computeCurrentRowBuckets(
+      routineExercise.sets.map((s) => ({ id: s.id, setType: s.setType })),
+    );
+    const map = new Map<string, RoutineSet>();
+    routineExercise.sets.forEach((routineSet, index) => {
+      const bucket = routineBuckets[index]!;
+      map.set(`${bucket.isWarmup}:${bucket.bucketIndex}`, routineSet);
+    });
+    return map;
+  }, [routineQuery.data, exercise.id, exerciseOccurrenceIndex]);
+
+  const currentRows: CurrentRowLike[] = useMemo(
+    () =>
+      workoutExercise
+        ? workoutExercise.sets.map((s, index) => {
+            const bucket = buckets[index]!;
+            const routineSet = routineTargetsByBucketKey?.get(`${bucket.isWarmup}:${bucket.bucketIndex}`);
+            return {
+              id: s.id,
+              setType: s.setType,
+              routineTarget: routineSet ? routineSetToTarget(routineSet) : null,
+            };
+          })
+        : [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the structural signature (not workoutExercise's own reference, which also changes on every plain value edit — see file header) plus the two derived maps that themselves only change when the structure/routine data actually does.
+    [rowSignature, buckets, routineTargetsByBucketKey],
   );
 
   const previousResults = useMemo(
     () =>
       computePreviousValues(exercise.exerciseType, currentRows, previousSetsQuery.data ?? [], units),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- rowSignature (not currentRows' own reference) plus the query data/units are the real deps.
-    [rowSignature, previousSetsQuery.data, units, exercise.exerciseType],
+    [currentRows, previousSetsQuery.data, units, exercise.exerciseType],
   );
 
   useEffect(() => {

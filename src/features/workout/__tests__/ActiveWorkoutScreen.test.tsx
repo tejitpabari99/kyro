@@ -35,6 +35,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { ExerciseRepositoryImpl } from '@/data/exercises/exercise-repository';
 import type { ExerciseRepository } from '@/data/exercises/types';
+import { RoutineRepositoryImpl } from '@/data/routines/routine-repository';
 import { openBetterSqlite3Driver } from '@/data/sqlite/driver.better-sqlite3';
 import type { SqliteDriver } from '@/data/sqlite/driver';
 import { migrate } from '@/data/sqlite/migrator';
@@ -221,6 +222,59 @@ describe('ActiveWorkoutScreen — empty start (02 §1)', () => {
 
     const rows = driver.queryAll<{ id: string }>("SELECT id FROM workouts WHERE state = 'active'");
     expect(rows.length).toBe(1);
+  });
+});
+
+describe('ActiveWorkoutScreen — routine-start (M3-05, 02 §1)', () => {
+  it('auto-starts a workout from the routine on mount: title/exercises pre-populated, nothing pre-checked', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+    const routineRepo = new RoutineRepositoryImpl(driver);
+    const exercise = await exerciseRepo.create({
+      name: 'Bench Press',
+      exerciseType: 'weight_reps',
+      primaryMuscleGroup: 'chest',
+    });
+    const routine = await routineRepo.create({
+      title: 'Push Day',
+      exercises: [{ exerciseId: exercise.id, sets: [{ setType: 'normal', weightKg: 60, reps: 8 }] }],
+    });
+
+    await renderScreen(exerciseRepo, {
+      routineId: routine.id,
+      getRoutineFull: (id) => routineRepo.getFull(id),
+    });
+
+    await waitFor(() => expect(screen.getByTestId('screen-title')).toBeTruthy());
+    expect(screen.getByText('Push Day')).toBeTruthy();
+
+    const active = await workoutRepo.getActive();
+    expect(active?.routineId).toBe(routine.id);
+    expect(active?.title).toBe('Push Day');
+    expect(active?.exercises).toHaveLength(1);
+    expect(active?.exercises[0]!.sets[0]!.isCompleted).toBe(false);
+    expect(active?.exercises[0]!.sets[0]!.weightKg).toBeNull();
+  });
+
+  it('resuming an already-active workout ignores routineId — no second workout is started', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+    const routineRepo = new RoutineRepositoryImpl(driver);
+    const routine = await routineRepo.create({ title: 'Push Day' });
+    const existing = await workoutRepo.startEmpty({ title: 'Already Active', startTime: Date.now() });
+    await useActiveWorkoutStore.getState().rehydrate(workoutRepo);
+
+    await renderScreen(exerciseRepo, {
+      routineId: routine.id,
+      getRoutineFull: (id) => routineRepo.getFull(id),
+    });
+
+    await waitFor(() => expect(screen.getByTestId('screen-title')).toBeTruthy());
+    expect(screen.getByText('Already Active')).toBeTruthy();
+
+    const rows = driver.queryAll<{ id: string }>("SELECT id FROM workouts WHERE state = 'active'");
+    expect(rows.length).toBe(1);
+    expect(rows[0]!.id).toBe(existing.id);
   });
 });
 

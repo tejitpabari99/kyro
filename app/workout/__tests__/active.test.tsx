@@ -29,6 +29,14 @@ jest.mock('@/data/exercises/exercise-repository', () => ({
   ExerciseRepositoryImpl: jest.fn().mockImplementation(() => ({ get: jest.fn() })),
 }));
 
+// M3-05: this route now also constructs a real `RoutineRepositoryImpl`
+// (`routineId`/`getRoutineFull` wiring) — mocked the same way the exercise
+// repository above is, since `ActiveWorkoutScreen` itself is mocked out and
+// this test only needs to prove the route hands it *something* real.
+jest.mock('@/data/routines/routine-repository', () => ({
+  RoutineRepositoryImpl: jest.fn().mockImplementation(() => ({ getFull: jest.fn() })),
+}));
+
 const mockActiveWorkoutScreen = jest.fn((_props: unknown) => null);
 jest.mock('@/features/workout/ActiveWorkoutScreen', () => ({
   ActiveWorkoutScreen: (props: unknown) => {
@@ -55,6 +63,28 @@ describe('/workout/active route', () => {
     expect(props.exerciseRepository).toBeTruthy();
     expect(props.retro).toBe(false);
     expect(props.retroStartTime).toBeUndefined();
+  });
+
+  it('wires a real RoutineRepositoryImpl-backed getRoutineFull and an undefined routineId when no query param is given', async () => {
+    await renderRouter('app', { initialUrl: '/workout/active' });
+
+    expect(mockActiveWorkoutScreen).toHaveBeenCalled();
+    const lastCall = mockActiveWorkoutScreen.mock.calls[mockActiveWorkoutScreen.mock.calls.length - 1]!;
+    const props = lastCall[0] as {
+      routineId: string | undefined;
+      getRoutineFull: ((id: string) => Promise<unknown>) | undefined;
+    };
+    expect(props.routineId).toBeUndefined();
+    expect(props.getRoutineFull).toBeInstanceOf(Function);
+  });
+
+  it('parses a routineId query param through to the screen', async () => {
+    await renderRouter('app', { initialUrl: '/workout/active?routineId=some-routine-id' });
+
+    expect(mockActiveWorkoutScreen).toHaveBeenCalled();
+    const lastCall = mockActiveWorkoutScreen.mock.calls[mockActiveWorkoutScreen.mock.calls.length - 1]!;
+    const props = lastCall[0] as { routineId: string | undefined };
+    expect(props.routineId).toBe('some-routine-id');
   });
 
   it('parses retro=1 and a numeric startTime query param through to the screen', async () => {

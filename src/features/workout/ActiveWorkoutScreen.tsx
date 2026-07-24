@@ -61,6 +61,31 @@
  * dependency array sees `workout` change and re-runs, and with the guard
  * never having latched, it would auto-start a brand-new empty workout
  * immediately after the user just discarded one.
+ *
+ * ## Routine-start mode (M3-05, 02 §1)
+ *
+ * `routineId` is the third (after resume and empty-start) mount-effect
+ * branch: when set and no active workout exists on mount, the effect calls
+ * `startFromRoutine(routineId)` instead of `startEmpty`. Mutually exclusive
+ * with `retro` in practice (`RoutinesHubScreen`'s "Start Routine" never
+ * passes `retro=1`) — this screen doesn't need to reject the combination
+ * explicitly since the mount effect's `if (routineId) { ...; return; }`
+ * branch always short-circuits before the retro/empty-start branch runs, so
+ * a theoretical `retro=1&routineId=...` simply behaves as a plain
+ * routine-start (no retro pause-at-0 stopwatch) — `startFromRoutine`'s own
+ * repo signature has no `startTime` param to honor retro with anyway (02
+ * §1 never describes a retro-routine variant; "Repeat Workout" from History,
+ * a distinct future entry point, is the retro-shaped one). Same
+ * `startRequested` single-latch discipline applies: the ref flips to `true`
+ * on *every* branch (resume, routine-start, empty-start), never only one,
+ * per the bug this header already documents above.
+ *
+ * `getRoutineFull` (an unbound `RoutineRepository.getFull`) is separate from
+ * `routineId`-the-start-trigger — it's needed on *every* render of a
+ * routine-started workout (including a resumed one, mount-effect branch
+ * never re-runs) so each `ExerciseCard`/`ExerciseSetTableSection` can
+ * resolve routine-target placeholders (02 §6/04 §2.3) via
+ * `workout.routineId`, not just at the moment of starting.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -71,6 +96,7 @@ import { runOnJS } from 'react-native-reanimated';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { Exercise, ExerciseRepository } from '@/data/exercises/types';
+import type { RoutineFull } from '@/data/routines/types';
 import type { FinishMeta } from '@/data/workouts/types';
 import { autoTitleForDate } from '@/domain/auto-title';
 import { resolveSupersetScrollTarget, supersetVisualsByExerciseId } from '@/domain/supersets';
@@ -110,6 +136,10 @@ export interface ActiveWorkoutScreenProps {
   retro?: boolean;
   /** Retro-log's chosen day (epoch ms); defaults to today at 12:00 local, matching 02 §1's "chosen date 12:00" when the future entry point doesn't override it. */
   retroStartTime?: number;
+  /** M3-05 (02 §1): when set and no active workout exists on mount, starts a workout from this routine instead of an empty one — see file header, "Routine-start mode". */
+  routineId?: string;
+  /** M3-05: `RoutineRepository.getFull`, unbound — threaded down to every `ExerciseCard`/`ExerciseSetTableSection` for routine-target resolution (see file header). Not only for the routine-start path — also needed to resolve targets on a *resumed* routine-started workout. */
+  getRoutineFull?: (routineId: string) => Promise<RoutineFull | null>;
   testID?: string;
 }
 
@@ -130,6 +160,8 @@ export function ActiveWorkoutScreen({
   exerciseRepository,
   retro = false,
   retroStartTime,
+  routineId,
+  getRoutineFull,
   testID = 'active-workout',
 }: ActiveWorkoutScreenProps): React.JSX.Element {
   const { colors, typography, spacing } = useTheme();
@@ -199,12 +231,17 @@ export function ActiveWorkoutScreen({
       // Resume path (02 §1) — a workout is already active, nothing to start.
       return;
     }
+    if (routineId) {
+      // Routine-start path (M3-05, 02 §1) — see file header.
+      void useActiveWorkoutStore.getState().startFromRoutine(routineId);
+      return;
+    }
     const startTime = retro ? retroStartTimeResolved! : Date.now();
     void useActiveWorkoutStore.getState().startEmpty({
       title: autoTitleForDate(new Date(startTime)),
       startTime,
     });
-  }, [loaded, workout, retro, retroStartTimeResolved]);
+  }, [loaded, workout, retro, retroStartTimeResolved, routineId]);
 
   const exerciseIds = useMemo(
     () => (workout ? Array.from(new Set(workout.exercises.map((e) => e.exerciseId))) : []),
@@ -244,6 +281,27 @@ export function ActiveWorkoutScreen({
         : new Map(),
     [workout],
   );
+
+  // M3-05: each workout_exercise's own 0-based occurrence index among every
+  // exercise in the workout sharing its `exerciseId`, in position order —
+  // computed once here (this is the one place that already iterates the
+  // whole workout in position order) and handed to `ExerciseCard` alongside
+  // `exercisePosition`, so `ExerciseSetTableSection` can match its rows
+  // against the correct `routine_exercises` occurrence (see that file's own
+  // "Occurrence matching" header note).
+  const exerciseOccurrenceIndexByWorkoutExerciseId = useMemo(() => {
+    const result = new Map<string, number>();
+    if (!workout) {
+      return result;
+    }
+    const seenCounts = new Map<string, number>();
+    for (const workoutExercise of workout.exercises) {
+      const occurrence = seenCounts.get(workoutExercise.exerciseId) ?? 0;
+      result.set(workoutExercise.id, occurrence);
+      seenCounts.set(workoutExercise.exerciseId, occurrence + 1);
+    }
+    return result;
+  }, [workout]);
 
   // M2-12: Smart Superset Scrolling (02 §8, setting default-on,
   // `settings.smart_superset_scroll`) — `cardOffsetsRef` is populated by
@@ -848,6 +906,10 @@ export function ActiveWorkoutScreen({
                 rpeEnabled={rpeEnabled}
                 previousValuesMode={previousValuesMode}
                 routineId={workout.routineId}
+                exerciseOccurrenceIndex={
+                  exerciseOccurrenceIndexByWorkoutExerciseId.get(workoutExercise.id) ?? 0
+                }
+                getRoutineFull={getRoutineFull}
                 onReorderPress={() => setReorderVisible(true)}
                 onReplacePress={handleReplacePress}
                 onAddToSupersetPress={handleAddToSupersetPress}

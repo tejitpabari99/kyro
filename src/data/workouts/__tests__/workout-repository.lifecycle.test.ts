@@ -13,11 +13,13 @@
  * used for `workouts`/`workout_exercises` before `WorkoutRepository` existed
  * at all.
  */
+import { RoutineRepositoryImpl } from '../../routines/routine-repository';
 import { openBetterSqlite3Driver } from '../../sqlite/driver.better-sqlite3';
 import { migrate } from '../../sqlite/migrator';
 import type { SqliteDriver } from '../../sqlite/driver';
 import {
   ActiveWorkoutExistsError,
+  RoutineNotFoundForWorkoutError,
   WorkoutNotActiveError,
   WorkoutNotFoundError,
 } from '../errors';
@@ -111,8 +113,133 @@ describe('WorkoutRepositoryImpl — lifecycle (M2-01 integration, better-sqlite3
       ).rejects.toBeInstanceOf(ActiveWorkoutExistsError);
     });
 
-    it('startFromRoutine rejects — stub until M3-05', async () => {
-      await expect(repo.startFromRoutine('some-routine-id')).rejects.toThrow(/M3-05/);
+  });
+
+  // -------------------------------------------------------------------
+  // startFromRoutine (M3-05, 02 §1/§6, 04 §2.3)
+  // -------------------------------------------------------------------
+  describe('startFromRoutine', () => {
+    let routineRepo: RoutineRepositoryImpl;
+
+    beforeEach(() => {
+      routineRepo = new RoutineRepositoryImpl(driver);
+    });
+
+    it('pre-populates exercises in order, unchecked bare sets carrying no values, rest/notes/superset copied, routine_id + title + description set', async () => {
+      const routine = await routineRepo.create({
+        title: 'Push Day',
+        notes: 'Warm up shoulders first.',
+        exercises: [
+          {
+            exerciseId: benchId,
+            supersetId: 5,
+            notes: 'Slow eccentric',
+            restSeconds: 120,
+            sets: [
+              { setType: 'warmup', weightKg: 20, reps: 10 },
+              { setType: 'normal', weightKg: 60, reps: 8 },
+              { setType: 'normal', weightKg: 60, reps: 8 },
+            ],
+          },
+          {
+            exerciseId: squatId,
+            supersetId: 5,
+            notes: null,
+            restSeconds: 90,
+            sets: [{ setType: 'normal', weightKg: 100, reps: 5 }],
+          },
+        ],
+      });
+
+      const workout = await repo.startFromRoutine(routine.id);
+
+      expect(workout.state).toBe('active');
+      expect(workout.routineId).toBe(routine.id);
+      expect(workout.title).toBe('Push Day');
+      expect(workout.description).toBe('Warm up shoulders first.');
+      expect(workout.exercises).toHaveLength(2);
+
+      const [bench, squat] = workout.exercises;
+      expect(bench!.exerciseId).toBe(benchId);
+      expect(bench!.position).toBe(0);
+      expect(bench!.supersetId).toBe(5);
+      expect(bench!.notes).toBe('Slow eccentric');
+      expect(bench!.restSeconds).toBe(120);
+      expect(bench!.sets).toHaveLength(3);
+      expect(bench!.sets.map((s) => s.setType)).toEqual(['warmup', 'normal', 'normal']);
+      expect(bench!.sets.map((s) => s.position)).toEqual([0, 1, 2]);
+      // Nothing pre-checked; no target values baked onto the row (02 §1
+      // acceptance: "nothing is pre-checked" — targets are a live-render
+      // concern, see this repo's own M3-05 header note).
+      for (const s of bench!.sets) {
+        expect(s.isCompleted).toBe(false);
+        expect(s.weightKg).toBeNull();
+        expect(s.reps).toBeNull();
+        expect(s.distanceMeters).toBeNull();
+        expect(s.durationSeconds).toBeNull();
+        expect(s.rpe).toBeNull();
+        expect(s.customMetric).toBeNull();
+      }
+
+      expect(squat!.exerciseId).toBe(squatId);
+      expect(squat!.position).toBe(1);
+      expect(squat!.supersetId).toBe(5);
+      expect(squat!.notes).toBeNull();
+      expect(squat!.restSeconds).toBe(90);
+      expect(squat!.sets).toHaveLength(1);
+    });
+
+    it('copies a rep-range set as a bare unchecked "normal" row (target itself lives only on routine_sets, never on sets)', async () => {
+      const routine = await routineRepo.create({
+        title: 'Legs',
+        exercises: [
+          {
+            exerciseId: squatId,
+            sets: [{ setType: 'normal', repRangeStart: 6, repRangeEnd: 8 }],
+          },
+        ],
+      });
+
+      const workout = await repo.startFromRoutine(routine.id);
+
+      const set = workout.exercises[0]!.sets[0]!;
+      expect(set.setType).toBe('normal');
+      expect(set.isCompleted).toBe(false);
+      expect(set.reps).toBeNull();
+      expect(set.weightKg).toBeNull();
+    });
+
+    it('supports a zero-exercise routine (04 §2.1: allowed)', async () => {
+      const routine = await routineRepo.create({ title: 'Empty Routine' });
+
+      const workout = await repo.startFromRoutine(routine.id);
+
+      expect(workout.exercises).toEqual([]);
+      expect(workout.routineId).toBe(routine.id);
+      expect(workout.title).toBe('Empty Routine');
+    });
+
+    it('description is null when the routine has no notes', async () => {
+      const routine = await routineRepo.create({ title: 'No Notes' });
+      const workout = await repo.startFromRoutine(routine.id);
+      expect(workout.description).toBeNull();
+    });
+
+    it('throws RoutineNotFoundForWorkoutError for an unknown routine id', async () => {
+      await expect(repo.startFromRoutine('does-not-exist')).rejects.toBeInstanceOf(
+        RoutineNotFoundForWorkoutError,
+      );
+      expect(await repo.getActive()).toBeNull();
+    });
+
+    it('throws ActiveWorkoutExistsError when a workout is already active — does not bypass the one-active invariant', async () => {
+      const routine = await routineRepo.create({ title: 'Push Day' });
+      const first = await repo.startFromRoutine(routine.id);
+
+      await expect(repo.startFromRoutine(routine.id)).rejects.toBeInstanceOf(
+        ActiveWorkoutExistsError,
+      );
+      expect((await repo.getActive())!.id).toBe(first.id);
     });
   });
 

@@ -282,11 +282,69 @@ describe('RoutinesHubScreen — routine ⋯ menu', () => {
     });
   }
 
-  it('Start Routine (card button) navigates to the M3-05 seam route', async () => {
+  it('Start Routine (card button) navigates straight to /workout/active?routineId=... when nothing is active (M3-05)', async () => {
     await renderHub(repoWithRoutine());
     await fireEvent.press(await screen.findByTestId('routine-card-r1-start'));
 
-    expect(router.push).toHaveBeenCalledWith('/routine/r1/start');
+    expect(Alert.alert).not.toHaveBeenCalled();
+    expect(router.push).toHaveBeenCalledWith('/workout/active?routineId=r1');
+  });
+
+  it('⋯ → Start Routine navigates the same way as the card button (both routes share handleStartRoutine)', async () => {
+    await renderHub(repoWithRoutine());
+    await fireEvent.press(await screen.findByTestId('routine-card-r1-menu'));
+    await fireEvent.press(await screen.findByTestId('routine-actions-sheet-start'));
+
+    expect(router.push).toHaveBeenCalledWith('/workout/active?routineId=r1');
+  });
+
+  it('Start Routine while a workout is already active shows the Resume / Discard-and-start / Cancel gate, scoped to the chosen routine (M3-05, 02 §1)', async () => {
+    useActiveWorkoutStore.setState({ workout: fixtureWorkout({ title: 'Evening Workout' }) });
+    await renderHub(repoWithRoutine());
+
+    await fireEvent.press(await screen.findByTestId('routine-card-r1-start'));
+
+    expect(Alert.alert).toHaveBeenCalledWith(
+      'Workout in Progress',
+      '"Evening Workout" is still active.',
+      expect.arrayContaining([
+        expect.objectContaining({ text: 'Cancel' }),
+        expect.objectContaining({ text: 'Resume' }),
+        expect.objectContaining({ text: 'Discard & Start New' }),
+      ]),
+    );
+    expect(router.push).not.toHaveBeenCalled();
+  });
+
+  it('Start Routine — Discard & Start New discards the active workout then navigates to the CHOSEN routine, never an empty workout (M3-05 fix)', async () => {
+    const discard = jest.fn().mockResolvedValue(undefined);
+    useActiveWorkoutStore.setState({ workout: fixtureWorkout(), discard });
+    await renderHub(repoWithRoutine());
+
+    await fireEvent.press(await screen.findByTestId('routine-card-r1-start'));
+    await pressAlertButton('Discard & Start New');
+
+    expect(Alert.alert).toHaveBeenCalledWith(
+      'Discard workout?',
+      'All entered data will be lost.',
+      expect.any(Array),
+    );
+    expect(discard).not.toHaveBeenCalled();
+
+    await pressAlertButton('Discard');
+
+    expect(discard).toHaveBeenCalledTimes(1);
+    expect(router.push).toHaveBeenCalledWith('/workout/active?routineId=r1');
+  });
+
+  it('Start Routine — Resume navigates to the existing active workout, not the newly-chosen routine', async () => {
+    useActiveWorkoutStore.setState({ workout: fixtureWorkout({ title: 'Evening Workout' }) });
+    await renderHub(repoWithRoutine());
+
+    await fireEvent.press(await screen.findByTestId('routine-card-r1-start'));
+    await pressAlertButton('Resume');
+
+    expect(router.push).toHaveBeenCalledWith('/workout/active');
   });
 
   it('⋯ → Edit navigates to the M3-04 editor seam route', async () => {

@@ -43,6 +43,23 @@ export class ActiveWorkoutExistsError extends Error {
   }
 }
 
+/**
+ * Thrown by `startFromRoutine` (M3-05) when `routineId` does not resolve to
+ * a `routines` row. Named (and kept) separately from
+ * `src/data/routines/errors.ts`'s own `RoutineNotFoundError` rather than
+ * imported from there — mirrors `RoutineRepositoryImpl.createFromWorkout`'s
+ * own `WorkoutNotFoundForRoutineError` (defined in `data/routines/errors.ts`,
+ * not imported from `data/workouts/errors.ts`): each repository keeps its
+ * own error classes self-contained rather than depending on a sibling
+ * repository's module, even for a lookup of a sibling table's row.
+ */
+export class RoutineNotFoundForWorkoutError extends Error {
+  constructor(public readonly routineId: string) {
+    super(`Routine "${routineId}" was not found (startFromRoutine).`);
+    this.name = 'RoutineNotFoundForWorkoutError';
+  }
+}
+
 /** Thrown when a `workout_exercises` id (optionally scoped to a `workoutId`) does not resolve to a row. */
 export class WorkoutExerciseNotFoundError extends Error {
   constructor(public readonly id: string) {

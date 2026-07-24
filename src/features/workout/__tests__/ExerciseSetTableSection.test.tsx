@@ -24,6 +24,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { ExerciseRepositoryImpl } from '@/data/exercises/exercise-repository';
 import type { Exercise } from '@/data/exercises/types';
+import { RoutineRepositoryImpl } from '@/data/routines/routine-repository';
 import type { UpdateSetInput } from '@/data/workouts/types';
 import { openBetterSqlite3Driver } from '@/data/sqlite/driver.better-sqlite3';
 import type { SqliteDriver } from '@/data/sqlite/driver';
@@ -616,6 +617,149 @@ describe('ExerciseSetTableSection — deleting the set a running rest timer belo
 
     expect(useRestTimerStore.getState().timer).toEqual(runningTimer);
     expect(cancelNotification).not.toHaveBeenCalled();
+  });
+});
+
+describe('ExerciseSetTableSection — routine targets as placeholders end-to-end (M3-05, 02 §1/§6, 04 §2.3)', () => {
+  it('a weight+single-rep routine target renders as PREVIOUS and auto-commits on check (P6, `00` decision row)', async () => {
+    const driver = openBetterSqlite3Driver(':memory:');
+    migrate(driver);
+    const exerciseRepo = new ExerciseRepositoryImpl(driver);
+    const workoutRepo = new WorkoutRepositoryImpl(driver, {});
+    const routineRepo = new RoutineRepositoryImpl(driver);
+    const exercise = await exerciseRepo.create({
+      name: 'Bench Press',
+      exerciseType: 'weight_reps',
+      primaryMuscleGroup: 'chest',
+    });
+
+    const routine = await routineRepo.create({
+      title: 'Push Day',
+      exercises: [{ exerciseId: exercise.id, sets: [{ setType: 'normal', weightKg: 60, reps: 8 }] }],
+    });
+
+    const workout = await workoutRepo.startFromRoutine(routine.id);
+    await useActiveWorkoutStore.getState().rehydrate(workoutRepo);
+    const workoutExerciseId = workout.exercises[0]!.id;
+
+    // Nothing is pre-checked (02 §1 acceptance) and no value is baked onto
+    // the row itself — only the live routine-target lookup should render it.
+    expect(workout.exercises[0]!.sets[0]!.weightKg).toBeNull();
+    expect(workout.exercises[0]!.sets[0]!.isCompleted).toBe(false);
+
+    await renderSection(workoutExerciseId, exercise, {
+      routineId: routine.id,
+      getRoutineFull: (id) => routineRepo.getFull(id),
+    });
+
+    await waitFor(() => expect(screen.getByText('60kg × 8')).toBeTruthy());
+
+    // Nothing typed — checking commits the routine-target placeholder (P6).
+    await fireEvent.press(screen.getByTestId('section-row-0-check'));
+
+    expect(screen.getByTestId('section-row-0-check').props.accessibilityState.checked).toBe(true);
+    const active = await workoutRepo.getActive();
+    const committed = active!.exercises[0]!.sets[0]!;
+    expect(committed.weightKg).toBe(60);
+    expect(committed.reps).toBe(8);
+  });
+
+  it('a rep-range routine target renders "6-8" and never auto-commits reps on check (04 §2.3) — real routine data flowing end-to-end', async () => {
+    const driver = openBetterSqlite3Driver(':memory:');
+    migrate(driver);
+    const exerciseRepo = new ExerciseRepositoryImpl(driver);
+    const workoutRepo = new WorkoutRepositoryImpl(driver, {});
+    const routineRepo = new RoutineRepositoryImpl(driver);
+    const exercise = await exerciseRepo.create({
+      name: 'Pull-Up',
+      exerciseType: 'reps_only',
+      primaryMuscleGroup: 'lats',
+    });
+
+    const routine = await routineRepo.create({
+      title: 'Pull Day',
+      exercises: [
+        { exerciseId: exercise.id, sets: [{ setType: 'normal', repRangeStart: 6, repRangeEnd: 8 }] },
+      ],
+    });
+
+    const workout = await workoutRepo.startFromRoutine(routine.id);
+    await useActiveWorkoutStore.getState().rehydrate(workoutRepo);
+    const workoutExerciseId = workout.exercises[0]!.id;
+
+    await renderSection(workoutExerciseId, exercise, {
+      routineId: routine.id,
+      getRoutineFull: (id) => routineRepo.getFull(id),
+    });
+
+    await waitFor(() => expect(screen.getByText('6-8')).toBeTruthy());
+
+    // Blocked: a range is a target, not a committable value (04 §2.3).
+    await fireEvent.press(screen.getByTestId('section-row-0-check'));
+    expect(screen.getByTestId('section-row-0-check').props.accessibilityState.checked).toBe(false);
+    expect(warnInvalid).toHaveBeenCalledTimes(1);
+    const blocked = await workoutRepo.getActive();
+    expect(blocked!.exercises[0]!.sets[0]!.reps).toBeNull();
+
+    // Typing an actual value inside the shown range still commits normally.
+    await fireEvent.changeText(screen.getByTestId('section-row-0-value-reps'), '7');
+    await fireEvent.press(screen.getByTestId('section-row-0-check'));
+    expect(screen.getByTestId('section-row-0-check').props.accessibilityState.checked).toBe(true);
+    const committed = await workoutRepo.getActive();
+    expect(committed!.exercises[0]!.sets[0]!.reps).toBe(7);
+  });
+
+  it('same_routine mode shows the routine-correct PREVIOUS when the same exercise appears in two routines with different loads (02 §6 acceptance)', async () => {
+    const driver = openBetterSqlite3Driver(':memory:');
+    migrate(driver);
+    const exerciseRepo = new ExerciseRepositoryImpl(driver);
+    const workoutRepo = new WorkoutRepositoryImpl(driver, {});
+    const routineRepo = new RoutineRepositoryImpl(driver);
+    const exercise = await exerciseRepo.create({
+      name: 'Bench Press',
+      exerciseType: 'weight_reps',
+      primaryMuscleGroup: 'chest',
+    });
+
+    const routineA = await routineRepo.create({
+      title: 'Routine A',
+      exercises: [{ exerciseId: exercise.id, sets: [{ setType: 'normal' }] }],
+    });
+    const routineB = await routineRepo.create({
+      title: 'Routine B',
+      exercises: [{ exerciseId: exercise.id, sets: [{ setType: 'normal' }] }],
+    });
+
+    // A completed workout started from Routine A, logging a lighter load...
+    const workoutA = await workoutRepo.startFromRoutine(routineA.id);
+    const setA = workoutA.exercises[0]!.sets[0]!;
+    await workoutRepo.updateSet(setA.id, { weightKg: 50, reps: 5 });
+    await workoutRepo.setCompleted(setA.id, true);
+    await workoutRepo.finish(workoutA.id);
+
+    // ...and a completed workout started from Routine B (more recent
+    // overall), logging a heavier load for the *same* exercise.
+    const workoutB = await workoutRepo.startFromRoutine(routineB.id);
+    const setB = workoutB.exercises[0]!.sets[0]!;
+    await workoutRepo.updateSet(setB.id, { weightKg: 80, reps: 3 });
+    await workoutRepo.setCompleted(setB.id, true);
+    await workoutRepo.finish(workoutB.id);
+
+    // Now logging a brand-new workout started from Routine A again.
+    const currentWorkout = await workoutRepo.startFromRoutine(routineA.id);
+    await useActiveWorkoutStore.getState().rehydrate(workoutRepo);
+    const workoutExerciseId = currentWorkout.exercises[0]!.id;
+
+    await renderSection(workoutExerciseId, exercise, {
+      routineId: routineA.id,
+      previousValuesMode: 'same_routine',
+      getRoutineFull: (id) => routineRepo.getFull(id),
+    });
+
+    // Routine-correct PREVIOUS: Routine A's own 50kg x 5, never Routine B's
+    // more-recent-overall 80kg x 3 (02 §6 acceptance box, verbatim).
+    await waitFor(() => expect(screen.getByText('50kg × 5')).toBeTruthy());
+    expect(screen.queryByText('80kg × 3')).toBeNull();
   });
 });
 

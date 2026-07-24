@@ -22,17 +22,36 @@
  * future M4-05 entry point can navigate here with
  * `router.push('/workout/active?retro=1&startTime=...')` without this
  * route file changing.
+ *
+ * `routineId` query param (M3-05, 02 §1): `RoutinesHubScreen`'s "Start
+ * Routine" navigates here with `router.push('/workout/active?routineId=...')`
+ * — the exact same query-param convention as `retro`/`startTime` above,
+ * rather than a dedicated `/routine/[id]/start` route (see
+ * `RoutinesHubScreen.tsx`'s own file header for the reasoning: this route
+ * already exists and `ActiveWorkoutScreen` already owns the "how do I start
+ * a workout" mount-effect logic, so a routine-start is just a third branch
+ * of that same effect, not a new screen). This file now also constructs the
+ * real `RoutineRepositoryImpl` (mirrors `app/(tabs)/workout/index.tsx`'s own
+ * construction) — needed both to *start* from a routine and, via
+ * `getRoutineFull`, to resolve routine-target placeholders on every render
+ * of a routine-started workout (including a resumed one).
  */
 import React, { useMemo } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 
 import { ExerciseRepositoryImpl } from '@/data/exercises/exercise-repository';
+import { RoutineRepositoryImpl } from '@/data/routines/routine-repository';
 import { getAppDriver } from '@/data/sqlite/boot';
 import { ActiveWorkoutScreen } from '@/features/workout/ActiveWorkoutScreen';
 
 export default function ActiveWorkoutRoute(): React.JSX.Element {
-  const { retro, startTime } = useLocalSearchParams<{ retro?: string; startTime?: string }>();
+  const { retro, startTime, routineId } = useLocalSearchParams<{
+    retro?: string;
+    startTime?: string;
+    routineId?: string;
+  }>();
   const repository = useMemo(() => new ExerciseRepositoryImpl(getAppDriver()), []);
+  const routineRepository = useMemo(() => new RoutineRepositoryImpl(getAppDriver()), []);
 
   const parsedStartTime = startTime ? Number(startTime) : undefined;
 
@@ -45,6 +64,8 @@ export default function ActiveWorkoutRoute(): React.JSX.Element {
           ? parsedStartTime
           : undefined
       }
+      routineId={routineId}
+      getRoutineFull={(id) => routineRepository.getFull(id)}
     />
   );
 }

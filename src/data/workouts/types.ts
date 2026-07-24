@@ -209,7 +209,22 @@ export interface PreviousSet {
 export interface WorkoutRepositoryLifecycle {
   getActive(): Promise<WorkoutFull | null>;
   startEmpty(input: { title: string; startTime: number }): Promise<WorkoutFull>;
-  /** Stub — lands in M3-05 (05 §6, M2-01 task text). Always rejects today. */
+  /**
+   * M3-05 (02 §1, §6; 04 §2.3; 05 §3.3/§6): creates an active workout
+   * pre-populated from `routineId` — exercises in position order
+   * (`exerciseId`/`supersetId`/`notes`/`restSeconds` copied verbatim), each
+   * exercise's `routine_sets` copied as bare **unchecked** `sets` rows
+   * (`setType`/`position` only — every value field `NULL`, matching
+   * `addExercises`'s row-creation shape; see `workout-repository.ts`'s
+   * header for why targets themselves are never stored on `sets`).
+   * `title` = the routine's title, `description` = the routine's `notes`
+   * (02 §1's "routine note pre-fills each run" — mid-workout edits touch
+   * only `workouts.description`, never `routines.notes`), `routine_id` set.
+   * Same one-active-workout invariant as `startEmpty` (throws
+   * {@link ActiveWorkoutExistsError}); throws
+   * `RoutineNotFoundForWorkoutError` (`./errors.ts`) when `routineId`
+   * doesn't resolve to a `routines` row.
+   */
   startFromRoutine(routineId: string): Promise<WorkoutFull>;
   discard(id: string): Promise<void>;
   finish(id: string, meta?: FinishMeta): Promise<WorkoutFull>;

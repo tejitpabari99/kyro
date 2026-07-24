@@ -20,6 +20,7 @@
  * `activeWorkoutStore.crash-safety.test.ts`, since it is a slower,
  * differently-shaped property test.
  */
+import { RoutineRepositoryImpl } from '@/data/routines/routine-repository';
 import { openBetterSqlite3Driver } from '@/data/sqlite/driver.better-sqlite3';
 import { migrate } from '@/data/sqlite/migrator';
 import type { SqliteDriver } from '@/data/sqlite/driver';
@@ -164,6 +165,41 @@ describe('activeWorkoutStore (M2-03)', () => {
       expect(store.getState().error).toBeInstanceOf(DataError);
       expect(store.getState().workout?.id).toBe(first!.id);
       // Only one active row in the DB.
+      expect(driver.queryAll(`SELECT id FROM workouts WHERE state = 'active'`)).toHaveLength(1);
+    });
+  });
+
+  describe('startFromRoutine (M3-05)', () => {
+    it('creates an active workout pre-populated from the routine in the draft and in the DB', async () => {
+      const routineRepo = new RoutineRepositoryImpl(driver);
+      const routine = await routineRepo.create({
+        title: 'Push Day',
+        exercises: [{ exerciseId: benchId, sets: [{ setType: 'normal', weightKg: 60, reps: 8 }] }],
+      });
+
+      await store.getState().rehydrate(repository);
+      const workout = await store.getState().startFromRoutine(routine.id);
+
+      expect(workout).not.toBeNull();
+      expect(store.getState().workout?.routineId).toBe(routine.id);
+      expect(store.getState().workout?.title).toBe('Push Day');
+      expect(store.getState().workout?.exercises).toHaveLength(1);
+      const row = rawWorkout(driver, workout!.id);
+      expect(row).toMatchObject({ title: 'Push Day', state: 'active', routine_id: routine.id });
+    });
+
+    it('a startFromRoutine while a workout is already active surfaces a DataError and leaves the draft alone', async () => {
+      const routineRepo = new RoutineRepositoryImpl(driver);
+      const routine = await routineRepo.create({ title: 'Push Day' });
+
+      await store.getState().rehydrate(repository);
+      const first = await store.getState().startEmpty({ title: 'First', startTime: 1 });
+
+      const result = await store.getState().startFromRoutine(routine.id);
+
+      expect(result).toBeNull();
+      expect(store.getState().error).toBeInstanceOf(DataError);
+      expect(store.getState().workout?.id).toBe(first!.id);
       expect(driver.queryAll(`SELECT id FROM workouts WHERE state = 'active'`)).toHaveLength(1);
     });
   });

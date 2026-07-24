@@ -38,6 +38,7 @@ import { Clock, Ellipsis } from 'lucide-react-native';
 import { Pressable, Text, View } from 'react-native';
 
 import type { Exercise, ExerciseRepository } from '@/data/exercises/types';
+import type { RoutineFull } from '@/data/routines/types';
 import type { DistanceUnit, PreviousValuesMode, WeightUnit } from '@/domain/enums';
 import type { SupersetVisual } from '@/domain/supersets';
 import { Button } from '@/ui/Button';
@@ -70,6 +71,10 @@ export interface ExerciseCardProps {
   rpeEnabled: boolean;
   previousValuesMode: PreviousValuesMode;
   routineId: string | null;
+  /** M3-05: threaded straight through to `ExerciseSetTableSection` — see that file's own doc comment. */
+  exerciseOccurrenceIndex?: number;
+  /** M3-05: threaded straight through to `ExerciseSetTableSection` — see that file's own doc comment. */
+  getRoutineFull?: (routineId: string) => Promise<RoutineFull | null>;
   onReorderPress: () => void;
   onReplacePress: (workoutExerciseId: string) => void;
   onAddToSupersetPress: (workoutExerciseId: string) => void;
@@ -92,6 +97,8 @@ export function ExerciseCard({
   rpeEnabled,
   previousValuesMode,
   routineId,
+  exerciseOccurrenceIndex,
+  getRoutineFull,
   onReorderPress,
   onReplacePress,
   onAddToSupersetPress,
@@ -208,6 +215,8 @@ export function ExerciseCard({
         rpeEnabled={rpeEnabled}
         previousValuesMode={previousValuesMode}
         routineId={routineId}
+        exerciseOccurrenceIndex={exerciseOccurrenceIndex}
+        getRoutineFull={getRoutineFull}
         onSetChecked={onSetChecked}
       />
 

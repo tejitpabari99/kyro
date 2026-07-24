@@ -114,6 +114,50 @@
  *   value field — a wholesale "different exercise, same empty slots" reset.
  *   `notes`/`restSeconds`/`supersetId` are left untouched (conservative
  *   reading — the spec only calls out set values/placeholders).
+ *
+ * ## M3-05 addition — `startFromRoutine`
+ *
+ * - **Routine data access: raw SQL against `routines`/`routine_exercises`/
+ *   `routine_sets`, not a `RoutineRepository` dependency.** Mirrors
+ *   `RoutineRepositoryImpl.createFromWorkout`'s own already-established
+ *   choice in the opposite direction (`data/routines/routine-repository.ts`'s
+ *   header: "`src/data/routines/` has no reason to take a same-layer
+ *   sibling repository as a constructor dependency when the three SELECTs
+ *   it needs are this simple, and it keeps this repository constructible
+ *   with only a `SqliteDriver`, same as every other one") — the identical
+ *   reasoning applies here, symmetrically: three read-only `SELECT`s
+ *   (`routines`, `routine_exercises`, `routine_sets`) don't justify adding
+ *   `RoutineRepository` to this class's constructor, which would also
+ *   force every `WorkoutRepositoryImpl` construction site (including every
+ *   test in `__tests__/`) to also construct/inject a `RoutineRepository`
+ *   just to satisfy the type.
+ * - **Targets are never copied onto the new `sets` rows** — only
+ *   `set_type`/`position` (all value fields stay `NULL`), same "previous
+ *   values as placeholders is a display concept, never baked into stored
+ *   rows" convention `addExercises` already established above; a routine
+ *   target is resolved live at render time by the logger
+ *   (`ExerciseSetTableSection.tsx`) looking up the source routine via
+ *   `workout.routineId`, exactly parallel to how `previousSets` resolves
+ *   live from history.
+ * - **Exercise/set positions are renumbered 0-based contiguous from the
+ *   source routine's own `position ASC` read order**, not copied verbatim
+ *   — defensively matches every other position-owning mutator in this file
+ *   (`addExercises`, `renumberExercisePositions`, …) rather than trusting
+ *   the routine's stored positions are already gap-free.
+ * - **`superset_id` is copied verbatim**, no remapping — a routine's
+ *   `superset_id` is not a globally-unique id, just "the lowest `position`
+ *   among the group's current members" (same scheme
+ *   `ActiveWorkoutScreen.tsx`'s `handlePickerAdd`/`handleAddToSupersetConfirm`
+ *   use for workouts), and since exercises are copied in the same order at
+ *   the same 0-based positions, the source routine's own superset-group
+ *   position-based ids remain correct unchanged on the new workout.
+ * - **`title`/`description`** come from the routine's `title`/`notes` (02
+ *   §1: "title = routine title"; this task's own reading of "routine note
+ *   pre-fills each run" — `workouts.description` is the only workout-level
+ *   note field, `RoutineFull.notes` the only routine-level one). Copied
+ *   once at start time only — mid-workout edits to `workouts.description`
+ *   never write back to `routines.notes` (`updateMeta` already only ever
+ *   touches the `workouts` row).
  */
 import type { Rpe, SetType } from '@/domain/enums';
 
@@ -122,6 +166,7 @@ import type { SqliteDriver } from '../sqlite/driver';
 import {
   ActiveWorkoutExistsError,
   ReorderMismatchError,
+  RoutineNotFoundForWorkoutError,
   SetNotFoundError,
   WorkoutExerciseNotFoundError,
   WorkoutNotActiveError,
@@ -341,11 +386,85 @@ export class WorkoutRepositoryImpl implements WorkoutRepository {
     return (await this.getFull(id))!;
   }
 
-  // WorkoutRepositoryLifecycle's signature is async (05 §6); this stub has
-  // no `await` since it always throws synchronously (still returns a
-  // rejected Promise, per normal `async function` semantics).
-  async startFromRoutine(_routineId: string): Promise<WorkoutFull> {
-    throw new Error('startFromRoutine is not implemented yet — lands in M3-05.');
+  async startFromRoutine(routineId: string): Promise<WorkoutFull> {
+    const active = await this.getActive();
+    if (active) {
+      throw new ActiveWorkoutExistsError(active.id);
+    }
+
+    const routineRow = this.driver.queryAll<{ id: string; title: string; notes: string | null }>(
+      `SELECT id, title, notes FROM routines WHERE id = ?`,
+      [routineId],
+    )[0];
+    if (!routineRow) {
+      throw new RoutineNotFoundForWorkoutError(routineId);
+    }
+
+    const routineExerciseRows = this.driver.queryAll<{
+      id: string;
+      exercise_id: string;
+      superset_id: number | null;
+      notes: string | null;
+      rest_seconds: number | null;
+    }>(
+      `SELECT id, exercise_id, superset_id, notes, rest_seconds
+       FROM routine_exercises WHERE routine_id = ? ORDER BY position ASC`,
+      [routineId],
+    );
+
+    const routineSetRowsByExercise = routineExerciseRows.map((re) =>
+      this.driver.queryAll<{ set_type: string }>(
+        `SELECT set_type FROM routine_sets WHERE routine_exercise_id = ? ORDER BY position ASC`,
+        [re.id],
+      ),
+    );
+
+    // Ids first, before the sync transaction (file header's "Id generation"
+    // note) — `driver.transaction`'s callback is synchronous.
+    const workoutId = await generateUuid();
+    const prepared = await Promise.all(
+      routineExerciseRows.map(async (re, index) => ({
+        weId: await generateUuid(),
+        re,
+        setTypes: routineSetRowsByExercise[index]!.map((row) => row.set_type),
+        setIds: await Promise.all(routineSetRowsByExercise[index]!.map(() => generateUuid())),
+      })),
+    );
+
+    const now = Date.now();
+    try {
+      this.driver.transaction(() => {
+        this.driver.execute(
+          `INSERT INTO workouts
+             (id, title, description, routine_id, state, start_time, duration_pause_offset_ms, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'active', ?, 0, ?, ?)`,
+          [workoutId, routineRow.title, routineRow.notes, routineId, now, now, now],
+        );
+
+        prepared.forEach(({ weId, re, setTypes, setIds }, position) => {
+          this.driver.execute(
+            `INSERT INTO workout_exercises (id, workout_id, exercise_id, position, superset_id, notes, rest_seconds)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [weId, workoutId, re.exercise_id, position, re.superset_id, re.notes, re.rest_seconds],
+          );
+
+          setIds.forEach((setId, setPosition) => {
+            this.driver.execute(
+              `INSERT INTO sets (id, workout_exercise_id, position, set_type, is_completed)
+               VALUES (?, ?, ?, ?, 0)`,
+              [setId, weId, setPosition, setTypes[setPosition]],
+            );
+          });
+        });
+      });
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new ActiveWorkoutExistsError(workoutId);
+      }
+      throw error;
+    }
+
+    return (await this.getFull(workoutId))!;
   }
 
   async discard(id: string): Promise<void> {

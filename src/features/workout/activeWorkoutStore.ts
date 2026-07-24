@@ -213,6 +213,8 @@ export interface ActiveWorkoutState {
 
   // --- Lifecycle ---------------------------------------------------------
   startEmpty: (input: { title: string; startTime: number }) => Promise<WorkoutFull | null>;
+  /** M3-05 (02 §1): mirrors `startEmpty`'s "write, then reflect" shape (file header) — `WorkoutRepository.startFromRoutine` mints the new workout/exercise/set ids itself, so its canonical response becomes the draft directly rather than an optimistic pre-write. */
+  startFromRoutine: (routineId: string) => Promise<WorkoutFull | null>;
   discard: () => Promise<void>;
   finish: (meta?: FinishMeta) => Promise<WorkoutFull | null>;
 
@@ -304,6 +306,22 @@ export function createActiveWorkoutStore(): UseBoundStore<StoreApi<ActiveWorkout
           return workout;
         } catch (error) {
           const dataError = toDataError(error, 'startEmpty');
+          set({ error: dataError });
+          captureError(error);
+          return null;
+        }
+      },
+
+      async startFromRoutine(routineId) {
+        const repo = requireRepository();
+        recordBreadcrumb('workout.startFromRoutine');
+        set({ error: null });
+        try {
+          const workout = await repo.startFromRoutine(routineId);
+          set({ workout });
+          return workout;
+        } catch (error) {
+          const dataError = toDataError(error, 'startFromRoutine');
           set({ error: dataError });
           captureError(error);
           return null;
