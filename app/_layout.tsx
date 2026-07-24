@@ -109,6 +109,7 @@ import { useRestTimerStore } from '@/features/workout/restTimerStore';
 import { useForegroundReconciliation } from '@/features/workout/useForegroundReconciliation';
 import { openExpoKvStore } from '@/lib/kv-store.expo';
 import { captureError, initSentry, recordBreadcrumb } from '@/lib/sentry';
+import { preloadChimes } from '@/lib/sound';
 import { MigrationErrorScreen } from '@/ui/MigrationErrorScreen';
 import { ThemeProvider } from '@/ui/theme-provider';
 
@@ -201,6 +202,18 @@ export default function RootLayout(): React.JSX.Element | null {
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
       initSentry();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  // M2-11 (06 §6.4): "`lib/sound.ts` preloads timer/check chimes" — same
+  // "deferred past first frame, never gates boot" posture as Sentry init
+  // above; `preloadChimes()` itself is synchronous and side-effect-only
+  // (creates cached `AudioPlayer`s, never throws — see that file's header),
+  // so there is nothing to await or clean up beyond the animation frame.
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      preloadChimes();
     });
     return () => cancelAnimationFrame(frame);
   }, []);

@@ -56,7 +56,8 @@
           "photosPermission": "Kyro uses your photo library to add a picture to a custom exercise.",
           "cameraPermission": "Kyro uses your camera to take a picture for a custom exercise."
         }
-      ]
+      ],
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true,
