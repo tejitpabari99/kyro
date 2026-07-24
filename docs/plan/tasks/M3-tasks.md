@@ -16,7 +16,7 @@ Task count: **8**
 **Acceptance / test gate:** Integration test per method; duplicate deep-copies sets/supersets; folder delete both paths (cascade-delete routines vs move to My Routines); createFromWorkout reproduces structure incl. supersets/rest; positions contiguous after reorder.
 **Est:** 1.5 d
 
-### M3-02 — Workout tab hub UI
+### M3-02 — Workout tab hub UI [done]
 **Description:** The routines hub replacing the M0 placeholder.
 **How:** Per 04 §1: large title, Quick Start `+ Start Empty Workout` primary, Routines section header (folder-plus = new folder, `+` = new routine), routine list grouped by collapsible folders (chevron/title/count/⋯ Rename-Reorder-Delete), implicit "My Routines" last. Routine card: title, 2-line grey exercise preview, ⋯ menu (Start/Edit/Duplicate/Move to Folder/Reorder/Delete confirm), full-width **tonal** `Start Routine` (07 §6 hierarchy). Folder delete choice dialog (delete routines vs keep→My Routines). Empty state with both CTAs. Collapse state persists (repo `collapsed`). TanStack Query for reads, invalidation on mutations.
 **References:** 04 §1; 07 §5–6.

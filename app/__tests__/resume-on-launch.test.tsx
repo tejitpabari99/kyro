@@ -83,8 +83,9 @@ describe('resume on launch shows the mini-bar, not the full logger (M2-13)', () 
       // Tabs render (the Workout tab's own empty state, since the seeded
       // workout has no exercises to browse yet) — proving we're on the tab
       // shell, not the fullScreenModal logger (which would show
-      // "screen-title"/"screen-finish", not this empty-state copy).
-      expect(await screen.findByText('No active routines yet')).toBeTruthy();
+      // "screen-title"/"screen-finish", not this empty-state copy). M3-02
+      // update: the real routines hub replaced the placeholder.
+      expect(await screen.findByText('No routines yet')).toBeTruthy();
 
       // The mini-bar itself, showing the resumed workout's title.
       expect(await screen.findByTestId('global-workout-bar')).toBeTruthy();

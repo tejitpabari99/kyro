@@ -70,7 +70,13 @@ describe('tab shell — boots to tabs, all 4 tabs navigable', () => {
     'redirects "/" to the Workout tab',
     async () => {
       await renderRouter('app', { initialUrl: '/' });
-      expect(await screen.findByText('No active routines yet')).toBeTruthy();
+      // M3-02 update: the real routines hub replaced the placeholder. The
+      // mocked driver's `queryAll` returns `[]` for everything (including
+      // `RoutineRepository.listFolders()`/`list()`), so the hub legitimately
+      // renders its empty state here — this smoke test only needs to prove
+      // the route renders the real screen, not routines-hub behavior
+      // (covered in `src/features/routines/__tests__/`).
+      expect(await screen.findByText('No routines yet')).toBeTruthy();
     },
     15000,
   );
@@ -79,7 +85,7 @@ describe('tab shell — boots to tabs, all 4 tabs navigable', () => {
     'navigates to the Workout tab',
     async () => {
       await renderRouter('app', { initialUrl: '/workout' });
-      expect(await screen.findByText('No active routines yet')).toBeTruthy();
+      expect(await screen.findByText('No routines yet')).toBeTruthy();
     },
     15000,
   );

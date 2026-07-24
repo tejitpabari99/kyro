@@ -1,103 +1,34 @@
 /**
- * Workout tab placeholder (M0-08, extended M2-05) — routines hub (06 §3).
- * The real routines hub UI (routine list, Start Routine, quick-start)
- * lands in M3-02; this task only adds the one functional entry point 02
- * §1 requires today: "Workout tab → `Start Empty Workout` (full-width
- * primary button): creates an active workout with no exercises,
- * `start_time = now`, auto title by time of day."
+ * Workout tab (M3-02) — 04 §1's real routines hub. Replaces the
+ * M0-08/M2-05 placeholder that used to render its own `EmptyState` +
+ * Start-Empty-Workout button directly in this file; all of that logic
+ * (including the one-active-workout gate, 02 §1) now lives in
+ * `RoutinesHubScreen` (`src/features/routines/RoutinesHubScreen.tsx`) —
+ * this file is now a thin wiring shim that constructs the real
+ * `RoutineRepositoryImpl`/`ExerciseRepositoryImpl` against the app-wide
+ * `SqliteDriver` and hands them down, the exact same "route file only
+ * wires real deps, feature screen owns logic/layout" split
+ * `app/(tabs)/exercises/index.tsx` (M1-07) and `app/workout/active.tsx`
+ * (M2-05) already established.
  *
- * The actual `startEmpty` call + auto-title happen inside
- * `ActiveWorkoutScreen`'s own mount effect (M2-05) once navigation lands
- * on `/workout/active` — this screen's only job is the **one-active-workout
- * gate** (02 §1): if a workout is already active, tapping the button must
- * show the Resume / Discard-and-start (destructive, second confirm) /
- * Cancel action sheet instead of silently overwriting it. `Alert.alert`
- * with a button array is this codebase's established action-sheet/confirm
- * pattern (no dedicated `ActionSheet` primitive exists yet — see
- * `ExerciseDetailScreen.tsx`'s delete/archive-offer flow, M1-10, for the
- * same shape).
+ * `app/(tabs)/workout/__tests__/index.test.tsx` now only proves this
+ * wiring (mirrors `app/workout/__tests__/active.test.tsx`'s route-test
+ * pattern); the full one-active-workout-gate behavioral suite moved to
+ * `src/features/routines/__tests__/RoutinesHubScreen.test.tsx` along with
+ * every other new behavioral case this task adds.
  */
-import React from 'react';
-import { Dumbbell } from 'lucide-react-native';
-import { Alert, StyleSheet, View } from 'react-native';
-import { router } from 'expo-router';
+import React, { useMemo } from 'react';
 
-import { selectActiveWorkout, useActiveWorkoutStore } from '@/features/workout/activeWorkoutStore';
-import { useRestTimerStore } from '@/features/workout/restTimerStore';
-import { Button } from '@/ui/Button';
-import { EmptyState } from '@/ui/EmptyState';
-import { useTheme } from '@/ui/theme-provider';
-
-function navigateToLogger(): void {
-  router.push('/workout/active' as never);
-}
+import { ExerciseRepositoryImpl } from '@/data/exercises/exercise-repository';
+import { RoutineRepositoryImpl } from '@/data/routines/routine-repository';
+import { getAppDriver } from '@/data/sqlite/boot';
+import { RoutinesHubScreen } from '@/features/routines/RoutinesHubScreen';
 
 export default function WorkoutScreen(): React.JSX.Element {
-  const { colors } = useTheme();
-  const activeWorkout = useActiveWorkoutStore(selectActiveWorkout);
-
-  const confirmDiscardAndStartNew = (): void => {
-    Alert.alert('Discard workout?', 'All entered data will be lost.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Discard',
-        style: 'destructive',
-        onPress: () => {
-          // M2-19 exit-gate fix: same stray-notification gap as
-          // `ActiveWorkoutScreen.performDiscard` (see its own comment) — a
-          // rest timer running on the abandoned workout must not survive
-          // into the freshly-started one.
-          void useActiveWorkoutStore
-            .getState()
-            .discard()
-            .then(async () => {
-              await useRestTimerStore.getState().skip();
-              navigateToLogger();
-            });
-        },
-      },
-    ]);
-  };
-
-  const handleStartEmptyPress = (): void => {
-    if (!activeWorkout) {
-      navigateToLogger();
-      return;
-    }
-    // 02 §1: "Attempting to start a workout while one is active shows an
-    // action sheet: Resume current workout / Discard current and start new
-    // (destructive, second confirm) / Cancel."
-    Alert.alert('Workout in Progress', `"${activeWorkout.title}" is still active.`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Resume', onPress: navigateToLogger },
-      { text: 'Discard & Start New', style: 'destructive', onPress: confirmDiscardAndStartNew },
-    ]);
-  };
+  const routineRepository = useMemo(() => new RoutineRepositoryImpl(getAppDriver()), []);
+  const exerciseRepository = useMemo(() => new ExerciseRepositoryImpl(getAppDriver()), []);
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.bg.base }]}>
-      <EmptyState
-        icon={<Dumbbell size={40} strokeWidth={1.75} color={colors.text.tertiary} />}
-        title="No active routines yet"
-        caption="Your routines will live here. Start an empty workout to begin logging."
-        cta={
-          <Button
-            testID="start-empty-workout"
-            label="Start Empty Workout"
-            variant="primary"
-            size="lg"
-            onPress={handleStartEmptyPress}
-          />
-        }
-      />
-    </View>
+    <RoutinesHubScreen routineRepository={routineRepository} exerciseRepository={exerciseRepository} />
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});

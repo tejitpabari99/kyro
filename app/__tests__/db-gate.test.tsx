@@ -97,7 +97,11 @@ describe('DB-ready gate (M0-09, extended by M1-05)', () => {
 
     await renderRouter('app', { initialUrl: '/' });
 
-    expect(await screen.findByText('No active routines yet')).toBeTruthy();
+    // M3-02 update: the real routines hub replaced the placeholder — its
+    // empty state (real `RoutineRepository`/`ExerciseRepository` reads
+    // against the mocked driver's empty `queryAll` result) is this test's
+    // "tabs rendered" signal now.
+    expect(await screen.findByText('No routines yet')).toBeTruthy();
     expect(screen.queryByTestId('migration-error-screen')).toBeNull();
 
     // 06 §5.1 ordering: "migrate -> seed/refresh dataset -> load settings".
@@ -121,7 +125,7 @@ describe('DB-ready gate (M0-09, extended by M1-05)', () => {
 
     expect(await screen.findByTestId('migration-error-screen')).toBeTruthy();
     expect(screen.getByTestId('migration-error-detail')).toHaveTextContent('disk full');
-    expect(screen.queryByText('No active routines yet')).toBeNull();
+    expect(screen.queryByText('No routines yet')).toBeNull();
     expect(mockSeedBundledBuiltinExercises).not.toHaveBeenCalled();
   });
 
@@ -148,6 +152,6 @@ describe('DB-ready gate (M0-09, extended by M1-05)', () => {
     expect(screen.getByTestId('migration-error-detail')).toHaveTextContent(
       'dataset seed failed: corrupt bundled asset',
     );
-    expect(screen.queryByText('No active routines yet')).toBeNull();
+    expect(screen.queryByText('No routines yet')).toBeNull();
   });
 });
