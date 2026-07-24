@@ -8,7 +8,7 @@ Task count: **8**
 
 ---
 
-### M3-01 — RoutineRepository + folders: CRUD + integration suite
+### M3-01 — RoutineRepository + folders: CRUD + integration suite [done]
 **Description:** Full repository for routines, routine exercises/sets (targets), and folders.
 **How:** Implement per 05 §6: folders CRUD (INTEGER autoincrement ids, position, collapsed persisted), routines CRUD (uuid, folder_id nullable = "My Routines", position within folder), reorder (within/between folders; folders among themselves), duplicate, `getFull`, `createFromWorkout(workoutId)` (copies exercises, set counts, set types, achieved values as targets, notes, rest timers, supersets), `updateFromWorkout(routineId, workoutId)` (used by M3-06). Routine deletion: past workouts keep `routine_id` as soft reference — display "(deleted routine)" where needed (05 §3.3). Enforce the `routine_sets` reps-XOR-range CHECK at the repo boundary too.
 **References:** 05 §3.3, §6; 04 §1–2.
