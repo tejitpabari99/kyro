@@ -66,7 +66,7 @@ Task count: **19**
 **Acceptance / test gate:** RNTL: placeholder-commit, rep-range non-commit, blocked-check shake path, uncheck reversal; RPE enum-only entry + Clear; store/DB assertions for committed values (via M2-03 suite extension).
 **Est:** 1.5 d
 
-### M2-08 — Keyboard flow: accessory bar, Next traversal, inline timer
+### M2-08 — Keyboard flow: accessory bar, Next traversal, inline timer [done]
 **Description:** The typing experience — numeric keypads, accessory bar, cross-exercise Next, duration stopwatch cell.
 **How:** `KeyboardAccessoryBar` (07 §5): `Calculator` on the left only when a weight field is focused AND plate calculator enabled (M2-15); `Next` right. Next order: weight → reps → (skip RPE) → next row's weight → … → next exercise's first input; keyboard never dismisses (verify no flicker between fields — keep keyboard mounted, 06 §8). Tapping ✓ with keyboard up commits without dismissal. Inline Timer setting: duration cells get a start/stop stopwatch control in the cell sheet (start counts up, stop writes elapsed seconds).
 **References:** 02 §4 (keyboard flow); 06 §8 (keypress budget); 07 §5.
@@ -82,7 +82,7 @@ Task count: **19**
 **Acceptance / test gate:** 02 §3 acceptance: re-added exercise recreates last row count + PREVIOUS; replace keeps count/clears values; remove+undo restores values; reorder persists with PREVIOUS attached correctly (integration via store suite).
 **Est:** 2 d
 
-### M2-10 — Rest timer engine + notifications
+### M2-10 — Rest timer engine + notifications [done]
 **Description:** `restTimerStore`, endsAt math, local-notification scheduling, permission flow.
 **How:** `restTimerStore` = `{endsAt, exerciseId, setId, notificationId} | null`; 250 ms ticker hook active only while a timer surface is visible; persisted in kv-store key `active_timer` for relaunch restore (06 §4.3). `src/lib/notifications.ts` wraps expo-notifications: schedule at endsAt (time-interval trigger, `interruptionLevel: timeSensitive`, sound per settings, body "Rest over — set N of {exercise}"); cancel/reschedule on ±15 s/skip/uncheck; foreground completion → in-app chime + haptic, scheduled banner suppressed by the foreground handler. Start rules: on check unless timer Off, or next row same-exercise is dropset; superset members still start timers (02 §7). Only one timer at a time. Lazy permission request on first start with rationale copy; denial → in-app-only mode + one-time inline warning linking to iOS Settings (02 §16.9). ±15 s clamps: min → remaining floors at 0 (finishes); max unbounded (08 §4.10 resolution).
 **References:** 02 §7, §16.1/16.9; 06 §4.3, §6.2; 08 §4.10.

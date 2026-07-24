@@ -28,6 +28,15 @@ access.
   - Anything requiring the iOS Simulator (visual QA, Maestro flow execution, on-device manual
     testing).
 
+**Update (M2-08, 2026-07-24):** the same "physical-device QA drills" category above also covers
+keyboard-feel timing measurements — M2-08's own acceptance gate calls out "zero keyboard
+flicker between fields" and "keypress-to-paint < 50 ms" (06 §8) as manual/physical checks,
+explicitly deferring formal sign-off to M2-19. Confirmed these cannot be measured here: there is
+no iOS Simulator/device to observe real keyboard transition rendering or to run a React
+DevTools/timestamp profiling harness against. The keyboard-flow *logic* itself (Next-traversal
+order, no explicit blur/dismiss calls in this app's own code, `keyboardShouldPersistTaps`
+wiring) is fully covered by Jest/RNTL instead — see `docs/plan/EXECUTION-LOG.md`'s M2-08 row.
+
 ## Out-of-scope tasks for this autonomous run
 
 The following tasks are explicitly **skipped entirely** in this run. They are owner-gated per
