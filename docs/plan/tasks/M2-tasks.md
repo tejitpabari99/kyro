@@ -122,7 +122,7 @@ Task count: **19**
 **Acceptance / test gate:** 02 §14 acceptance: unchecked sets absent from saved workout/history; timer notification never fires post-finish (integration: cancel called); empty-finish path; saved workout appears in minimal history with correct volume.
 **Est:** 1.5 d
 
-### M2-15 — Plate calculator
+### M2-15 — Plate calculator [done]
 **Description:** Pure domain solver + sheet UI + settings config.
 **How:** `domain/plate-calc.ts`: `platesFor(target, bar, inventory) → {perSide[], achieved}` — largest-first greedy respecting counts; impossible → nearest achievable ≤ and ≥ suggestions. UI: setting-gated accessory `Calculator` button (M2-08) → sheet: target pre-filled from focused field, bar selector (Barbell 20 / EZ 7.5 / Short 10, weights editable in settings), visual bar diagram of plates per side, one-tap "use this value" writes back to the input. Settings → Plate Calculator → Available Equipment: default kg 25/20/15/10/5/2.5/1.25 ×∞, default lb 45/35/25/10/5/2.5; editable counts, custom plates addable (persist in `plate_calc` settings key).
 **References:** 02 §11; 05 §3.5 (plate_calc); 08 §4.4.
