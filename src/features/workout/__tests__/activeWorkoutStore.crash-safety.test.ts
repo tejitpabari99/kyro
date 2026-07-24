@@ -15,11 +15,24 @@
  * check: if the DB (not the JS store) is truly the durable copy, a freshly
  * rehydrated store must reconstruct the *exact* same draft the "live" store
  * ended up with.
+ *
+ * **M2-19 exit-gate update:** `runRandomAction`'s candidate list originally
+ * only covered the M2-03-era action set (lifecycle, exercise CRUD/reorder,
+ * set CRUD/check). The M2-19 milestone gate's task text specifically calls
+ * for re-confirming this suite "genuinely exercises the finish/discard/
+ * check/uncheck action set added across later M2 tasks (M2-07 through
+ * M2-17), not just the original M2-03-era action set" — it did not:
+ * `updateExercise`'s `supersetId` field (M2-12 "Add to Superset"),
+ * `removeFromSuperset` (M2-12), `addWarmUpSets` (M2-16), and `updateSet`'s
+ * `rpe` field (M2-07) were all real store actions/fields with zero
+ * crash-safety coverage. All four are core mid-session logging actions (not
+ * settings toggles), so this pass added them to the generator rather than
+ * just flagging the gap — see `docs/qa/M2-checklist.md` §3 for the writeup.
  */
 import { openBetterSqlite3Driver } from '@/data/sqlite/driver.better-sqlite3';
 import { migrate } from '@/data/sqlite/migrator';
 import type { SqliteDriver } from '@/data/sqlite/driver';
-import { SET_TYPE_VALUES, type SetType } from '@/domain/enums';
+import { RPE_VALUES, SET_TYPE_VALUES, type SetType } from '@/domain/enums';
 import { WorkoutRepositoryImpl } from '@/data/workouts/workout-repository';
 
 import { createActiveWorkoutStore } from '../activeWorkoutStore';
@@ -124,7 +137,47 @@ async function runRandomAction(
           .map(({ exercise }) => exercise.id);
         return store.getState().reorderExercises(shuffled);
       });
+
+      // M2-12 "Add to Superset": group two distinct exercises under a
+      // shared `supersetId` via `updateExercise`'s patch — found missing
+      // from this suite's action set during M2-19's exit-gate re-trace
+      // (08 §4.9 asks this suite to cover "every store action", and
+      // `supersetId` is a real `UpdateExerciseInput` field a live user
+      // reaches through the superset sheet mid-session, not a settings
+      // toggle). The exact id value doesn't need to mirror the real UI's
+      // min-position-derived minting rule — only that an arbitrary shared
+      // int round-trips through drop-and-rehydrate like every other field.
+      candidates.push(async () => {
+        const [a, b] = [...workout.exercises]
+          .map((exercise) => ({ exercise, sortKey: rng() }))
+          .sort((x, y) => x.sortKey - y.sortKey)
+          .slice(0, 2)
+          .map(({ exercise }) => exercise.id);
+        const groupId = randInt(rng, 1, 3);
+        await store.getState().updateExercise(a!, { supersetId: groupId });
+        return store.getState().updateExercise(b!, { supersetId: groupId });
+      });
     }
+
+    // M2-12 "Remove from Superset" — exercises the dedicated
+    // `removeFromSuperset` action (dissolution included), which the prior
+    // version of this generator never called at all. Also exercised
+    // against ungrouped exercises (the store's own no-op branch).
+    candidates.push(async () => store.getState().removeFromSuperset(pick(rng, workout.exercises).id));
+
+    // M2-16 "Add Warm-Up Sets" — `addWarmUpSets` inserts rows above an
+    // exercise's existing sets and renumbers siblings; also missing from
+    // this suite's action set until this pass.
+    candidates.push(async () => {
+      const exercise = pick(rng, workout.exercises);
+      const rowCount = randInt(rng, 1, 3);
+      const rows = Array.from({ length: rowCount }, () => ({
+        setType: 'warmup' as SetType,
+        weightKg: randInt(rng, 0, 100),
+        reps: randInt(rng, 1, 15),
+      }));
+      return store.getState().addWarmUpSets(exercise.id, rows);
+    });
 
     const exercisesWithSets = workout.exercises.filter((exercise) => exercise.sets.length > 0);
     if (exercisesWithSets.length > 0) {
@@ -133,6 +186,9 @@ async function runRandomAction(
         return store.getState().updateSet(set.id, {
           weightKg: randInt(rng, 0, 200),
           reps: randInt(rng, 1, 20),
+          // RPE (M2-07) — a real `UpdateSetInput` field with its own
+          // rehydrate round-trip to prove, previously never exercised here.
+          rpe: rng() > 0.5 ? pick(rng, RPE_VALUES) : null,
         });
       });
       candidates.push(async () => {
