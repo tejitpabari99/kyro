@@ -36,12 +36,14 @@
  * The public `timer` field intentionally matches the spec's literal shape
  * (`{endsAt, exerciseId, setId, notificationId}`) — no room for the
  * exercise name / set number the notification body text
- * ("Rest over — set N of {exercise}") needs to *reschedule* on ±15s. Those
- * two extra fields live in a private `meta` closure variable instead
- * (mirrors `activeWorkoutStore`'s "repository kept in a closure" pattern),
- * and travel through the kv-store persistence envelope (a superset of
- * `RestTimer`, see {@link PersistedRestTimer}) so a post-relaunch `adjust()`
- * can still reschedule correctly instead of silently degrading to
+ * ("Rest over — set N of {exercise}") needs to *reschedule* on ±15s, nor
+ * for the `soundChoice`/`volume` prefs the original `start()` call
+ * resolved. Those four extra fields live in a private `meta` closure
+ * variable instead (mirrors `activeWorkoutStore`'s "repository kept in a
+ * closure" pattern), and travel through the kv-store persistence envelope
+ * (a superset of `RestTimer`, see {@link PersistedRestTimer}) so a
+ * post-relaunch `adjust()` can still reschedule correctly (same sound
+ * prefs included, not just the body text) instead of silently degrading to
  * in-app-only for the rest of that session.
  *
  * ## Permission flow (02 §16.9)
@@ -58,6 +60,7 @@ import { create } from 'zustand';
 import type { SoundChoice, VolumeLevel } from '@/data/settings/settings-schema';
 import type { SetType } from '@/domain/enums';
 import type { KvStore } from '@/lib/kv-store';
+import { logger } from '@/lib/logger';
 import {
   cancelNotification,
   requestNotificationPermission,
@@ -73,10 +76,12 @@ export interface RestTimer {
   notificationId: string | null;
 }
 
-/** The kv-store envelope — `RestTimer` plus the reschedule metadata the persisted `timer` field itself doesn't carry (see file header). */
+/** The kv-store envelope — `RestTimer` plus the reschedule metadata the persisted `timer` field itself doesn't carry (see file header). `soundChoice`/`volume` are optional so a pre-existing persisted entry (written before this field existed) still parses — a post-relaunch reschedule for such an entry just falls back to `scheduleRestNotification`'s own defaults, same as any other never-recorded preference. */
 interface PersistedRestTimer extends RestTimer {
   exerciseName: string;
   setNumber: number;
+  soundChoice?: SoundChoice;
+  volume?: VolumeLevel;
 }
 
 const ACTIVE_TIMER_KV_KEY = 'active_timer';
@@ -153,8 +158,18 @@ export function createRestTimerStore() {
   let hasRequestedPermission = false;
   let permissionGranted = false;
   // Reschedule metadata, kept alongside (never inside) the public `timer`
-  // field — see file header.
-  let meta: { exerciseName: string; setNumber: number } | null = null;
+  // field — see file header. `soundChoice`/`volume` are captured at
+  // `start()` time (the same values that call's own initial schedule used)
+  // so every later reschedule (`adjust()`) passes the identical sound
+  // prefs instead of silently falling back to `scheduleRestNotification`'s
+  // defaults (M2-09/M2-10 review regression: a muted timer sound was lost
+  // on ±15s adjust).
+  let meta: {
+    exerciseName: string;
+    setNumber: number;
+    soundChoice?: SoundChoice;
+    volume?: VolumeLevel;
+  } | null = null;
 
   const persist = (timer: RestTimer | null): void => {
     if (!kvStore) {
@@ -165,6 +180,8 @@ export function createRestTimerStore() {
         ...timer,
         exerciseName: meta.exerciseName,
         setNumber: meta.setNumber,
+        soundChoice: meta.soundChoice,
+        volume: meta.volume,
       };
       void kvStore.setItem(ACTIVE_TIMER_KV_KEY, JSON.stringify(payload)).catch(() => {});
     } else {
@@ -204,17 +221,32 @@ export function createRestTimerStore() {
       shouldSchedule = shouldSchedule && permissionGranted;
 
       const endsAt = now + durationSeconds * 1000;
-      meta = { exerciseName, setNumber };
+      meta = { exerciseName, setNumber, soundChoice, volume };
 
       let notificationId: string | null = null;
       if (shouldSchedule) {
-        notificationId = await scheduleRestNotification({
-          secondsFromNow: durationSeconds,
-          title: 'Rest timer',
-          body: notificationBody(setNumber, exerciseName),
-          soundChoice,
-          volume,
-        });
+        try {
+          notificationId = await scheduleRestNotification({
+            secondsFromNow: durationSeconds,
+            title: 'Rest timer',
+            body: notificationBody(setNumber, exerciseName),
+            soundChoice,
+            volume,
+          });
+        } catch (error) {
+          // `scheduleRestNotification` throws if the native module is
+          // unavailable at call time (see its own file header) — degrade
+          // to in-app-only mode (matches the existing OS-permission-denial
+          // posture) rather than letting this reject `start()`'s promise,
+          // which the fire-and-forget `ConnectedSetRow.tsx` call site
+          // never `.catch()`es.
+          logger.warn(
+            `restTimer.start: scheduleRestNotification failed (${
+              error instanceof Error ? error.message : String(error)
+            }) — falling back to in-app-only timer.`,
+          );
+          notificationId = null;
+        }
       }
 
       const timer: RestTimer = { endsAt, exerciseId, setId, notificationId };
@@ -270,10 +302,17 @@ export function createRestTimerStore() {
       let notificationId: string | null = null;
       if (hadNotification && meta) {
         const secondsFromNow = Math.max(1, Math.round((proposedEndsAt - now) / 1000));
+        // Same `soundChoice`/`volume` `start()` captured for this timer —
+        // without threading these through, a reschedule silently defaults
+        // to `scheduleRestNotification`'s own (audible) fallback, losing
+        // e.g. a muted preference on every ±15s adjustment (M2-09/M2-10
+        // review regression).
         notificationId = await scheduleRestNotification({
           secondsFromNow,
           title: 'Rest timer',
           body: notificationBody(meta.setNumber, meta.exerciseName),
+          soundChoice: meta.soundChoice,
+          volume: meta.volume,
         });
       }
 
@@ -372,7 +411,12 @@ export function createRestTimerStore() {
       // user's perspective, across the kill/relaunch).
       hasRequestedPermission = true;
       permissionGranted = parsed.notificationId !== null;
-      meta = { exerciseName: parsed.exerciseName, setNumber: parsed.setNumber };
+      meta = {
+        exerciseName: parsed.exerciseName,
+        setNumber: parsed.setNumber,
+        soundChoice: parsed.soundChoice,
+        volume: parsed.volume,
+      };
       const timer: RestTimer = {
         endsAt: parsed.endsAt,
         exerciseId: parsed.exerciseId,

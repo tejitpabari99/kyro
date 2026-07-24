@@ -349,6 +349,218 @@ describe('restTimerStore (M2-10, 08 §4.10)', () => {
         expect.objectContaining({ body: expect.stringContaining('set 2 of Squat') }),
       );
     });
+
+    // Review regression (M2-09/M2-10 review, item 1): `adjust()` used to
+    // reschedule via `scheduleRestNotification` without passing
+    // `soundChoice`/`volume` at all, because the closure-level `meta`
+    // cache only ever carried `exerciseName`/`setNumber` — so a muted
+    // timer sound was silently lost (defaulted to audible) on every ±15s
+    // adjustment. `meta` must also carry the sound prefs `start()` itself
+    // resolved, and every reschedule call must pass them through.
+    it('adjust() reschedules with the same soundChoice/volume the timer was started with', async () => {
+      const store = createRestTimerStore();
+      const t0 = 1_000_000;
+      await store.getState().start(
+        startParams({ soundChoice: 'bell', volume: 'low', durationSeconds: 90, now: t0 }),
+      );
+      mockSchedule.mockClear();
+
+      await store.getState().adjust(15, t0);
+
+      expect(mockSchedule).toHaveBeenLastCalledWith(
+        expect.objectContaining({ soundChoice: 'bell', volume: 'low' }),
+      );
+    });
+
+    it('adjust() reschedules muted (volume: "off") the same way the initial start was muted — the mute preference must survive an adjust', async () => {
+      const store = createRestTimerStore();
+      const t0 = 1_000_000;
+      await store.getState().start(
+        startParams({ soundChoice: 'none', volume: 'off', durationSeconds: 90, now: t0 }),
+      );
+      mockSchedule.mockClear();
+
+      await store.getState().adjust(15, t0);
+
+      expect(mockSchedule).toHaveBeenLastCalledWith(
+        expect.objectContaining({ soundChoice: 'none', volume: 'off' }),
+      );
+    });
+
+    it('multiple successive adjustments each keep rescheduling with the original sound prefs, not just the first', async () => {
+      const store = createRestTimerStore();
+      const t0 = 1_000_000;
+      await store.getState().start(
+        startParams({ soundChoice: 'beep', volume: 'high', durationSeconds: 90, now: t0 }),
+      );
+
+      await store.getState().adjust(15, t0);
+      await store.getState().adjust(-15, t0);
+      await store.getState().adjust(15, t0);
+
+      expect(mockSchedule).toHaveBeenCalledTimes(4); // start + 3 adjusts
+      for (const call of mockSchedule.mock.calls) {
+        expect(call[0]).toEqual(
+          expect.objectContaining({ soundChoice: 'beep', volume: 'high' }),
+        );
+      }
+    });
+
+    it('sound prefs also survive a restore() (kill/relaunch) so a post-relaunch adjust() still reschedules muted correctly', async () => {
+      const kv = createMemoryKvStore();
+      const liveStore = createRestTimerStore();
+      const t0 = 1_000_000;
+      await liveStore.getState().restore(kv, t0);
+      await liveStore.getState().start(
+        startParams({ soundChoice: 'none', volume: 'off', durationSeconds: 90, now: t0 }),
+      );
+
+      const relaunchedStore = createRestTimerStore();
+      const relaunchNow = t0 + 10_000;
+      await relaunchedStore.getState().restore(kv, relaunchNow);
+      mockSchedule.mockClear();
+
+      await relaunchedStore.getState().adjust(15, relaunchNow);
+
+      expect(mockSchedule).toHaveBeenCalledTimes(1);
+      expect(mockSchedule).toHaveBeenLastCalledWith(
+        expect.objectContaining({ soundChoice: 'none', volume: 'off' }),
+      );
+    });
+  });
+
+  // ---------------------------------------------------------------------
+  // Review regression (M2-09/M2-10 review, item 2): `scheduleRestNotification`
+  // can throw (native module unavailable — see `src/lib/notifications.ts`'s
+  // own header). `start()`'s only real call site (`ConnectedSetRow.tsx`) is
+  // fire-and-forget with no `.catch()`, so a throw here must never reject
+  // `start()`'s own promise — it must degrade to in-app-only (notificationId
+  // null), same posture as a denied OS permission.
+  // ---------------------------------------------------------------------
+  describe('start() gracefully degrades if scheduleRestNotification throws', () => {
+    it('start() still resolves with a timer (notificationId null) instead of rejecting when scheduling throws', async () => {
+      mockSchedule.mockRejectedValueOnce(
+        new Error('scheduleRestNotification: expo-notifications native module unavailable.'),
+      );
+      const store = createRestTimerStore();
+
+      await expect(
+        store.getState().start(startParams({ now: 1_000_000 })),
+      ).resolves.toBeUndefined();
+
+      expect(store.getState().timer).not.toBeNull();
+      expect(store.getState().timer!.notificationId).toBeNull();
+    });
+
+    it('the in-app timer still runs normally after a scheduling failure — endsAt/exerciseId/setId are all still set', async () => {
+      mockSchedule.mockRejectedValueOnce(new Error('native module unavailable'));
+      const store = createRestTimerStore();
+      const t0 = 1_000_000;
+
+      await store.getState().start(
+        startParams({ exerciseId: 'ex-1', setId: 'set-1', durationSeconds: 60, now: t0 }),
+      );
+
+      expect(store.getState().timer).toEqual({
+        endsAt: t0 + 60_000,
+        exerciseId: 'ex-1',
+        setId: 'set-1',
+        notificationId: null,
+      });
+    });
+
+    it('a subsequent adjust() after a scheduling failure does not try to reschedule (no live notification to reschedule)', async () => {
+      mockSchedule.mockRejectedValueOnce(new Error('native module unavailable'));
+      const store = createRestTimerStore();
+      const t0 = 1_000_000;
+      await store.getState().start(startParams({ durationSeconds: 90, now: t0 }));
+      mockSchedule.mockClear();
+
+      await store.getState().adjust(15, t0);
+
+      expect(mockSchedule).not.toHaveBeenCalled();
+      expect(store.getState().timer!.notificationId).toBeNull();
+    });
+  });
+
+  // ---------------------------------------------------------------------
+  // Review regression (M2-09/M2-10 review, item 3): `complete()` had zero
+  // test coverage. It's the public hook point M2-11's rest-timer UI will
+  // call on foreground natural completion — these tests cover its actual
+  // current behavior (mirrors `skip()`: cancel any pending notification,
+  // clear the timer, clear persistence) without changing it.
+  // ---------------------------------------------------------------------
+  describe('complete() — foreground natural-completion hook (M2-11 call point)', () => {
+    it('cancels the pending notification and clears the timer', async () => {
+      const store = createRestTimerStore();
+      const t0 = 1_000_000;
+      await store.getState().start(startParams({ now: t0 }));
+      const notificationId = store.getState().timer!.notificationId!;
+      expect(notificationId).toBeTruthy();
+
+      await store.getState().complete();
+
+      expect(mockCancel).toHaveBeenCalledWith(notificationId);
+      expect(store.getState().timer).toBeNull();
+    });
+
+    it('complete() is a no-op when no timer is running (never throws, never calls cancel)', async () => {
+      const store = createRestTimerStore();
+
+      await expect(store.getState().complete()).resolves.toBeUndefined();
+
+      expect(mockCancel).not.toHaveBeenCalled();
+      expect(store.getState().timer).toBeNull();
+    });
+
+    it('complete() with no scheduled notification (permission denied / in-app-only) still clears the timer without calling cancel', async () => {
+      mockRequestPermission.mockResolvedValue('denied');
+      const store = createRestTimerStore();
+      await store.getState().start(startParams({ now: 1_000_000 }));
+      expect(store.getState().timer!.notificationId).toBeNull();
+
+      await store.getState().complete();
+
+      expect(mockCancel).not.toHaveBeenCalled();
+      expect(store.getState().timer).toBeNull();
+    });
+
+    it('clears kv-store persistence too, so a relaunch after a natural completion restores no timer', async () => {
+      const kv = createMemoryKvStore();
+      const store = createRestTimerStore();
+      const t0 = 1_000_000;
+      await store.getState().restore(kv, t0);
+      await store.getState().start(startParams({ now: t0 }));
+      expect(await kv.getItem('active_timer')).not.toBeNull();
+
+      await store.getState().complete();
+
+      expect(await kv.getItem('active_timer')).toBeNull();
+    });
+
+    it('complete() called twice in a row is safe — the second call is a no-op', async () => {
+      const store = createRestTimerStore();
+      await store.getState().start(startParams({ now: 1_000_000 }));
+
+      await store.getState().complete();
+      mockCancel.mockClear();
+      await store.getState().complete();
+
+      expect(mockCancel).not.toHaveBeenCalled();
+      expect(store.getState().timer).toBeNull();
+    });
+
+    it('calling adjust()/skip()/cancelForSet() after complete() are all safe no-ops (state fully cleared)', async () => {
+      const store = createRestTimerStore();
+      await store.getState().start(startParams({ setId: 'set-1', now: 1_000_000 }));
+
+      await store.getState().complete();
+
+      await expect(store.getState().adjust(15, 1_000_000)).resolves.toBeUndefined();
+      await expect(store.getState().skip()).resolves.toBeUndefined();
+      await expect(store.getState().cancelForSet('set-1')).resolves.toBeUndefined();
+      expect(store.getState().timer).toBeNull();
+    });
   });
 
   // ---------------------------------------------------------------------
