@@ -403,8 +403,14 @@ export class RoutineRepositoryImpl implements RoutineRepository {
 
     // Folders first (position order), My Routines (folder_id IS NULL) last —
     // matches 04 §1's "implicit 'My Routines' section ... always last".
+    // Must join routine_folders to sort by the folder's *position* column
+    // (user-reorderable via reorderFolders), not by folder_id — folder_id
+    // is an autoincrement PK that reflects creation order and drifts from
+    // position the moment a folder gets reordered.
     const rows = this.driver.queryAll<RoutineRow>(
-      `SELECT * FROM routines ORDER BY (folder_id IS NULL) ASC, folder_id ASC, position ASC`,
+      `SELECT routines.* FROM routines
+       LEFT JOIN routine_folders ON routines.folder_id = routine_folders.id
+       ORDER BY (routines.folder_id IS NULL) ASC, routine_folders.position ASC, routines.position ASC`,
     );
     return rows.map(mapRoutineSummaryRow);
   }

@@ -457,5 +457,18 @@ describe('RoutineRepositoryImpl — routine CRUD (M3-01 integration, better-sqli
       const all = await repo.list();
       expect(all.map((r) => r.id)).toEqual([inFolder.id, myRoutine.id]);
     });
+
+    it('groups folders by their current position order, not by folder id/creation order (04 §1)', async () => {
+      const a = await repo.createFolder({ title: 'A' });
+      const b = await repo.createFolder({ title: 'B' });
+      // a.id < b.id (creation order), but reorder so B is now first.
+      await repo.reorderFolders([b.id, a.id]);
+
+      const inA = await repo.create({ title: 'In A', folderId: a.id });
+      const inB = await repo.create({ title: 'In B', folderId: b.id });
+
+      const all = await repo.list();
+      expect(all.map((r) => r.id)).toEqual([inB.id, inA.id]);
+    });
   });
 });
