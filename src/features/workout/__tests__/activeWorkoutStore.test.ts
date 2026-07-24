@@ -293,6 +293,56 @@ describe('activeWorkoutStore (M2-03)', () => {
     });
   });
 
+  describe('removeFromSuperset (M2-12, 02 §8)', () => {
+    it('a 2-member group: removing one clears BOTH exercises\' supersetId (auto-dissolve)', async () => {
+      await store.getState().rehydrate(repository);
+      await store.getState().startEmpty({ title: 'W', startTime: 1 });
+      const [a, b] = await store.getState().addExercises([{ exerciseId: benchId }, { exerciseId: squatId }]);
+      await store.getState().updateExercise(a!.id, { supersetId: 0 });
+      await store.getState().updateExercise(b!.id, { supersetId: 0 });
+
+      await store.getState().removeFromSuperset(a!.id);
+
+      expect(store.getState().workout?.exercises[0]).toMatchObject({ supersetId: null });
+      expect(store.getState().workout?.exercises[1]).toMatchObject({ supersetId: null });
+      expect(rawWorkoutExercise(driver, a!.id)).toMatchObject({ superset_id: null });
+      expect(rawWorkoutExercise(driver, b!.id)).toMatchObject({ superset_id: null });
+    });
+
+    it('a 3-member group: removing one leaves the other two still grouped (no dissolution)', async () => {
+      await store.getState().rehydrate(repository);
+      await store.getState().startEmpty({ title: 'W', startTime: 1 });
+      const deadliftId = insertExercise(driver, 'deadlift');
+      const [a, b, c] = await store.getState().addExercises([
+        { exerciseId: benchId },
+        { exerciseId: squatId },
+        { exerciseId: deadliftId },
+      ]);
+      await store.getState().updateExercise(a!.id, { supersetId: 0 });
+      await store.getState().updateExercise(b!.id, { supersetId: 0 });
+      await store.getState().updateExercise(c!.id, { supersetId: 0 });
+
+      await store.getState().removeFromSuperset(a!.id);
+
+      expect(store.getState().workout?.exercises[0]).toMatchObject({ supersetId: null });
+      expect(store.getState().workout?.exercises[1]).toMatchObject({ supersetId: 0 });
+      expect(store.getState().workout?.exercises[2]).toMatchObject({ supersetId: 0 });
+      expect(rawWorkoutExercise(driver, b!.id)).toMatchObject({ superset_id: 0 });
+      expect(rawWorkoutExercise(driver, c!.id)).toMatchObject({ superset_id: 0 });
+    });
+
+    it('an already-ungrouped exercise: no-op beyond its own (already-null) supersetId', async () => {
+      await store.getState().rehydrate(repository);
+      await store.getState().startEmpty({ title: 'W', startTime: 1 });
+      const [a] = await store.getState().addExercises([{ exerciseId: benchId }]);
+
+      await store.getState().removeFromSuperset(a!.id);
+
+      expect(store.getState().workout?.exercises[0]).toMatchObject({ supersetId: null });
+      expect(store.getState().error).toBeNull();
+    });
+  });
+
   // -----------------------------------------------------------------------
   // Sets
   // -----------------------------------------------------------------------

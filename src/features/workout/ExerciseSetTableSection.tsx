@@ -50,6 +50,8 @@ export interface ExerciseSetTableSectionProps {
   previousValuesMode: PreviousValuesMode;
   /** The active workout's own `routine_id` (null for empty-start workouts — same_routine then degrades to any_workout automatically, 02 §6, by simply not restricting the query). */
   routineId: string | null;
+  /** M2-12: threaded straight through to every `ConnectedSetRow` — fired after that row's own set is successfully checked (never uncheck), for `ActiveWorkoutScreen`'s Smart Superset Scrolling hook. */
+  onSetChecked?: () => void;
   testID?: string;
 }
 
@@ -66,6 +68,7 @@ export function ExerciseSetTableSection({
   rpeEnabled,
   previousValuesMode,
   routineId,
+  onSetChecked,
   testID,
 }: ExerciseSetTableSectionProps): React.JSX.Element | null {
   const workoutExercise = useActiveWorkoutStore(selectWorkoutExercise(workoutExerciseId));
@@ -161,6 +164,7 @@ export function ExerciseSetTableSection({
             restSeconds={workoutExercise.restSeconds}
             nextSetType={workoutExercise.sets[index + 1]?.setType ?? null}
             setNumber={index + 1}
+            onChecked={onSetChecked}
           />
         );
       })}

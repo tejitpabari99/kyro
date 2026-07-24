@@ -25,6 +25,7 @@ import type { SqliteDriver } from '@/data/sqlite/driver';
 import { migrate } from '@/data/sqlite/migrator';
 import { SettingsRepository } from '@/data/settings/settings-repository';
 import { WorkoutRepositoryImpl } from '@/data/workouts/workout-repository';
+import { SUPERSET_PALETTE } from '@/domain/supersets';
 import { useSettingsStore } from '@/features/settings/settings-store';
 import { ThemeProvider } from '@/ui/theme-provider';
 
@@ -524,5 +525,103 @@ describe('ExerciseCard — Add to Superset sheet (02 §8 stub)', () => {
     await waitFor(() =>
       expect(screen.getByTestId(`screen-exercise-${addedA!.id}-superset-indicator`)).toBeTruthy(),
     );
+  });
+});
+
+describe('ExerciseCard — superset colors/labels + dissolution (M2-12, 02 §8 acceptance)', () => {
+  it('a 3-member circuit renders one shared color with A/B/C-consistent labels', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+
+    const rowA = await exerciseRepo.create({
+      name: 'Squat',
+      exerciseType: 'weight_reps',
+      primaryMuscleGroup: 'quadriceps',
+    });
+    const rowB = await exerciseRepo.create({
+      name: 'Lunge',
+      exerciseType: 'weight_reps',
+      primaryMuscleGroup: 'quadriceps',
+    });
+    const rowC = await exerciseRepo.create({
+      name: 'Leg Press',
+      exerciseType: 'weight_reps',
+      primaryMuscleGroup: 'quadriceps',
+    });
+
+    await useActiveWorkoutStore.getState().startEmpty({ title: 'Legs', startTime: Date.now() });
+    const [addedA, addedB, addedC] = await useActiveWorkoutStore
+      .getState()
+      .addExercises([{ exerciseId: rowA.id }, { exerciseId: rowB.id }, { exerciseId: rowC.id }]);
+    // A 3-member circuit, all sharing the lowest involved position (0) as
+    // the group id — the same convention the two group-creation paths
+    // (picker Superset toggle / Add to Superset sheet) already use.
+    await useActiveWorkoutStore.getState().updateExercise(addedA!.id, { supersetId: 0 });
+    await useActiveWorkoutStore.getState().updateExercise(addedB!.id, { supersetId: 0 });
+    await useActiveWorkoutStore.getState().updateExercise(addedC!.id, { supersetId: 0 });
+
+    await renderScreen(exerciseRepo);
+
+    const labels = await waitFor(() => {
+      const found = screen.getAllByText('Superset A');
+      expect(found).toHaveLength(3);
+      return found;
+    });
+
+    // Every member's label text shares the exact same (first) palette color
+    // (07 §2.5) — flatten each Text's style array to read its resolved color.
+    const colors = labels.map((label) => {
+      const flat = Object.assign({}, ...([] as unknown[]).concat(label.props.style));
+      return flat.color as string;
+    });
+    expect(new Set(colors).size).toBe(1);
+    expect(colors[0]).toBe(SUPERSET_PALETTE[0]);
+  });
+
+  it('removing the second-to-last member of a 2-member group dissolves it for both (both supersetId clear, indicator disappears from both cards)', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+
+    const rowA = await exerciseRepo.create({
+      name: 'Row',
+      exerciseType: 'weight_reps',
+      primaryMuscleGroup: 'upper_back',
+    });
+    const rowB = await exerciseRepo.create({
+      name: 'Pulldown',
+      exerciseType: 'weight_reps',
+      primaryMuscleGroup: 'upper_back',
+    });
+
+    const active = await useActiveWorkoutStore
+      .getState()
+      .startEmpty({ title: 'Pull Day', startTime: Date.now() });
+    const [addedA, addedB] = await useActiveWorkoutStore
+      .getState()
+      .addExercises([{ exerciseId: rowA.id }, { exerciseId: rowB.id }]);
+    await useActiveWorkoutStore.getState().updateExercise(addedA!.id, { supersetId: 0 });
+    await useActiveWorkoutStore.getState().updateExercise(addedB!.id, { supersetId: 0 });
+
+    await renderScreen(exerciseRepo);
+    await waitFor(() => expect(screen.getAllByText('Superset A')).toHaveLength(2));
+
+    await fireEvent.press(screen.getByTestId(`screen-exercise-${addedA!.id}-menu-button`));
+    await fireEvent.press(screen.getByTestId(`screen-exercise-${addedA!.id}-menu-remove-from-superset`));
+
+    // Both cards lose their superset indicator — not just the one that was
+    // explicitly removed (02 §8: "group of 1 dissolves automatically").
+    await waitFor(() => expect(screen.queryByText('Superset A')).toBeNull());
+    expect(
+      screen.queryByTestId(`screen-exercise-${addedA!.id}-superset-indicator`),
+    ).toBeNull();
+    expect(
+      screen.queryByTestId(`screen-exercise-${addedB!.id}-superset-indicator`),
+    ).toBeNull();
+
+    const persisted = await workoutRepo.getFull(active!.id);
+    const a = persisted!.exercises.find((we) => we.id === addedA!.id)!;
+    const b = persisted!.exercises.find((we) => we.id === addedB!.id)!;
+    expect(a.supersetId).toBeNull();
+    expect(b.supersetId).toBeNull();
   });
 });

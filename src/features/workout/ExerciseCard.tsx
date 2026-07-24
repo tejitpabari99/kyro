@@ -9,16 +9,29 @@
  * workout's exercise list, which only `ActiveWorkoutScreen` has).
  *
  * "Remove from Superset" is the one ⋯ item resolved **locally** despite
- * being a superset operation — 02 §8: "group of 1 auto-dissolves" needs no
- * sibling context to *leave* a group, only `updateExercise({supersetId:
- * null})` on this card's own row (M2-12 owns the follow-up dissolution
- * bookkeeping for the group's remaining member, out of this task's scope).
+ * being a superset operation — it calls `activeWorkoutStore
+ * .removeFromSuperset(workoutExerciseId)` directly (no bubbling needed):
+ * that store action (M2-12, 02 §8) already has the whole workout via `get()`
+ * to decide "group of 1 auto-dissolves" for the group's remaining member,
+ * so this card only needs to name which row is leaving.
  *
  * Add Warm-Up Sets (M2-16, 02 §12) is the other card-local ⋯ item: it opens
  * `AddWarmUpSetsSheet`, which owns its own working-weight pre-fill/
  * calculation/insert — this component only wires the sheet's `visible`
  * state and hands it this card's own `workoutExerciseId`/`exercise
  * .equipment`/unit + previous-values context.
+ *
+ * ## Superset visual (M2-12, 02 §8 / 07 §2.5)
+ *
+ * `supersetVisual` (`{label, color} | null`) replaces M2-09's own stub prop
+ * (a bare `isGrouped: boolean` that only ever rendered a generic "Superset"
+ * label in the accent color) — `ActiveWorkoutScreen` now computes every
+ * grouped exercise's actual label/color once per render via
+ * `domain/supersets.ts`'s `supersetVisualsByExerciseId` (first-appearance
+ * order among the *whole workout's* grouped exercises, 6-color palette
+ * cycling) and hands this card only its own entry. `isGrouped` (still the
+ * name `ExerciseCardMenuSheet` expects, for its Add/Remove item swap) is
+ * simply `supersetVisual != null` — no separate boolean prop needed.
  */
 import React, { useState } from 'react';
 import { Clock, Ellipsis } from 'lucide-react-native';
@@ -26,6 +39,7 @@ import { Pressable, Text, View } from 'react-native';
 
 import type { Exercise, ExerciseRepository } from '@/data/exercises/types';
 import type { DistanceUnit, PreviousValuesMode, WeightUnit } from '@/domain/enums';
+import type { SupersetVisual } from '@/domain/supersets';
 import { Button } from '@/ui/Button';
 import { Card } from '@/ui/Card';
 import { Thumb } from '@/ui/Avatar';
@@ -49,7 +63,8 @@ export interface ExerciseCardProps {
   exerciseRepository: ExerciseRepository;
   notes: string | null;
   restSeconds: RestSeconds;
-  isGrouped: boolean;
+  /** `null` when ungrouped; this card's own group label/color when it is (M2-12, see file header). */
+  supersetVisual: SupersetVisual | null;
   weightUnit: WeightUnit;
   distanceUnit: DistanceUnit;
   rpeEnabled: boolean;
@@ -59,6 +74,8 @@ export interface ExerciseCardProps {
   onReplacePress: (workoutExerciseId: string) => void;
   onAddToSupersetPress: (workoutExerciseId: string) => void;
   onRemove: (workoutExerciseId: string, exerciseName: string) => void;
+  /** M2-12: fired after a set in *this* exercise is successfully checked (never on uncheck) — `ActiveWorkoutScreen` uses this to drive Smart Superset Scrolling. Omitted entirely by nothing today; always passed by the real screen, optional only so direct-render unit tests don't have to stub it. */
+  onSetChecked?: () => void;
   testID?: string;
 }
 
@@ -69,7 +86,7 @@ export function ExerciseCard({
   exerciseRepository,
   notes,
   restSeconds,
-  isGrouped,
+  supersetVisual,
   weightUnit,
   distanceUnit,
   rpeEnabled,
@@ -79,8 +96,10 @@ export function ExerciseCard({
   onReplacePress,
   onAddToSupersetPress,
   onRemove,
+  onSetChecked,
   testID = 'exercise-card',
 }: ExerciseCardProps): React.JSX.Element {
+  const isGrouped = supersetVisual != null;
   const { colors, typography, spacing } = useTheme();
 
   const [menuVisible, setMenuVisible] = useState(false);
@@ -104,7 +123,7 @@ export function ExerciseCard({
   };
 
   const handleRemoveFromSuperset = (): void => {
-    void useActiveWorkoutStore.getState().updateExercise(workoutExerciseId, { supersetId: null });
+    void useActiveWorkoutStore.getState().removeFromSuperset(workoutExerciseId);
   };
 
   const handleAddWarmUpSets = (): void => {
@@ -113,16 +132,17 @@ export function ExerciseCard({
 
   return (
     <Card testID={testID}>
-      {isGrouped ? (
+      {supersetVisual ? (
         <View
           testID={`${testID}-superset-indicator`}
           style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing['2'] }}
         >
+          {/* 07 §2.5: "3 pt card edge bar" in the group's own cycled palette color. */}
           <View
-            style={{ width: 3, height: 14, borderRadius: 2, backgroundColor: colors.accent.primary, marginRight: spacing['2'] }}
+            style={{ width: 3, height: 14, borderRadius: 2, backgroundColor: supersetVisual.color, marginRight: spacing['2'] }}
           />
-          <Text style={[typography.caption, { color: colors.accent.text, fontWeight: '600' }]}>
-            Superset
+          <Text style={[typography.caption, { color: supersetVisual.color, fontWeight: '600' }]}>
+            Superset {supersetVisual.label}
           </Text>
         </View>
       ) : null}
@@ -188,6 +208,7 @@ export function ExerciseCard({
         rpeEnabled={rpeEnabled}
         previousValuesMode={previousValuesMode}
         routineId={routineId}
+        onSetChecked={onSetChecked}
       />
 
       <Button

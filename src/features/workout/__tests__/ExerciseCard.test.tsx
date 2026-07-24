@@ -72,7 +72,7 @@ async function renderCard(fixture: Fixture, overrides: Partial<ExerciseCardProps
     exerciseRepository: fixture.exerciseRepo,
     notes: null,
     restSeconds: null,
-    isGrouped: false,
+    supersetVisual: null,
     weightUnit: 'kg',
     distanceUnit: 'km',
     rpeEnabled: false,
@@ -116,11 +116,11 @@ describe('ExerciseCard — chrome (02 §3)', () => {
     expect(screen.getByText('Keep elbows tucked')).toBeTruthy();
   });
 
-  it('renders the superset indicator when isGrouped is true', async () => {
+  it('renders the superset indicator (label + color) when supersetVisual is set', async () => {
     const fixture = await setup();
-    await renderCard(fixture, { isGrouped: true });
+    await renderCard(fixture, { supersetVisual: { label: 'B', color: '#06B6D4' } });
     expect(screen.getByTestId('card-superset-indicator')).toBeTruthy();
-    expect(screen.getByText('Superset')).toBeTruthy();
+    expect(screen.getByText('Superset B')).toBeTruthy();
   });
 
   it('tapping the name opens the read-only exercise detail sheet', async () => {
@@ -241,7 +241,7 @@ describe('ExerciseCard — ⋯ menu wiring (02 §3)', () => {
 
   it('Add to Superset bubbles onAddToSupersetPress when ungrouped', async () => {
     const fixture = await setup();
-    const { props } = await renderCard(fixture, { isGrouped: false });
+    const { props } = await renderCard(fixture, { supersetVisual: null });
 
     await fireEvent.press(screen.getByTestId('card-menu-button'));
     await waitFor(() => expect(screen.getByTestId('card-menu-add-to-superset')).toBeTruthy());
@@ -252,7 +252,7 @@ describe('ExerciseCard — ⋯ menu wiring (02 §3)', () => {
   it('Remove from Superset (grouped) clears supersetId locally, no bubbling needed', async () => {
     const fixture = await setup();
     await useActiveWorkoutStore.getState().updateExercise(fixture.workoutExerciseId, { supersetId: 0 });
-    await renderCard(fixture, { isGrouped: true });
+    await renderCard(fixture, { supersetVisual: { label: 'A', color: '#8B5CF6' } });
 
     await fireEvent.press(screen.getByTestId('card-menu-button'));
     await waitFor(() => expect(screen.getByTestId('card-menu-remove-from-superset')).toBeTruthy());
@@ -263,6 +263,30 @@ describe('ExerciseCard — ⋯ menu wiring (02 §3)', () => {
         useActiveWorkoutStore.getState().workout!.id,
       );
       expect(persisted!.exercises[0]!.supersetId).toBeNull();
+    });
+  });
+
+  it('Remove from Superset dissolves the group when it drops to exactly one remaining member', async () => {
+    const fixture = await setup();
+    const [second] = await useActiveWorkoutStore.getState().addExercises([{ exerciseId: fixture.exercise.id }]);
+    await useActiveWorkoutStore.getState().updateExercise(fixture.workoutExerciseId, { supersetId: 0 });
+    await useActiveWorkoutStore.getState().updateExercise(second!.id, { supersetId: 0 });
+    await renderCard(fixture, { supersetVisual: { label: 'A', color: '#8B5CF6' } });
+
+    await fireEvent.press(screen.getByTestId('card-menu-button'));
+    await waitFor(() => expect(screen.getByTestId('card-menu-remove-from-superset')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('card-menu-remove-from-superset'));
+
+    await waitFor(async () => {
+      const persisted = await fixture.workoutRepo.getFull(
+        useActiveWorkoutStore.getState().workout!.id,
+      );
+      const removed = persisted!.exercises.find((we) => we.id === fixture.workoutExerciseId)!;
+      const remaining = persisted!.exercises.find((we) => we.id === second!.id)!;
+      expect(removed.supersetId).toBeNull();
+      // The group had exactly 2 members — removing one must dissolve the
+      // other's own supersetId too (02 §8: "group of 1 dissolves automatically").
+      expect(remaining.supersetId).toBeNull();
     });
   });
 

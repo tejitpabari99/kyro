@@ -636,4 +636,51 @@ describe('WorkoutRepositoryImpl — mutators + previousSets (M2-02 integration, 
       expect(await repo.previousSets(squatId)).toEqual([]);
     });
   });
+
+  // -------------------------------------------------------------------
+  // superset_id round trip (M2-12, 02 §8 acceptance: "group ids survive a
+  // save/reload round trip") — a fresh `WorkoutRepositoryImpl` instance
+  // against the *same* driver/DB simulates a cold reload far more
+  // faithfully than re-reading through the instance that just wrote the
+  // data (same "second instance, same underlying DB" convention this
+  // suite's own `raceRepo`/`raceDriver` atomicity test above already uses,
+  // and `activeWorkoutStore.crash-safety.test.ts`'s "drop the store,
+  // rehydrate a fresh one" pattern at the store layer).
+  // -------------------------------------------------------------------
+  describe('superset_id round trip (M2-12)', () => {
+    it('a 3-member circuit\'s shared supersetId survives getFull() through a brand-new repository instance', async () => {
+      const [a, b, c] = await repo.addExercises(activeWorkoutId, [
+        { exerciseId: benchId },
+        { exerciseId: squatId },
+        { exerciseId: benchId },
+      ]);
+      const groupId = Math.min(a!.position, b!.position, c!.position);
+      await repo.updateExercise(a!.id, { supersetId: groupId });
+      await repo.updateExercise(b!.id, { supersetId: groupId });
+      await repo.updateExercise(c!.id, { supersetId: groupId });
+
+      // Fresh instance, same driver — the "reload" half of the round trip.
+      const reloadedRepo = new WorkoutRepositoryImpl(driver);
+
+      const viaGetFull = await reloadedRepo.getFull(activeWorkoutId);
+      expect(viaGetFull!.exercises.map((e) => e.supersetId)).toEqual([groupId, groupId, groupId]);
+
+      const viaGetActive = await reloadedRepo.getActive();
+      expect(viaGetActive!.exercises.map((e) => e.supersetId)).toEqual([groupId, groupId, groupId]);
+    });
+
+    it('an ungrouped exercise stays null through the same reload', async () => {
+      const [a, b] = await repo.addExercises(activeWorkoutId, [
+        { exerciseId: benchId },
+        { exerciseId: squatId },
+      ]);
+      await repo.updateExercise(a!.id, { supersetId: 0 });
+      // b left ungrouped.
+
+      const reloadedRepo = new WorkoutRepositoryImpl(driver);
+      const full = await reloadedRepo.getFull(activeWorkoutId);
+      expect(full!.exercises.find((e) => e.id === a!.id)!.supersetId).toBe(0);
+      expect(full!.exercises.find((e) => e.id === b!.id)!.supersetId).toBeNull();
+    });
+  });
 });

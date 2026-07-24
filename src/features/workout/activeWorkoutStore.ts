@@ -101,6 +101,7 @@ import type {
   WorkoutSet,
 } from '@/data/workouts/types';
 import type { SetType } from '@/domain/enums';
+import { computeDissolution } from '@/domain/supersets';
 import { captureError, recordBreadcrumb } from '@/lib/sentry';
 
 // ---------------------------------------------------------------------------
@@ -221,6 +222,15 @@ export interface ActiveWorkoutState {
   reorderExercises: (orderedWorkoutExerciseIds: string[]) => Promise<void>;
   replaceExercise: (workoutExerciseId: string, newExerciseId: string) => Promise<void>;
   updateExercise: (workoutExerciseId: string, patch: UpdateExerciseInput) => Promise<void>;
+  /**
+   * M2-12 (02 §8): "Remove from Superset" — clears `workoutExerciseId`'s own
+   * `supersetId`, then auto-dissolves the group if that leaves exactly one
+   * member behind (clears that member's `supersetId` too, via
+   * `domain/supersets.ts`'s `computeDissolution`). A no-op (beyond the
+   * unconditional clear) when the group still has 2+ members left, or when
+   * `workoutExerciseId` wasn't grouped to begin with.
+   */
+  removeFromSuperset: (workoutExerciseId: string) => Promise<void>;
 
   // --- Sets ------------------------------------------------------------
   addSet: (workoutExerciseId: string, input?: NewSetInput) => Promise<WorkoutSet | null>;
@@ -463,6 +473,25 @@ export function createActiveWorkoutStore(): UseBoundStore<StoreApi<ActiveWorkout
           const dataError = toDataError(error, 'updateExercise');
           set({ workout: previous, error: dataError });
           captureError(error);
+        }
+      },
+
+      async removeFromSuperset(workoutExerciseId) {
+        // Snapshot the pre-removal membership (`computeDissolution` needs to
+        // see the *other* members' still-current `supersetId`) before the
+        // first `updateExercise` call below mutates the draft.
+        const before = requireWorkout('removeFromSuperset');
+        const toDissolve = computeDissolution(
+          before.exercises.map((exercise) => ({
+            id: exercise.id,
+            position: exercise.position,
+            supersetId: exercise.supersetId,
+          })),
+          workoutExerciseId,
+        );
+        await get().updateExercise(workoutExerciseId, { supersetId: null });
+        for (const memberId of toDissolve) {
+          await get().updateExercise(memberId, { supersetId: null });
         }
       },
 

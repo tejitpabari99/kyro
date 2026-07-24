@@ -70,7 +70,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import type { Exercise, ExerciseRepository } from '@/data/exercises/types';
 import { autoTitleForDate } from '@/domain/auto-title';
-import { nextSupersetScrollTarget, supersetVisualsByExerciseId } from '@/domain/supersets';
+import { resolveSupersetScrollTarget, supersetVisualsByExerciseId } from '@/domain/supersets';
 import { formatDuration } from '@/domain/units';
 import {
   formatVolumeDisplay,
@@ -248,20 +248,11 @@ export function ActiveWorkoutScreen({
     if (!current) {
       return;
     }
-    const exercise = current.exercises.find((we) => we.id === workoutExerciseId);
-    if (!exercise || exercise.supersetId == null) {
-      return;
-    }
-    const members = current.exercises
-      .filter((we) => we.supersetId === exercise.supersetId)
-      .sort((a, b) => a.position - b.position);
-    const memberIds = members.map((we) => we.id);
-    const fullyCompletedIds = new Set(
-      members
-        .filter((we) => we.sets.length > 0 && we.sets.every((s) => s.isCompleted))
-        .map((we) => we.id),
-    );
-    const targetId = nextSupersetScrollTarget(memberIds, fullyCompletedIds, workoutExerciseId);
+    // The actual "is this exercise grouped, which member's next" decision
+    // is `domain/supersets.ts`'s `resolveSupersetScrollTarget` — fully
+    // covered by that file's own domain-layer test suite; this handler is
+    // just the RN glue (offset lookup + the imperative `scrollTo` call).
+    const targetId = resolveSupersetScrollTarget(current.exercises, workoutExerciseId);
     if (!targetId) {
       return;
     }

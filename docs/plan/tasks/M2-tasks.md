@@ -98,7 +98,7 @@ Task count: **19**
 **Acceptance / test gate:** RNTL: pill renders countdown from store, ±15/skip dispatch; sheet opens from pill. Manual: chime + haptic on foreground completion; pill collapses.
 **Est:** 1 d
 
-### M2-12 — Supersets + smart scrolling
+### M2-12 — Supersets + smart scrolling [done]
 **Description:** Grouping, colors/labels, dissolution, and auto-scroll.
 **How:** ⋯ → Add to Superset sheet (checkbox list of other exercises → group under lowest involved position); picker Superset toggle path (multi-add as one group). `superset_id` integer per workout exercise (0,1,2…); labels A/B/C by first-appearance order; colors cycle the 6-color palette (07 §2.5); 3 pt left edge bar + label. Remove from Superset; group of 1 auto-dissolves. Smart Superset Scrolling (setting, default on): after checking a set in a grouped exercise, scroll to the next member (cycling) with unchecked sets remaining.
 **References:** 02 §8; 07 §2.5; 05 §3.2.
