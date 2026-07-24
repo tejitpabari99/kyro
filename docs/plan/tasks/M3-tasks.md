@@ -32,7 +32,7 @@ Task count: **8**
 **Acceptance / test gate:** Drag routine between folders persists and order stable after relaunch (04 §1 acceptance); decision documented; no frame drops on a 30-routine list (manual).
 **Est:** 1.5 d
 
-### M3-04 — Routine editor
+### M3-04 — Routine editor [done]
 **Description:** Full-screen modal editor with target semantics and rep ranges.
 **How:** Routes `routine/new` and `routine/[id]/edit` (modals, 06 §3). Per 04 §2.1: Cancel (confirm-if-dirty), title field, Save (disabled until title non-empty; zero-exercise allowed but warned). Reuses the logger card/SetTable machinery in **target mode**: no ✓ column, no stopwatch, no autofill-commit; SET cell cycles set types; PREVIOUS column shows last logged values read-only (no tap action). Rep targets: single value, or **rep range** toggle per set (tap REPS header or long-press cell) → `from`–`to` inputs stored as rep_range_start/end (XOR with reps). Target weight/duration/distance optional. `+ Add Set`, swipe-delete, ⋯ menu (reorder/replace/superset/note/rest timer/remove) — same interactions as the logger. Exercise picker reuse (M2-09).
 **References:** 04 §2.1; 02 §3–4 (shared interactions); 05 §3.3.
