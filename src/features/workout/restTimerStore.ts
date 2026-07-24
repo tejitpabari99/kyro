@@ -256,8 +256,19 @@ export function createRestTimerStore() {
         await cancelNotification(current.notificationId).catch(() => {});
       }
 
+      // Only reschedule if *this* timer already had a live notification —
+      // gating on `current.notificationId` (not the closure-level
+      // `permissionGranted` cache) is what actually ties this decision to
+      // whether notifications were enabled+granted *for this timer*: a
+      // timer started with `notificationsEnabled: false` (or before
+      // permission was ever granted) has `notificationId === null` even
+      // though `permissionGranted` may already be `true` from an earlier
+      // timer this session — using `permissionGranted` alone here would
+      // incorrectly schedule a fresh OS notification on a plain ±15s tap
+      // for a timer the user explicitly opted out of notifications for.
+      const hadNotification = current.notificationId !== null;
       let notificationId: string | null = null;
-      if (permissionGranted && meta) {
+      if (hadNotification && meta) {
         const secondsFromNow = Math.max(1, Math.round((proposedEndsAt - now) / 1000));
         notificationId = await scheduleRestNotification({
           secondsFromNow,

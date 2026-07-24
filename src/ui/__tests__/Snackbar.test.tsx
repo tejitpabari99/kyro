@@ -2,7 +2,7 @@
  * `Snackbar` tests (M0-07 acceptance gate): RNTL smoke render both themes,
  * plus Undo-action and 5 s auto-dismiss behavior.
  */
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
 
 import { Snackbar } from '../Snackbar';
@@ -118,5 +118,49 @@ describe('Snackbar — auto-dismiss', () => {
     jest.advanceTimersByTime(10000);
 
     expect(onDismiss).not.toHaveBeenCalled();
+  });
+
+  // Review regression (M2-09/M2-10 review): a host that re-renders for
+  // unrelated reasons (e.g. `ActiveWorkoutScreen`'s once-a-second workout
+  // stopwatch tick) commonly passes a brand-new `onDismiss` closure on
+  // every one of those renders. The auto-dismiss timer must not restart
+  // just because its `onDismiss` prop's identity changed.
+  it('still auto-dismisses on schedule even when the host re-renders with a new onDismiss identity every ~1s', async () => {
+    const onDismiss = jest.fn();
+
+    function Host(): React.JSX.Element {
+      const [tick, setTick] = React.useState(0);
+      React.useEffect(() => {
+        const id = setInterval(() => setTick((n) => n + 1), 1000);
+        return () => clearInterval(id);
+      }, []);
+      return (
+        <Snackbar
+          visible
+          message="Exercise removed"
+          // A fresh closure every render, capturing the render-local `tick`
+          // — the exact shape `ActiveWorkoutScreen.tsx` uses.
+          onDismiss={() => onDismiss(tick)}
+        />
+      );
+    }
+
+    await render(
+      <ThemeProvider preference="dark">
+        <Host />
+      </ThemeProvider>,
+    );
+
+    // Five separate 1000ms/act() increments — mirroring production's
+    // genuinely-separate `setInterval` macrotask commits (a single
+    // `advanceTimersByTime(5000)` call can coalesce multiple ticks into
+    // fewer React commits and mask a per-tick timer-reset bug).
+    for (let i = 0; i < 5; i++) {
+      await act(async () => {
+        jest.advanceTimersByTime(1000);
+      });
+    }
+
+    expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 });

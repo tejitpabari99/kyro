@@ -487,6 +487,37 @@ describe('restTimerStore (M2-10, 08 §4.10)', () => {
       expect(store.getState().timer!.notificationId).toBeNull();
       expect(store.getState().permissionDeniedNoticePending).toBe(false);
     });
+
+    // Review regression (M2-09/M2-10 review): `adjust()` used to gate its
+    // reschedule decision on the closure-level `permissionGranted` cache
+    // rather than on whether *this* timer actually had a live notification
+    // — so once permission had been granted once in a session, a later
+    // timer started with `notificationsEnabled: false` would still get a
+    // fresh OS notification scheduled the moment the user tapped +15s,
+    // silently ignoring the setting for that timer. `adjust()` must gate on
+    // `current.notificationId` instead.
+    it('adjust() after a notificationsEnabled:false start does not schedule a notification, even if permission was granted earlier this session', async () => {
+      const store = createRestTimerStore();
+
+      // First timer this session: notifications enabled + permission
+      // granted — caches `permissionGranted = true` for the store's
+      // lifetime.
+      await store.getState().start(startParams({ notificationsEnabled: true, now: 1_000_000 }));
+      expect(mockSchedule).toHaveBeenCalledTimes(1);
+      await store.getState().skip();
+
+      // Second timer: the user (or a per-timer settings read) explicitly
+      // opted out of notifications for this one.
+      mockSchedule.mockClear();
+      await store.getState().start(startParams({ notificationsEnabled: false, now: 2_000_000 }));
+      expect(store.getState().timer!.notificationId).toBeNull();
+      expect(mockSchedule).not.toHaveBeenCalled();
+
+      // +15s must not schedule a notification for a timer that never had one.
+      await store.getState().adjust(15, 2_000_000);
+      expect(mockSchedule).not.toHaveBeenCalled();
+      expect(store.getState().timer!.notificationId).toBeNull();
+    });
   });
 
   // ---------------------------------------------------------------------

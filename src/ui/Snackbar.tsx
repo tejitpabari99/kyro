@@ -8,8 +8,26 @@
  * the action label calls `onAction` and then `onDismiss` immediately,
  * matching the standard "Undo" snackbar pattern (act now, or the window
  * closes on its own).
+ *
+ * ## Why `onDismiss`/`onAction` are read through a ref, not a direct effect dep
+ * The auto-dismiss `setTimeout` must survive the *host* re-rendering for
+ * unrelated reasons (e.g. `ActiveWorkoutScreen`'s once-a-second workout
+ * stopwatch tick) without restarting the countdown — a caller that passes
+ * an inline `() => ...` closure (the common case; see
+ * `ActiveWorkoutScreen.tsx`) hands this component a brand-new function
+ * identity on every one of those renders. Naively depending on `onDismiss`
+ * in the timer effect's dependency array would clear + reschedule the
+ * `setTimeout` on every such render, and under a host that re-renders
+ * more often than `durationMs`, the timer would never actually fire —
+ * confirmed empirically: driving five separate ~1 s re-renders (mirroring
+ * real, non-batched `setInterval` macrotasks — not `advanceTimersByTime`'s
+ * single synchronous sweep, which can coalesce them) across a 5000 ms
+ * window left the Snackbar still mounted. Latest-ref indirection keeps the
+ * effect's own dependency array to just `[visible, durationMs]` — the only
+ * two things that should ever restart the countdown — while still calling
+ * whatever the *current* `onDismiss` is when the timer fires.
  */
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Pressable, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { useTheme } from './theme-provider';
@@ -41,13 +59,22 @@ export function Snackbar({
 }: SnackbarProps): React.JSX.Element | null {
   const { colors, typography, spacing, radii } = useTheme();
 
+  // Always the latest `onDismiss` — kept fresh via its own effect (never
+  // written during render — this repo's `react-hooks/refs` lint rule
+  // forbids mutating a ref's `.current` outside an effect/event handler)
+  // without being a dependency of the timer effect below (see file header).
+  const onDismissRef = useRef(onDismiss);
+  useEffect(() => {
+    onDismissRef.current = onDismiss;
+  }, [onDismiss]);
+
   useEffect(() => {
     if (!visible) {
       return undefined;
     }
-    const timer = setTimeout(onDismiss, durationMs);
+    const timer = setTimeout(() => onDismissRef.current(), durationMs);
     return () => clearTimeout(timer);
-  }, [visible, durationMs, onDismiss]);
+  }, [visible, durationMs]);
 
   if (!visible) {
     return null;
