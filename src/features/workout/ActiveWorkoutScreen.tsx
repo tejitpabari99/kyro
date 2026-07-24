@@ -68,9 +68,10 @@ import { ChevronDown } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { Exercise, ExerciseRepository } from '@/data/exercises/types';
+import type { FinishMeta } from '@/data/workouts/types';
 import { autoTitleForDate } from '@/domain/auto-title';
 import { resolveSupersetScrollTarget, supersetVisualsByExerciseId } from '@/domain/supersets';
 import { formatDuration } from '@/domain/units';
@@ -95,6 +96,8 @@ import { KeepAwakeGate } from './KeepAwakeGate';
 import { KEYBOARD_ACCESSORY_VIEW_ID, useKeyboardFocusStore } from './keyboardFocusStore';
 import { PlateCalculatorSheet } from './PlateCalculatorSheet';
 import { ReorderExercisesSheet } from './ReorderExercisesSheet';
+import { useRestTimerStore } from './restTimerStore';
+import { SaveWorkoutSheet } from './SaveWorkoutSheet';
 import { RestTimerPermissionNotice, TimerPill } from './TimerPill';
 import { selectActiveWorkout, useActiveWorkoutStore } from './activeWorkoutStore';
 import { useLoggerVisibilityStore } from './loggerVisibilityStore';
@@ -130,6 +133,7 @@ export function ActiveWorkoutScreen({
   testID = 'active-workout',
 }: ActiveWorkoutScreenProps): React.JSX.Element {
   const { colors, typography, spacing } = useTheme();
+  const queryClient = useQueryClient();
 
   const workout = useActiveWorkoutStore(selectActiveWorkout);
   const loaded = useActiveWorkoutStore((state) => state.loaded);
@@ -301,6 +305,9 @@ export function ActiveWorkoutScreen({
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
   const [durationSheetVisible, setDurationSheetVisible] = useState(false);
 
+  // --- M2-14: finish flow (02 §14) ---
+  const [saveSheetVisible, setSaveSheetVisible] = useState(false);
+
   // --- M2-09: exercise picker (add + replace share one sheet instance) ---
   const [addPickerVisible, setAddPickerVisible] = useState(false);
   const [replaceTargetId, setReplaceTargetId] = useState<string | null>(null);
@@ -415,11 +422,67 @@ export function ActiveWorkoutScreen({
     }
   };
 
+  // M2-14 (02 §14 step 1): "Tap Finish. If any unchecked set rows exist ->
+  // alert ... [Cancel / Finish anyway]." Step 5: "Empty finish (zero checked
+  // sets) -> offer Discard instead of save" — checked here *first* (an
+  // empty-start workout with zero exercises, or one where nothing was ever
+  // checked, has zero checked sets regardless of how many unchecked rows
+  // exist) so the two alerts never both fire for the same tap.
   const handleFinishPress = (): void => {
-    // Full finish flow (unchecked-sets alert, save sheet, records section)
-    // is M2-14's job — this stub proves Finish is reachable/wired now
-    // without building that flow here.
-    Alert.alert('Finish Workout', 'The finish flow arrives in M2-14.');
+    if (!workout) {
+      return;
+    }
+    const allSets = workout.exercises.flatMap((workoutExercise) => workoutExercise.sets);
+    const uncheckedCount = allSets.filter((s) => !s.isCompleted).length;
+    const checkedCount = allSets.length - uncheckedCount;
+
+    if (checkedCount === 0) {
+      Alert.alert(
+        'Nothing to save',
+        'No sets were completed. Discard this workout instead?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Discard', style: 'destructive', onPress: performDiscard },
+        ],
+      );
+      return;
+    }
+
+    if (uncheckedCount > 0) {
+      Alert.alert(
+        'Uncompleted sets',
+        `${uncheckedCount} sets are not marked complete and will be discarded.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Finish anyway', onPress: () => setSaveSheetVisible(true) },
+        ],
+      );
+      return;
+    }
+
+    setSaveSheetVisible(true);
+  };
+
+  // M2-14 (02 §14 step 3): repo `finish` (already-tested M2-01/store action)
+  // -> cancel any pending rest-timer notification (mirrors `skip()`'s own
+  // "cancel + clear" contract, `restTimerStore.ts` — safe/no-op if no timer
+  // is running) -> invalidate the minimal-history list query (M2-14's own
+  // History tab) -> close the sheet -> navigate to the new detail route.
+  // Update-routine prompt (02 §14 step 4) is a no-op until M3-06 (routines
+  // don't exist as a start-source yet, per this task's own scoping note) —
+  // deliberately not called from here.
+  const handleSaveWorkout = async (meta: FinishMeta): Promise<void> => {
+    const finished = await useActiveWorkoutStore.getState().finish(meta);
+    if (!finished) {
+      // Store surfaced a DataError (rolled back, workout restored) — leave
+      // the sheet open so the user can retry, matching every other
+      // repo-failure posture on this screen (06 §9).
+      return;
+    }
+    await useRestTimerStore.getState().skip();
+    await queryClient.invalidateQueries({ queryKey: ['history'] });
+    setSaveSheetVisible(false);
+    router.replace(`/history/${finished.id}` as never);
   };
 
   const handleAddExercisePress = (): void => {
@@ -571,18 +634,24 @@ export function ActiveWorkoutScreen({
     Alert.alert('Workout Settings', 'Workout settings arrive in M2-17.');
   };
 
+  // Shared by the footer's own "Discard Workout" confirm and M2-14's
+  // empty-finish "Discard" alert (02 §14 step 5) — both are already their
+  // own single confirm dialog, so neither needs a second confirmation on
+  // top of this.
+  const performDiscard = (): void => {
+    void useActiveWorkoutStore
+      .getState()
+      .discard()
+      .then(() => router.back());
+  };
+
   const handleDiscardPress = (): void => {
     Alert.alert('Discard workout?', 'All entered data will be lost.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Discard',
         style: 'destructive',
-        onPress: () => {
-          void useActiveWorkoutStore
-            .getState()
-            .discard()
-            .then(() => router.back());
-        },
+        onPress: performDiscard,
       },
     ]);
   };
@@ -813,6 +882,20 @@ export function ActiveWorkoutScreen({
         onSaveDuration={handleSaveDuration}
         onPause={handlePause}
         onResume={handleResume}
+      />
+
+      <SaveWorkoutSheet
+        testID={`${testID}-save-sheet`}
+        visible={saveSheetVisible}
+        onDismiss={() => setSaveSheetVisible(false)}
+        workoutId={workout.id}
+        initialTitle={workout.title}
+        initialDescription={workout.description}
+        startTime={workout.startTime}
+        elapsedMs={stopwatch.elapsedMs}
+        volumeLabel={`${Math.round(displayVolume)} ${weightUnit}`}
+        setsCount={checkedSetsCount}
+        onSave={(meta) => void handleSaveWorkout(meta)}
       />
 
       <ExercisePickerSheet

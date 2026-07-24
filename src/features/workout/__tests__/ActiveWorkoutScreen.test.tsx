@@ -45,8 +45,11 @@ import { useSettingsStore } from '@/features/settings/settings-store';
 import { SettingsRepository } from '@/data/settings/settings-repository';
 import { ThemeProvider } from '@/ui/theme-provider';
 
+import { cancelNotification } from '@/lib/notifications';
+
 import { ActiveWorkoutScreen } from '../ActiveWorkoutScreen';
 import { useActiveWorkoutStore } from '../activeWorkoutStore';
+import { useRestTimerStore } from '../restTimerStore';
 
 jest.mock('@sentry/react-native', () => ({
   init: jest.fn(),
@@ -58,6 +61,13 @@ jest.mock('expo-router', () => ({
   ...jest.requireActual('expo-router'),
   router: { push: jest.fn(), back: jest.fn(), replace: jest.fn() },
 }));
+
+// M2-14: the finish flow cancels any pending rest-timer notification
+// (`restTimerStore.skip()`) — mocked here the same way `restTimerStore
+// .test.tsx` (M2-10) mocks this native seam, so the finish-flow tests below
+// can assert cancellation without touching the unavailable-under-Jest
+// `expo-notifications` module (see `src/lib/notifications.ts`'s own header).
+jest.mock('@/lib/notifications');
 
 // M2-09: `ExerciseCard`'s name-tap opens `ExerciseDetailSheet`, which reuses
 // the real `ExerciseDetailScreen` (M1-08) — that screen imports `@/lib/files`,
@@ -106,19 +116,24 @@ async function rehydrateStores(workoutRepo: WorkoutRepositoryImpl, driver: Sqlit
   await useSettingsStore.getState().load(new SettingsRepository(driver));
 }
 
-function renderScreen(
+async function renderScreen(
   exerciseRepo: ExerciseRepository,
   overrides: Partial<React.ComponentProps<typeof ActiveWorkoutScreen>> = {},
   theme: 'dark' | 'light' = 'dark',
 ) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { gcTime: 0 } } });
-  return render(
+  const result = await render(
     <QueryClientProvider client={queryClient}>
       <ThemeProvider preference={theme}>
         <ActiveWorkoutScreen testID="screen" exerciseRepository={exerciseRepo} {...overrides} />
       </ThemeProvider>
     </QueryClientProvider>,
   );
+  // Spread so every existing `await renderScreen(...)`/`const { rerender } =
+  // await renderScreen(...)` call site keeps working unchanged — `queryClient`
+  // is additive, read only by the M2-14 finish-flow cases below (asserting
+  // `invalidateQueries` was called with the `['history']` key).
+  return { ...result, queryClient };
 }
 
 beforeEach(() => {
@@ -419,16 +434,13 @@ describe('ActiveWorkoutScreen — header/footer stub affordances', () => {
     expect(router.back).toHaveBeenCalled();
   });
 
-  it('Finish/Settings surface their M2-14/M2-17 stub alerts', async () => {
+  it('Settings surfaces its M2-17 stub alert', async () => {
     const { driver, workoutRepo, exerciseRepo } = setup();
     await rehydrateStores(workoutRepo, driver);
     await useActiveWorkoutStore.getState().startEmpty({ title: 'Test Workout', startTime: Date.now() });
 
     await renderScreen(exerciseRepo);
-    await waitFor(() => expect(screen.getByTestId('screen-finish')).toBeTruthy());
-
-    await fireEvent.press(screen.getByTestId('screen-finish'));
-    expect(Alert.alert).toHaveBeenCalledWith('Finish Workout', 'The finish flow arrives in M2-14.');
+    await waitFor(() => expect(screen.getByTestId('screen-settings')).toBeTruthy());
 
     await fireEvent.press(screen.getByTestId('screen-settings'));
     expect(Alert.alert).toHaveBeenCalledWith('Workout Settings', 'Workout settings arrive in M2-17.');
@@ -449,6 +461,163 @@ describe('ActiveWorkoutScreen — header/footer stub affordances', () => {
     await fireEvent.press(screen.getByTestId('screen-add-exercise'));
     await waitFor(() => expect(screen.getByTestId('screen-exercise-picker')).toBeTruthy());
     expect(screen.getByText('Add Exercise')).toBeTruthy();
+  });
+});
+
+/** Seeds one exercise with a checked first set (60kg x 8) and, when `withUncheckedSecondSet`, a second bare/unchecked set — the fixture every finish-flow case below builds on. */
+async function seedCheckedExercise(
+  exerciseRepo: ExerciseRepository,
+  withUncheckedSecondSet: boolean,
+): Promise<{ exerciseId: string; firstSetId: string }> {
+  const exercise = await exerciseRepo.create({
+    name: 'Bench Press',
+    exerciseType: 'weight_reps',
+    primaryMuscleGroup: 'chest',
+    usesCustomMetric: false,
+  });
+  const [added] = await useActiveWorkoutStore.getState().addExercises([{ exerciseId: exercise.id }]);
+  const firstSetId = added!.sets[0]!.id;
+  await useActiveWorkoutStore.getState().updateSet(firstSetId, { weightKg: 60, reps: 8 });
+  await useActiveWorkoutStore.getState().setCompleted(firstSetId, true);
+  if (withUncheckedSecondSet) {
+    await useActiveWorkoutStore.getState().addSet(added!.id);
+  }
+  return { exerciseId: exercise.id, firstSetId };
+}
+
+describe('ActiveWorkoutScreen — finish flow (M2-14, 02 §14)', () => {
+  it('empty finish (zero checked sets) offers Discard instead of Save, and Discard clears the workout', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+    await useActiveWorkoutStore.getState().startEmpty({ title: 'Test Workout', startTime: Date.now() });
+
+    await renderScreen(exerciseRepo);
+    await waitFor(() => expect(screen.getByTestId('screen-finish')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('screen-finish'));
+
+    expect(Alert.alert).toHaveBeenCalledWith(
+      'Nothing to save',
+      'No sets were completed. Discard this workout instead?',
+      expect.any(Array),
+    );
+    expect(screen.queryByTestId('screen-save-sheet-save')).toBeNull();
+
+    await pressAlertButton('Discard');
+
+    await waitFor(() => expect(useActiveWorkoutStore.getState().workout).toBeNull());
+    await waitFor(() => expect(router.back).toHaveBeenCalled());
+    expect(await workoutRepo.getActive()).toBeNull();
+  });
+
+  it('empty finish — Cancel leaves the workout intact and the sheet closed', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+    await useActiveWorkoutStore.getState().startEmpty({ title: 'Test Workout', startTime: Date.now() });
+
+    await renderScreen(exerciseRepo);
+    await waitFor(() => expect(screen.getByTestId('screen-finish')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('screen-finish'));
+    await pressAlertButton('Cancel');
+
+    expect(useActiveWorkoutStore.getState().workout).not.toBeNull();
+    expect(router.back).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('screen-save-sheet-save')).toBeNull();
+  });
+
+  it('unchecked sets present: alert names the count; Cancel leaves the Save sheet closed', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+    await useActiveWorkoutStore.getState().startEmpty({ title: 'Test Workout', startTime: Date.now() });
+    await seedCheckedExercise(exerciseRepo, true);
+
+    await renderScreen(exerciseRepo);
+    await waitFor(() => expect(screen.getByTestId('screen-finish')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('screen-finish'));
+
+    expect(Alert.alert).toHaveBeenCalledWith(
+      'Uncompleted sets',
+      '1 sets are not marked complete and will be discarded.',
+      expect.any(Array),
+    );
+
+    await pressAlertButton('Cancel');
+    expect(screen.queryByTestId('screen-save-sheet-save')).toBeNull();
+  });
+
+  it('unchecked sets present: "Finish anyway" opens the Save sheet', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+    await useActiveWorkoutStore.getState().startEmpty({ title: 'Test Workout', startTime: Date.now() });
+    await seedCheckedExercise(exerciseRepo, true);
+
+    await renderScreen(exerciseRepo);
+    await waitFor(() => expect(screen.getByTestId('screen-finish')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('screen-finish'));
+    await pressAlertButton('Finish anyway');
+
+    await waitFor(() => expect(screen.getByTestId('screen-save-sheet-save')).toBeTruthy());
+  });
+
+  it('every set checked: Finish opens the Save sheet directly, no unchecked-sets alert', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+    await useActiveWorkoutStore.getState().startEmpty({ title: 'Test Workout', startTime: Date.now() });
+    await seedCheckedExercise(exerciseRepo, false);
+
+    await renderScreen(exerciseRepo);
+    await waitFor(() => expect(screen.getByTestId('screen-finish')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('screen-finish'));
+
+    expect(Alert.alert).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByTestId('screen-save-sheet-save')).toBeTruthy());
+  });
+
+  it('Save Workout: persists via repo finish (unchecked sets dropped), cancels the pending rest-timer notification, invalidates history, and navigates to the detail route', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+    await useActiveWorkoutStore.getState().startEmpty({ title: 'Test Workout', startTime: Date.now() });
+    const { exerciseId, firstSetId } = await seedCheckedExercise(exerciseRepo, true);
+
+    // Seed a running rest timer for the checked set (02 §14: "cancel any
+    // pending rest-timer notification" — proven by asserting both the store
+    // clears and the mocked `cancelNotification` seam was actually called).
+    await useRestTimerStore.getState().start({
+      exerciseId,
+      setId: firstSetId,
+      durationSeconds: 90,
+      exerciseName: 'Bench Press',
+      setNumber: 1,
+      notificationsEnabled: true,
+    });
+    expect(useRestTimerStore.getState().timer).not.toBeNull();
+    const pendingNotificationId = useRestTimerStore.getState().timer!.notificationId!;
+
+    const { queryClient } = await renderScreen(exerciseRepo);
+    const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries');
+    await waitFor(() => expect(screen.getByTestId('screen-finish')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('screen-finish'));
+    await pressAlertButton('Finish anyway');
+    await waitFor(() => expect(screen.getByTestId('screen-save-sheet-save')).toBeTruthy());
+
+    await fireEvent.press(screen.getByTestId('screen-save-sheet-save'));
+
+    await waitFor(() => expect(router.replace).toHaveBeenCalled());
+    const [replaceTarget] = (router.replace as jest.Mock).mock.calls[0];
+    expect(replaceTarget).toMatch(/^\/history\//);
+    const workoutId = String(replaceTarget).replace('/history/', '');
+
+    expect(useRestTimerStore.getState().timer).toBeNull();
+    expect(cancelNotification).toHaveBeenCalledWith(pendingNotificationId);
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['history'] });
+
+    const saved = await workoutRepo.getFull(workoutId);
+    expect(saved?.state).toBe('completed');
+    // Unchecked second set was dropped by repo `finish()` (M2-01) — only
+    // the one checked set survives.
+    expect(saved?.exercises[0]!.sets).toHaveLength(1);
+    expect(saved?.exercises[0]!.sets[0]!.isCompleted).toBe(true);
+
+    await waitFor(() => expect(useActiveWorkoutStore.getState().workout).toBeNull());
   });
 });
 
