@@ -16,6 +16,7 @@
  * unavailable under Jest; see each module's own file header).
  */
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import * as Linking from 'expo-linking';
 import React from 'react';
 
 import { SETTINGS_DEFAULTS } from '@/data/settings/settings-schema';
@@ -29,6 +30,12 @@ import { useRestTimerStore } from '../restTimerStore';
 
 jest.mock('@/lib/haptics');
 jest.mock('@/lib/sound');
+// M2-11 review fix: `RestTimerPermissionNotice`'s "Open Settings" action —
+// `expo-linking` is a true native seam, mocked per 08 §5's convention
+// (same shape `NoteText.test.tsx` already uses for this exact module).
+jest.mock('expo-linking', () => ({
+  openSettings: jest.fn(() => Promise.resolve()),
+}));
 // `adjust`/`skip`/`complete` (restTimerStore, exercised here through the
 // pill's own dispatch) call through to `@/lib/notifications` — a true
 // native seam (`expo-notifications`), mocked per 08 §5's convention. Left
@@ -249,6 +256,21 @@ describe('RestTimerPermissionNotice (M2-11, 02 §16.9)', () => {
       jest.advanceTimersByTime(5_000);
     });
 
+    expect(useRestTimerStore.getState().permissionDeniedNoticePending).toBe(false);
+  });
+
+  // M2-11 review fix: 02 §16.9's literal text is "one-time inline warning
+  // on first timer start **with link to iOS Settings**" — the initial
+  // landing rendered only the message, with no way to act on it. Verifies
+  // the "Open Settings" action both opens Settings and dismisses the
+  // notice (Snackbar's own `handleAction`: `onAction` then `onDismiss`).
+  it('"Open Settings" action opens Settings and dismisses the notice', async () => {
+    useRestTimerStore.setState({ permissionDeniedNoticePending: true });
+    await renderNotice();
+
+    await fireEvent.press(screen.getByText('Open Settings'));
+
+    expect(Linking.openSettings).toHaveBeenCalledTimes(1);
     expect(useRestTimerStore.getState().permissionDeniedNoticePending).toBe(false);
   });
 });

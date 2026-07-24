@@ -213,10 +213,24 @@ export function createRestTimerStore() {
       }
 
       let shouldSchedule = notificationsEnabled;
+      // Set only on the exact call that performs the real, once-per-lifetime
+      // permission request and gets back a denial — this is what "one-time
+      // inline warning on first timer start" (02 §16.9) actually means.
+      // Gating the `permissionDeniedNoticePending` write below on the
+      // *live* `!permissionGranted` cache instead (as an earlier version of
+      // this function did) re-arms the flag on every subsequent `start()`
+      // call for the rest of the session — including ones *after* the user
+      // has already dismissed the notice — since `permissionGranted` stays
+      // `false` forever once denied (M2-11 review fix: confirmed empirically
+      // via a throwaway repro test, `dismissPermissionDeniedNotice()`
+      // followed by a second denied `start()` reset the flag straight back
+      // to `true`).
+      let justDenied = false;
       if (shouldSchedule && !hasRequestedPermission) {
         hasRequestedPermission = true;
         const status = await requestNotificationPermission();
         permissionGranted = status === 'granted';
+        justDenied = !permissionGranted;
       }
       shouldSchedule = shouldSchedule && permissionGranted;
 
@@ -252,13 +266,12 @@ export function createRestTimerStore() {
       const timer: RestTimer = { endsAt, exerciseId, setId, notificationId };
       set({
         timer,
-        // Only the OS-permission-denial path shows the one-time warning —
-        // `notificationsEnabled === false` is the user's own explicit
-        // choice, nothing to warn about.
-        permissionDeniedNoticePending:
-          notificationsEnabled && !permissionGranted
-            ? true
-            : get().permissionDeniedNoticePending,
+        // Only the single `start()` call that just discovered the denial
+        // flips this on — every other call (already-known-denied, or never
+        // denied at all) leaves whatever the notice/dismiss flow already
+        // set, so a dismissed notice stays dismissed for the rest of the
+        // session (matches "one-time," see the `justDenied` comment above).
+        permissionDeniedNoticePending: justDenied ? true : get().permissionDeniedNoticePending,
       });
       persist(timer);
     },

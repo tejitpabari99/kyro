@@ -60,6 +60,7 @@
  * `adjust`/`skip` are already-built, already-tested store actions to wire
  * UI onto, not to extend.
  */
+import * as Linking from 'expo-linking';
 import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -327,12 +328,18 @@ export interface RestTimerPermissionNoticeProps {
  *
  * Reuses `Snackbar` (07 §5's own listed "toast"-shaped primitive — "undo
  * affordance, 5 s") rather than inventing a new inline-warning component:
- * this isn't an undo action (no `onAction`/`actionLabel`, `Snackbar`'s own
- * props already support that), just message + auto-dismiss + a manual
- * dismiss via `onDismiss`, exactly the shape this warning needs.
+ * its existing `onAction`/`actionLabel` props are exactly what 02 §16.9's
+ * literal text asks for here — "one-time inline warning on first timer
+ * start **with link to iOS Settings**" (M2-11 review fix: the action was
+ * missing entirely in the initial landing, leaving only the message text
+ * with no way to actually act on it) — wired to `expo-linking`'s
+ * `openSettings()` (already a project dependency, same import
+ * `NoteText.tsx` uses for its own tappable links). Tapping it calls
+ * `onDismiss` right after (`Snackbar`'s own `handleAction`), so "Open
+ * Settings" also counts as dismissing this notice — correct, since the
+ * user has now acted on it either way.
  * `restTimerStore.dismissPermissionDeniedNotice()` is called both on the
- * 5 s auto-dismiss and (implicitly, same `onDismiss` prop) if a caller ever
- * adds a manual close affordance later.
+ * 5 s auto-dismiss and on that same manual dismiss-via-action path.
  */
 export function RestTimerPermissionNotice({
   testID = 'timer-permission-notice',
@@ -345,6 +352,10 @@ export function RestTimerPermissionNotice({
       testID={testID}
       visible={pending}
       message="Notifications are off, so the rest timer will only work while Kyro is open."
+      actionLabel="Open Settings"
+      onAction={() => {
+        void Linking.openSettings();
+      }}
       onDismiss={() => useRestTimerStore.getState().dismissPermissionDeniedNotice()}
       style={{ marginHorizontal: spacing['4'] }}
     />

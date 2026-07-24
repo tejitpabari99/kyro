@@ -689,6 +689,34 @@ describe('restTimerStore (M2-10, 08 §4.10)', () => {
       expect(store.getState().permissionDeniedNoticePending).toBe(false);
     });
 
+    // M2-11 review fix: a prior version of `start()` re-derived
+    // `permissionDeniedNoticePending` from the live `!permissionGranted`
+    // cache on *every* call, not just the one that actually discovered the
+    // denial — so once a user dismissed the notice, the very next set
+    // check (which starts a brand-new rest timer, still denied from
+    // earlier this session) silently flipped it straight back to `true`.
+    // That contradicts 02 §16.9's "one-time inline warning": dismissing it
+    // must stick for the rest of the session, not just until the next
+    // timer starts.
+    it('does not re-arm the notice on a later start() after the user has dismissed it', async () => {
+      mockRequestPermission.mockResolvedValue('denied');
+      const store = createRestTimerStore();
+
+      await store.getState().start(startParams({ now: 1_000_000, setId: 'set-1' }));
+      expect(store.getState().permissionDeniedNoticePending).toBe(true);
+      store.getState().dismissPermissionDeniedNotice();
+      expect(store.getState().permissionDeniedNoticePending).toBe(false);
+
+      // A second, later rest timer this same session — permission is still
+      // (and will remain) denied, but the user already saw and dismissed
+      // the warning once.
+      await store.getState().skip();
+      await store.getState().start(startParams({ now: 2_000_000, setId: 'set-2' }));
+
+      expect(mockRequestPermission).toHaveBeenCalledTimes(1); // still lazy/once-only
+      expect(store.getState().permissionDeniedNoticePending).toBe(false);
+    });
+
     it('notificationsEnabled: false skips scheduling without requesting permission or flagging denial', async () => {
       const store = createRestTimerStore();
 
