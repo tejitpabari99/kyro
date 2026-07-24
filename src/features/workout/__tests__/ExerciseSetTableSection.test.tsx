@@ -439,7 +439,7 @@ describe('ExerciseSetTableSection — check flow (M2-07, 02 §4 / 00 P6)', () =>
 
 describe('ConnectedSetRow — rep-range targets never auto-commit on check (04 §2.3)', () => {
   it('blocks the check when the only PREVIOUS source is a rep-range target, even though a label shows', async () => {
-    const { exercise, workoutExerciseId, workoutRepo } = await setupExercise('reps_only');
+    const { exercise, workoutRepo } = await setupExercise('reps_only');
     const columns = columnsForExerciseType('reps_only', {
       usesCustomMetric: false,
       rpeEnabled: false,
