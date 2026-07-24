@@ -154,7 +154,7 @@ Task count: **19**
 **Acceptance / test gate:** Flows 1 & 3 green locally on iOS simulator; nightly workflow file complete (runs green if remote/macOS runner available; locally runnable via `pnpm e2e`).
 **Est:** 1.5 d
 
-### M2-19 — M2 QA drills, perf sign-off & exit gate
+### M2-19 — M2 QA drills, perf sign-off & exit gate [done]
 **Description:** The heavyweight milestone gate.
 **How:** Kill-resume manual drill 10/10 (force-quit; note device-restart variant for owner's physical device, O-09). Backgrounding drill (08 §7): timer + lock screen on simulator-feasible parts, airplane mode no-op. 20-minute logging drill: 5 exercises incl. superset, drop set, warm-ups, RPE — zero data errors/mistaps. Keypress-to-paint < 50 ms measured and recorded; check-to-feedback < 100 ms. Re-render discipline profiling pass (06 §8). Fix all P0/P1 (+regression tests). `docs/qa/M2-checklist.md`; tag.
 **References:** 09 M2 exit; 08 §7, §8; 06 §8.
