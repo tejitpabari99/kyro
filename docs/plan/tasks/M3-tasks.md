@@ -40,7 +40,7 @@ Task count: **8**
 **Acceptance / test gate:** Rep-range entry displays `6-8`; XOR storage verified (repo test); dirty-cancel confirm; save round-trips through getFull; RNTL behavioral tests on range toggle.
 **Est:** 2 d
 
-### M3-05 — Start-from-routine
+### M3-05 — Start-from-routine [done]
 **Description:** `startFromRoutine` repo method + logger integration with targets-as-placeholders.
 **How:** Repo: create active workout pre-populated per 02 §1 — exercises in order, routine's sets as unchecked rows carrying target values as placeholders, per-exercise rest_seconds/notes/superset groups, `routine_id` recorded, title = routine title. Logger: placeholder precedence = previous values → routine target (02 §6); rep-range targets render `6-8` and **never auto-commit** (M2-07 already enforces; wire the target payload). One-active invariant sheet applies. Routine note pre-fills each run; mid-workout edits touch only the workout.
 **References:** 02 §1, §6; 04 §2.3; 00 P6.
