@@ -238,6 +238,41 @@ describe('TimerPill (M2-11)', () => {
     expect(await screen.findByTestId('pill-remaining')).toHaveTextContent('0:30');
     expect(screen.queryByTestId('pill-sheet-remaining')).toBeNull();
   });
+
+  // M2-18 (08 §6 flow 7): the dev-only debug hook Maestro's semi-manual
+  // notification-scheduling flow reads — see `TimerPill.tsx`'s own file
+  // header for why this mirrors `notificationId` rather than reaching into
+  // `expo-notifications` directly.
+  describe('debug notification-id hook (M2-18, __DEV__ only)', () => {
+    it('shows the store timer.notificationId when set', async () => {
+      const now = Date.now();
+      useRestTimerStore.setState({
+        timer: { endsAt: now + 60_000, exerciseId: 'ex1', setId: 'set1', notificationId: 'notif-abc123' },
+      });
+      await renderPill();
+      expect(screen.getByTestId('pill-debug-notification-id')).toHaveTextContent('notif-abc123');
+    });
+
+    it('shows "none" when the timer has no notificationId (permission denied/module unavailable)', async () => {
+      seedTimer(60_000); // seedTimer's own fixture always sets notificationId: null
+      await renderPill();
+      expect(screen.getByTestId('pill-debug-notification-id')).toHaveTextContent('none');
+    });
+
+    it('is not rendered when __DEV__ is false', async () => {
+      const original = __DEV__;
+      // @ts-expect-error — `__DEV__` is a read-only ambient global in its type declaration, same override pattern `app/(tabs)/profile/__tests__/index.test.tsx` already uses for this exact guard.
+      __DEV__ = false;
+      try {
+        seedTimer(60_000);
+        await renderPill();
+        expect(screen.queryByTestId('pill-debug-notification-id')).toBeNull();
+      } finally {
+        // @ts-expect-error — see above.
+        __DEV__ = original;
+      }
+    });
+  });
 });
 
 describe('RestTimerPermissionNotice (M2-11, 02 §16.9)', () => {

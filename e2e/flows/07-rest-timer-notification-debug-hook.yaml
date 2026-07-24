@@ -1,0 +1,80 @@
+# M2-18 — E2E flow 7 (08 §6 item 7, semi-manual): rest-timer notification
+# scheduling.
+#
+# 08 §6's own words: "simulator can't fully verify lock-screen delivery —
+# assert scheduling via debug hook; physical-device manual check in QA
+# checklist." This flow is deliberately narrow — it only exercises the
+# *scheduling* half (did the app successfully hand a notification off to
+# `expo-notifications`), via the dev-only debug hook added in
+# `src/features/workout/TimerPill.tsx` for exactly this purpose:
+#
+#   `restTimerStore`'s own `RestTimer.notificationId` field (already the
+#   store's real signal for "did `scheduleRestNotification` succeed" —
+#   `null` covers both "permission denied" and "native module unavailable")
+#   is surfaced as plain, `__DEV__`-gated text
+#   (`${testID}-debug-notification-id`) right inside the pill. Never
+#   rendered in a production/TestFlight build (same `__DEV__` gate this
+#   codebase already uses for `app/(tabs)/profile/index.tsx`'s dev-gallery
+#   link) — nothing about this hook ships to real users.
+#
+# What this flow does NOT (and per 08 §6 cannot) verify: that the
+# notification actually appears on the lock screen with the right sound at
+# the right time. That is O-09 (`docs/plan/tasks/OWNER-TASKS.md`) — a
+# physical-device manual drill, tracked in `docs/qa/` per-milestone
+# checklists, not something any simulator (or this headless machine, which
+# has neither) can observe.
+#
+# `permissions: { notifications: allow }` on launch is what makes the
+# "happy path" (`notificationId` present, not the `'none'` sentinel)
+# reachable at all — without it, iOS's real permission prompt would block
+# first-timer-start and the OS would report `denied`, which is a *real*,
+# already-covered path (`restTimerStore.ts`'s "denial -> in-app-only mode +
+# inline warning, 02 §16.9" — `RestTimerPermissionNotice`) but not the one
+# this flow is checking.
+appId: com.tejitpabari.kyro
+name: Rest-timer notification scheduling (semi-manual debug hook)
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: allow
+
+- tapOn:
+    id: "start-empty-workout"
+- assertVisible:
+    id: "active-workout"
+
+- tapOn:
+    id: "active-workout-add-exercise"
+- tapOn:
+    id: "active-workout-exercise-picker-search"
+- inputText: "Barbell Bench Press - Medium Grip"
+- tapOn:
+    id: "exercise-row-Barbell_Bench_Press_-_Medium_Grip"
+- tapOn:
+    id: "active-workout-exercise-picker-confirm"
+- waitForAnimationToEnd
+
+# default_rest_seconds = 90 s (SETTINGS_DEFAULTS, `settings-schema.ts`) > 0,
+# so checking this set starts a rest timer and attempts to schedule a
+# notification (`ConnectedSetRow.tsx`'s `handleToggleCompleted`).
+- tapOn:
+    id: ".*-table-row-0-value-weight$"
+- inputText: "60"
+- tapOn:
+    id: ".*-table-row-0-value-reps$"
+- inputText: "8"
+- hideKeyboard
+- tapOn:
+    id: ".*-table-row-0-check$"
+
+- assertVisible:
+    id: "active-workout-timer-pill"
+
+# The debug hook itself: present (dev build) and NOT showing the "none"
+# sentinel — i.e., `scheduleRestNotification` actually returned a real id.
+- assertVisible:
+    id: "active-workout-timer-pill-debug-notification-id"
+- assertNotVisible:
+    id: "active-workout-timer-pill-debug-notification-id"
+    text: "none"

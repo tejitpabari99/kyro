@@ -1,0 +1,234 @@
+# M2-18 — E2E flow 1 (08 §6 item 1, smoke): log a workout end-to-end.
+#
+# launch -> start empty -> add Bench Press -> type 60/8 -> check (rest pill
+# appears) -> add set via previous-tap -> check -> finish -> confirm
+# discard-unchecked dialog handling -> workout appears in History with
+# correct volume.
+#
+# ## Why this file has two phases, not one straight run of the doc's steps
+#
+# 08 §6's own bullet list assumes a PREVIOUS value exists to autofill from
+# ("add set via previous-tap") — but `PREVIOUS` (`domain/previous-values.ts`,
+# `WorkoutRepository.previousSets`) only ever looks at the most recent
+# *completed* workout containing the exercise; it never reaches back into
+# sets already checked earlier in the *same* still-active workout (confirmed
+# by reading `previousSets`'/`computePreviousValues`'s own file headers —
+# this is deliberate, matching real "last session" semantics, not a gap).
+# On a genuinely fresh install (`clearState: true` below, so this flow is
+# reproducible from nothing) there is no history for Bench Press yet, so a
+# literal single-pass run of the doc's steps would hit an empty PREVIOUS
+# cell, previous-tap would no-op (`ConnectedSetRow.tsx`'s
+# `handlePreviousPress`: `if (!previousResult.autofill) return`), the new
+# row would stay blank, and checking a blank row would be *blocked* (row
+# shake, no commit) rather than succeed — silently turning this smoke test
+# into a false pass of the wrong path.
+#
+# So **Phase A** first logs and finishes one small real workout for the same
+# exercise (2 sets, 60 kg x 8 reps each) purely to seed that history — this
+# is standard real-app usage (nobody's actual first-ever Bench Press session
+# has a PREVIOUS value either), not a test-only shortcut. **Phase B** is
+# the actual documented flow, now running against a device state that looks
+# like any normal non-empty-history app, exactly as 08 §6 describes.
+#
+# Phase B also adds one explicit extra row (`+ Add Set`, left unchecked) not
+# spelled out in 08 §6's own summary sentence — the doc's very next clause
+# ("confirm discard-unchecked dialog handling") cannot fire without at least
+# one unchecked row present at Finish time, so this flow makes that row
+# explicit rather than silently skipping the assertion it names.
+#
+# ## Concrete exercise substitution
+#
+# The vendored free-exercise-db dataset (`data/free-exercise-db/`,
+# `assets/exercise-db.json`) has no exercise literally named "Bench Press" —
+# the canonical flat barbell bench exercise there is "Barbell Bench Press -
+# Medium Grip" (id `Barbell_Bench_Press_-_Medium_Grip`, `exercise_type:
+# weight_reps`), used throughout this flow as that stand-in. Selected by its
+# exact name in the picker's search box (several other rows also contain the
+# substring "Bench Press", so an exact full-name search is what keeps the
+# subsequent row tap unambiguous) then tapped by its own stable, dataset-id-
+# derived testID (`exercise-row-Barbell_Bench_Press_-_Medium_Grip`) rather
+# than by a possibly-ambiguous visible-text tap.
+#
+# ## Every testID below, confirmed present in source at authoring time
+# (grep commands + line numbers in this task's own execution-log entry):
+#   start-empty-workout                              app/(tabs)/workout/index.tsx
+#   active-workout(-*)                                ActiveWorkoutScreen.tsx (testID default 'active-workout')
+#   active-workout-exercise-picker(-*)                ExercisePickerSheet via `${testID}-exercise-picker`
+#   exercise-row-<id>                                 ExerciseRow.tsx (dataset-static id, not per-run-random)
+#   <card>-table-row-<n>-value-weight/-reps/-check/-previous   SetRow.tsx cell testIDs, via ExerciseSetTableSection's `${testID}-row-${index}`
+#   <card>-add-set                                    ExerciseCard.tsx
+#   active-workout-timer-pill                         TimerPill.tsx, mounted as `${testID}-timer-pill`
+#   active-workout-save-sheet(-*)                     SaveWorkoutSheet.tsx via `${testID}-save-sheet`
+#   history-detail(-*)                                HistoryDetailScreen.tsx
+#   history-list(-*)                                  HistoryListScreen.tsx
+#
+# `<card>` (the exercise-card testID prefix) is `active-workout-exercise-
+# <workoutExerciseId>` — that inner id is a fresh UUID generated per run
+# (`WorkoutRepository.addExercises`), so every selector touching a row/cell
+# below matches on a regex (`.*-table-row-0-value-weight$` etc.) rather than
+# a literal id — there is exactly one exercise card on screen at every point
+# in this flow, so the regex is unambiguous despite not anchoring the start.
+appId: com.tejitpabari.kyro
+name: Log workout end-to-end (smoke)
+tags:
+  - smoke
+---
+# ---------------------------------------------------------------------------
+# Phase A — seed one completed Bench Press workout so PREVIOUS has real data
+# for Phase B's own previous-tap step (see file header).
+# ---------------------------------------------------------------------------
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: allow
+
+- assertVisible:
+    id: "start-empty-workout"
+- tapOn:
+    id: "start-empty-workout"
+- assertVisible:
+    id: "active-workout"
+
+- tapOn:
+    id: "active-workout-add-exercise"
+- assertVisible:
+    id: "active-workout-exercise-picker"
+- tapOn:
+    id: "active-workout-exercise-picker-search"
+- inputText: "Barbell Bench Press - Medium Grip"
+- tapOn:
+    id: "exercise-row-Barbell_Bench_Press_-_Medium_Grip"
+- tapOn:
+    id: "active-workout-exercise-picker-confirm"
+- waitForAnimationToEnd
+
+# Row 0 — 60 kg x 8 reps, typed + checked.
+- tapOn:
+    id: ".*-table-row-0-value-weight$"
+- inputText: "60"
+- tapOn:
+    id: ".*-table-row-0-value-reps$"
+- inputText: "8"
+- hideKeyboard
+- tapOn:
+    id: ".*-table-row-0-check$"
+
+# Row 1 — a second set, same values, typed + checked (no PREVIOUS to tap yet
+# — this is the seed workout).
+- tapOn:
+    id: ".*-add-set$"
+- tapOn:
+    id: ".*-table-row-1-value-weight$"
+- inputText: "60"
+- tapOn:
+    id: ".*-table-row-1-value-reps$"
+- inputText: "8"
+- hideKeyboard
+- tapOn:
+    id: ".*-table-row-1-check$"
+
+# Both sets checked -> Finish goes straight to the Save sheet (no
+# uncompleted-sets alert here; Phase B is where that dialog is exercised).
+- tapOn:
+    id: "active-workout-finish"
+- assertVisible:
+    id: "active-workout-save-sheet"
+- tapOn:
+    id: "active-workout-save-sheet-save"
+
+# `handleSaveWorkout` navigates straight to this workout's own history
+# detail (`router.replace`) — confirms the seed workout saved with the
+# expected volume before moving on.
+- assertVisible:
+    id: "history-detail-stat-volume"
+- assertVisible:
+    text: ".*960 kg.*"
+
+# Back to the Workout tab for Phase B's own fresh "Start Empty Workout".
+- tapOn:
+    text: "Workout"
+- assertVisible:
+    id: "start-empty-workout"
+
+# ---------------------------------------------------------------------------
+# Phase B — the actual 08 §6 flow 1 steps: launch (already done above) ->
+# start empty -> add Bench Press -> type 60/8 -> check (rest pill appears)
+# -> add set via previous-tap -> check -> finish -> confirm
+# discard-unchecked dialog handling -> workout appears in History with
+# correct volume.
+# ---------------------------------------------------------------------------
+- tapOn:
+    id: "start-empty-workout"
+- assertVisible:
+    id: "active-workout"
+
+- tapOn:
+    id: "active-workout-add-exercise"
+- tapOn:
+    id: "active-workout-exercise-picker-search"
+- inputText: "Barbell Bench Press - Medium Grip"
+- tapOn:
+    id: "exercise-row-Barbell_Bench_Press_-_Medium_Grip"
+- tapOn:
+    id: "active-workout-exercise-picker-confirm"
+- waitForAnimationToEnd
+# `addExercises` pre-creates one blank row per set in the most recent
+# completed session for this exercise (Phase A logged 2) — so row 0 AND
+# row 1 already exist here, both blank; PREVIOUS is populated for both.
+
+# Row 0 — type 60/8 manually, check -> rest pill appears (02 §7,
+# default_rest_seconds = 90 s > 0).
+- tapOn:
+    id: ".*-table-row-0-value-weight$"
+- inputText: "60"
+- tapOn:
+    id: ".*-table-row-0-value-reps$"
+- inputText: "8"
+- hideKeyboard
+- tapOn:
+    id: ".*-table-row-0-check$"
+- assertVisible:
+    id: "active-workout-timer-pill"
+
+# Row 1 — add set via previous-tap (autofills 60/8 from Phase A's own
+# second set), then check.
+- tapOn:
+    id: ".*-table-row-1-previous$"
+- tapOn:
+    id: ".*-table-row-1-check$"
+
+# Row 2 — deliberately left unchecked (see file header) so Finish must
+# show the "uncompleted sets will be discarded" confirm dialog.
+- tapOn:
+    id: ".*-add-set$"
+
+- tapOn:
+    id: "active-workout-finish"
+- assertVisible:
+    text: ".*1 sets are not marked complete.*"
+- tapOn:
+    text: "Finish anyway"
+
+# Save sheet — stats reflect only the 2 checked sets (row 2 never counted).
+- assertVisible:
+    id: "active-workout-save-sheet"
+- assertVisible:
+    id: "active-workout-save-sheet-stat-volume"
+- assertVisible:
+    text: ".*960 kg.*"
+- tapOn:
+    id: "active-workout-save-sheet-save"
+
+# Lands directly on this workout's own history detail.
+- assertVisible:
+    id: "history-detail-stat-volume"
+- assertVisible:
+    text: ".*960 kg.*"
+
+# And the minimal History tab list (M2-14) also shows it.
+- tapOn:
+    text: "History"
+- assertVisible:
+    id: "history-list"
+- assertVisible:
+    text: ".*960 kg.*"

@@ -275,6 +275,24 @@ export function TimerPill({ testID = 'timer-pill' }: TimerPillProps): React.JSX.
           </Text>
         </Pressable>
         <TimerControlsRow testIDPrefix={testID} onAdjust={handleAdjust} onSkip={handleSkip} />
+        {/* M2-18 (08 §6 flow 7, semi-manual): dev-only debug hook asserting
+            notification *scheduling* happened — `restTimerStore`'s own
+            `RestTimer.notificationId` is already the exact signal (non-null
+            iff `scheduleRestNotification` succeeded, see that store's
+            `start`/`adjust` actions); this just surfaces it as inspectable
+            text so a Maestro flow can assert on it without a real device's
+            lock screen, which is out of reach in any simulator (that part
+            is owner drill O-09). Gated on `__DEV__` exactly like the
+            existing `app/(tabs)/profile/index.tsx` dev-gallery link — never
+            rendered in a production/TestFlight build. */}
+        {__DEV__ ? (
+          <Text
+            testID={`${testID}-debug-notification-id`}
+            style={[typography.caption, { color: colors.text.tertiary }]}
+          >
+            {timer.notificationId ?? 'none'}
+          </Text>
+        ) : null}
       </View>
 
       <Sheet

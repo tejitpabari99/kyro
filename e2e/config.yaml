@@ -1,0 +1,14 @@
+# Maestro workspace config (M2-18) — lets `maestro test e2e/` (pointed at
+# this directory, rather than one file at a time) discover every flow and
+# lets `maestro test e2e/ --include-tags=smoke` filter to just the tagged
+# subset (flow 1 only, `01-log-workout-smoke.yaml` — see 08 §6/§9's "tagged
+# smoke set < 5 min").
+#
+# Each flow file under `flows/` carries its own `appId:`
+# (com.tejitpabari.kyro, `app.json`'s `ios.bundleIdentifier`) in its own
+# frontmatter — this file does not repeat it; Maestro's per-flow header is
+# the authoritative source for which app a given flow drives, and every
+# flow here already sets it explicitly so each file also stays independently
+# runnable via `maestro test e2e/flows/<file>.yaml`.
+flows:
+  - "flows/*.yaml"

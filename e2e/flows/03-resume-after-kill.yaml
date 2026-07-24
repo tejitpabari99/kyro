@@ -1,0 +1,147 @@
+# M2-18 — E2E flow 3 (08 §6 item 3, critical): resume after a force-quit.
+#
+# start workout -> check 2 sets -> `maestro` stop/relaunch app -> mini-bar
+# present -> expand -> sets still checked, duration sane -> finish.
+#
+# Independent of flow 1 (own `clearState: true` launch) so it is
+# deterministic regardless of what order `maestro test e2e/flows/` (or
+# `--include-tags`) happens to run files in.
+#
+# Exercise/values: any exercise works for this flow (kill-resume is testing
+# persistence, not PREVIOUS/history semantics the way flow 1 is) — reuses
+# the same "Barbell Bench Press - Medium Grip" stand-in as flow 1 for
+# consistency (see that file's header for why the vendored dataset has no
+# exercise literally named "Bench Press"). Two sets with deliberately
+# different weight/reps (60x8, 70x5) so the post-resume assertions are
+# checking real persisted values, not coincidentally-matching defaults.
+#
+# `stopApp` simulates Maestro's own documented "force quit" primitive — the
+# task brief's own words ("`maestro` stop/relaunch app") name this exact
+# command. `launchApp: { clearState: false }` on the relaunch is the
+# critical difference from flow 1's fresh-install launches: it must NOT
+# wipe the on-disk SQLite DB / kv-store, since resume-after-kill is
+# precisely "did state survive a real process death," not "does a fresh
+# install work."
+#
+# testIDs used here (see flow 1's own file header for the full source-line
+# audit — all of the same components, same testIDs, reused unchanged):
+#   start-empty-workout, active-workout(-*), active-workout-exercise-picker(-*),
+#   exercise-row-Barbell_Bench_Press_-_Medium_Grip,
+#   <card>-table-row-<n>-value-weight/-reps/-check, <card>-add-set,
+#   global-workout-bar (GlobalWorkoutBar.tsx — mini-bar, only rendered while
+#     an active workout exists and the logger itself is NOT on screen, 06 §3),
+#   active-workout-duration, active-workout-save-sheet(-*), history-detail(-*)
+appId: com.tejitpabari.kyro
+name: Resume after kill (critical)
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: allow
+
+- assertVisible:
+    id: "start-empty-workout"
+- tapOn:
+    id: "start-empty-workout"
+- assertVisible:
+    id: "active-workout"
+
+- tapOn:
+    id: "active-workout-add-exercise"
+- tapOn:
+    id: "active-workout-exercise-picker-search"
+- inputText: "Barbell Bench Press - Medium Grip"
+- tapOn:
+    id: "exercise-row-Barbell_Bench_Press_-_Medium_Grip"
+- tapOn:
+    id: "active-workout-exercise-picker-confirm"
+- waitForAnimationToEnd
+
+# Set 1 — 60 x 8, checked.
+- tapOn:
+    id: ".*-table-row-0-value-weight$"
+- inputText: "60"
+- tapOn:
+    id: ".*-table-row-0-value-reps$"
+- inputText: "8"
+- hideKeyboard
+- tapOn:
+    id: ".*-table-row-0-check$"
+
+# Set 2 — 70 x 5, checked (distinct values from set 1 on purpose — see file
+# header).
+- tapOn:
+    id: ".*-add-set$"
+- tapOn:
+    id: ".*-table-row-1-value-weight$"
+- inputText: "70"
+- tapOn:
+    id: ".*-table-row-1-value-reps$"
+- inputText: "5"
+- hideKeyboard
+- tapOn:
+    id: ".*-table-row-1-check$"
+
+# Give the stopwatch a moment to accumulate real elapsed time before killing
+# — makes the post-resume "duration sane" assertion below meaningful rather
+# than trivially true at ~0 s.
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# --- The critical step: force-quit, then relaunch WITHOUT clearing state. ---
+- stopApp
+- launchApp:
+    clearState: false
+
+# 06 §3: `GlobalWorkoutBar` shows whenever `activeWorkout != null &&
+# !loggerVisible` — exactly this state, since relaunch lands back on the
+# Workout tab (`app/index.tsx`'s redirect), not the logger modal itself.
+- assertVisible:
+    id: "global-workout-bar"
+
+# Tap the mini-bar to re-expand the logger (06 §3: "re-presents the route on
+# tap").
+- tapOn:
+    id: "global-workout-bar"
+- assertVisible:
+    id: "active-workout"
+
+# Both sets still checked — `SetRow`'s check cell swaps its
+# `accessibilityLabel` to "Completed" only when `isCompleted` (`SetRow.tsx`),
+# so asserting that label is a real check-state assertion, not just "the
+# button exists." Values also still present.
+- assertVisible:
+    id: ".*-table-row-0-check$"
+    text: "Completed"
+- assertVisible:
+    id: ".*-table-row-0-value-weight$"
+    text: "60"
+- assertVisible:
+    id: ".*-table-row-0-value-reps$"
+    text: "8"
+- assertVisible:
+    id: ".*-table-row-1-check$"
+    text: "Completed"
+- assertVisible:
+    id: ".*-table-row-1-value-weight$"
+    text: "70"
+- assertVisible:
+    id: ".*-table-row-1-value-reps$"
+    text: "5"
+
+# Duration sane: still ticking from the original `start_time` (elapsed
+# math, `useWorkoutStopwatch.ts`) — not reset to 0:00 by the kill/relaunch.
+- assertNotVisible:
+    id: "active-workout-duration"
+    text: "0:00"
+
+# Finish — both sets checked, so this goes straight to the Save sheet (no
+# uncompleted-sets alert; that path is flow 1's own job).
+- tapOn:
+    id: "active-workout-finish"
+- assertVisible:
+    id: "active-workout-save-sheet"
+- tapOn:
+    id: "active-workout-save-sheet-save"
+- assertVisible:
+    id: "history-detail-stat-volume"
