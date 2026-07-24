@@ -59,6 +59,14 @@ jest.mock('expo-router', () => ({
   router: { push: jest.fn(), back: jest.fn(), replace: jest.fn() },
 }));
 
+// M2-09: `ExerciseCard`'s name-tap opens `ExerciseDetailSheet`, which reuses
+// the real `ExerciseDetailScreen` (M1-08) — that screen imports `@/lib/files`,
+// whose own real top-level native imports (`expo-image-manipulator`/
+// `expo-image-picker`) are unavailable under Jest (08 §5); mocked wholesale
+// here the same way `ExerciseDetailScreen.test.tsx` (M1-10) already does for
+// every other consumer of that seam.
+jest.mock('@/lib/files');
+
 interface Fixture {
   driver: SqliteDriver;
   workoutRepo: WorkoutRepositoryImpl;
@@ -395,7 +403,7 @@ describe('ActiveWorkoutScreen — header/footer stub affordances', () => {
     expect(router.back).toHaveBeenCalled();
   });
 
-  it('Finish/Add Exercise/Settings surface their M2-14/M2-09/M2-17 stub alerts', async () => {
+  it('Finish/Settings surface their M2-14/M2-17 stub alerts', async () => {
     const { driver, workoutRepo, exerciseRepo } = setup();
     await rehydrateStores(workoutRepo, driver);
     await useActiveWorkoutStore.getState().startEmpty({ title: 'Test Workout', startTime: Date.now() });
@@ -406,11 +414,25 @@ describe('ActiveWorkoutScreen — header/footer stub affordances', () => {
     await fireEvent.press(screen.getByTestId('screen-finish'));
     expect(Alert.alert).toHaveBeenCalledWith('Finish Workout', 'The finish flow arrives in M2-14.');
 
-    await fireEvent.press(screen.getByTestId('screen-add-exercise'));
-    expect(Alert.alert).toHaveBeenCalledWith('Add Exercise', 'The exercise picker arrives in M2-09.');
-
     await fireEvent.press(screen.getByTestId('screen-settings'));
     expect(Alert.alert).toHaveBeenCalledWith('Workout Settings', 'Workout settings arrive in M2-17.');
+  });
+
+  // M2-09: "+ Add Exercise" now opens the real multi-select picker sheet
+  // instead of a stub alert — full add-exercise coverage (search, select,
+  // Add N exercises, history-seeded row count) lives in
+  // `ExerciseCard.operations.test.tsx`; this is just the footer-button seam.
+  it('"+ Add Exercise" opens the exercise picker sheet', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+    await useActiveWorkoutStore.getState().startEmpty({ title: 'Test Workout', startTime: Date.now() });
+
+    await renderScreen(exerciseRepo);
+    await waitFor(() => expect(screen.getByTestId('screen-add-exercise')).toBeTruthy());
+
+    await fireEvent.press(screen.getByTestId('screen-add-exercise'));
+    await waitFor(() => expect(screen.getByTestId('screen-exercise-picker')).toBeTruthy());
+    expect(screen.getByText('Add Exercise')).toBeTruthy();
   });
 });
 

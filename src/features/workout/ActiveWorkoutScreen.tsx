@@ -79,12 +79,15 @@ import {
 } from '@/domain/volume';
 import { useSettingsStore } from '@/features/settings/settings-store';
 import { Button } from '@/ui/Button';
-import { Card } from '@/ui/Card';
+import { Snackbar } from '@/ui/Snackbar';
 import { StatColumn } from '@/ui/StatColumn';
 import { useTheme } from '@/ui/theme-provider';
 
+import { AddToSupersetSheet } from './AddToSupersetSheet';
 import { DurationEditSheet } from './DurationEditSheet';
-import { ExerciseSetTableSection } from './ExerciseSetTableSection';
+import { ExerciseCard } from './ExerciseCard';
+import { ExercisePickerSheet, type ExercisePickerMode } from './ExercisePickerSheet';
+import { ReorderExercisesSheet } from './ReorderExercisesSheet';
 import { selectActiveWorkout, useActiveWorkoutStore } from './activeWorkoutStore';
 import { useWorkoutStopwatch } from './useWorkoutStopwatch';
 
@@ -120,6 +123,7 @@ export function ActiveWorkoutScreen({
   const rpeEnabled = useSettingsStore((state) => state.settings.rpe_enabled);
   const previousValuesMode = useSettingsStore((state) => state.settings.previous_values_mode);
   const warmupInStats = useSettingsStore((state) => state.settings.warmup_in_stats);
+  const defaultRestSeconds = useSettingsStore((state) => state.settings.default_rest_seconds);
 
   // Resolved exactly once (see file header) — the single source of truth
   // both the stopwatch's initial freeze point and the mount effect's
@@ -182,6 +186,46 @@ export function ActiveWorkoutScreen({
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
   const [durationSheetVisible, setDurationSheetVisible] = useState(false);
 
+  // --- M2-09: exercise picker (add + replace share one sheet instance) ---
+  const [addPickerVisible, setAddPickerVisible] = useState(false);
+  const [replaceTargetId, setReplaceTargetId] = useState<string | null>(null);
+  const pickerVisible = addPickerVisible || replaceTargetId != null;
+  const pickerMode: ExercisePickerMode = replaceTargetId != null ? 'replace' : 'add';
+
+  // --- M2-09: reorder sheet ---
+  const [reorderVisible, setReorderVisible] = useState(false);
+
+  // --- M2-09: add-to-superset sheet ---
+  const [supersetTargetId, setSupersetTargetId] = useState<string | null>(null);
+
+  // --- M2-09: remove-exercise pending state (id -> exercise name), each
+  // entry drives its own `Snackbar` (5 s auto-dismiss finalizes the
+  // removal; "Undo" clears the entry with nothing ever having touched the
+  // store/DB — see `ExerciseCard`'s file header).
+  //
+  // Mirrored into a `ref` alongside the `useState` copy: `Snackbar`'s own
+  // "Undo" path calls `onAction` (→ `handleUndoRemoval`) and `onDismiss`
+  // (→ `handleFinalizeRemoval`) back-to-back, **synchronously, in the same
+  // event** — React's `useState` setter does not apply a functional
+  // updater's result synchronously (unlike Zustand's `set`, used everywhere
+  // else in this file), so if `handleFinalizeRemoval` checked membership
+  // against the `useState` value it would still see the *pre-Undo* snapshot
+  // and finalize the removal anyway, right after the user just undid it.
+  // The `ref` has no such delay — it is the single synchronous source of
+  // truth every handler below reads and writes through
+  // `updatePendingRemovals`; `pendingRemovals` (state) exists only to
+  // trigger the re-render the `.map()` below needs. ---
+  const pendingRemovalsRef = useRef<Record<string, string>>({});
+  const [pendingRemovals, setPendingRemovals] = useState<Record<string, string>>({});
+  const updatePendingRemovals = (
+    updater: (current: Record<string, string>) => Record<string, string>,
+  ): Record<string, string> => {
+    const next = updater(pendingRemovalsRef.current);
+    pendingRemovalsRef.current = next;
+    setPendingRemovals(next);
+    return next;
+  };
+
   const volumeInputs: VolumeSetInput[] = useMemo(() => {
     if (!workout) {
       return [];
@@ -241,8 +285,117 @@ export function ActiveWorkoutScreen({
   };
 
   const handleAddExercisePress = (): void => {
-    // Exercise picker + card ⋯ operations are M2-09's job.
-    Alert.alert('Add Exercise', 'The exercise picker arrives in M2-09.');
+    setAddPickerVisible(true);
+  };
+
+  const handleClosePicker = (): void => {
+    setAddPickerVisible(false);
+    setReplaceTargetId(null);
+  };
+
+  // 02 §3: "if the exercise has prior history, pre-create last session's row
+  // count with previous values as placeholders; otherwise one empty normal
+  // set" — `addExercises` (M2-02) already does that row-count seeding
+  // internally per exercise, so this handler only needs to supply exercise
+  // identity + this workout-local rest-timer default (02 §3: "Value
+  // defaults from Settings → Default Rest Timer at the moment the exercise
+  // is added"). The picker's Superset toggle groups every newly-added
+  // exercise together under the lowest of their own new positions (02 §8 /
+  // M2-12 stub, per this task's own scoping note).
+  const handlePickerAdd = async (exerciseIds: string[], superset: boolean): Promise<void> => {
+    const items = exerciseIds.map((exerciseId) => ({
+      exerciseId,
+      restSeconds: defaultRestSeconds,
+    }));
+    const added = await useActiveWorkoutStore.getState().addExercises(items);
+    if (superset && added.length > 1) {
+      const groupId = Math.min(...added.map((workoutExercise) => workoutExercise.position));
+      await Promise.all(
+        added.map((workoutExercise) =>
+          useActiveWorkoutStore.getState().updateExercise(workoutExercise.id, { supersetId: groupId }),
+        ),
+      );
+    }
+  };
+
+  const handlePickerReplace = (exerciseId: string): void => {
+    if (!replaceTargetId) {
+      return;
+    }
+    void useActiveWorkoutStore.getState().replaceExercise(replaceTargetId, exerciseId);
+  };
+
+  const handleReplacePress = (workoutExerciseId: string): void => {
+    setAddPickerVisible(false);
+    setReplaceTargetId(workoutExerciseId);
+  };
+
+  const handleReorderSave = (orderedIds: string[]): void => {
+    void useActiveWorkoutStore.getState().reorderExercises(orderedIds);
+  };
+
+  const handleAddToSupersetPress = (workoutExerciseId: string): void => {
+    setSupersetTargetId(workoutExerciseId);
+  };
+
+  // 02 §8: "confirm groups them under the lowest involved position" —
+  // computed from the current, canonical `workout.exercises` positions of
+  // every involved member (the card that opened the sheet + whatever was
+  // checked in it), then applied via the same `updateExercise` action
+  // M2-12's own eventual color/label assignment will keep using.
+  const handleAddToSupersetConfirm = (selectedIds: string[]): void => {
+    if (!workout || !supersetTargetId) {
+      return;
+    }
+    const memberIds = new Set([supersetTargetId, ...selectedIds]);
+    const members = workout.exercises.filter((workoutExercise) => memberIds.has(workoutExercise.id));
+    if (members.length === 0) {
+      return;
+    }
+    const groupId = Math.min(...members.map((workoutExercise) => workoutExercise.position));
+    for (const member of members) {
+      void useActiveWorkoutStore.getState().updateExercise(member.id, { supersetId: groupId });
+    }
+    setSupersetTargetId(null);
+  };
+
+  const handleRemoveExercise = (workoutExerciseId: string, exerciseName: string): void => {
+    updatePendingRemovals((current) => ({ ...current, [workoutExerciseId]: exerciseName }));
+  };
+
+  /** "Undo" — clears the pending-removal entry; nothing was ever written to the store/DB (`ExerciseCard`'s file header), so the card simply reappears with every value intact. */
+  const handleUndoRemoval = (workoutExerciseId: string): void => {
+    updatePendingRemovals((current) => {
+      if (!(workoutExerciseId in current)) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[workoutExerciseId];
+      return next;
+    });
+  };
+
+  /**
+   * The `Snackbar`'s 5 s auto-dismiss — finalizes the removal. Also the
+   * `onDismiss` half of `Snackbar`'s own "Undo" path: its `handleAction`
+   * calls `onAction` (→ `handleUndoRemoval`) then `onDismiss` (→ this)
+   * **synchronously, back to back, in the same event** — so this reads
+   * `pendingRemovalsRef.current` (always synchronously current) rather than
+   * the `pendingRemovals` *state* value (which would still reflect the
+   * pre-Undo snapshot at this point, React's `useState` setter not applying
+   * a functional updater's result until the next render) — otherwise a tap
+   * on "Undo" would still finalize the very removal it just undid.
+   */
+  const handleFinalizeRemoval = (workoutExerciseId: string): void => {
+    if (!(workoutExerciseId in pendingRemovalsRef.current)) {
+      return;
+    }
+    updatePendingRemovals((current) => {
+      const next = { ...current };
+      delete next[workoutExerciseId];
+      return next;
+    });
+    void useActiveWorkoutStore.getState().removeExercise(workoutExerciseId);
   };
 
   const handleSettingsPress = (): void => {
@@ -382,43 +535,61 @@ export function ActiveWorkoutScreen({
         <StatColumn testID={`${testID}-sets`} label="Sets" value={String(checkedSetsCount)} />
       </View>
 
-      {/* Body — exercise cards, in workout order (02 §3; card chrome beyond the set table itself is M2-09's job). */}
+      {/* Body — exercise cards, in workout order (02 §3). */}
       <ScrollView
         testID={`${testID}-body`}
         style={styles.body}
         contentContainerStyle={{ padding: spacing['4'], gap: spacing['4'] }}
       >
         {workout.exercises.map((workoutExercise) => {
+          if (workoutExercise.id in pendingRemovals) {
+            // Hidden, not yet removed (see `handleRemoveExercise`'s file
+            // header note) — nothing has touched the store/DB for this row.
+            return null;
+          }
           const exercise = exercisesQuery.data?.get(workoutExercise.exerciseId);
           if (!exercise) {
             return null;
           }
           return (
-            <Card key={workoutExercise.id} testID={`${testID}-exercise-${workoutExercise.id}`}>
-              <Text
-                style={[
-                  typography.headline,
-                  { color: colors.accent.text, marginBottom: spacing['2'] },
-                ]}
-              >
-                {exercise.name}
-              </Text>
-              <ExerciseSetTableSection
-                testID={`${testID}-exercise-${workoutExercise.id}-table`}
-                workoutExerciseId={workoutExercise.id}
-                exercise={exercise}
-                weightUnit={weightUnit}
-                distanceUnit={distanceUnit}
-                rpeEnabled={rpeEnabled}
-                previousValuesMode={previousValuesMode}
-                routineId={workout.routineId}
-              />
-            </Card>
+            <ExerciseCard
+              key={workoutExercise.id}
+              testID={`${testID}-exercise-${workoutExercise.id}`}
+              workoutExerciseId={workoutExercise.id}
+              exercise={exercise}
+              exerciseRepository={exerciseRepository}
+              notes={workoutExercise.notes}
+              restSeconds={workoutExercise.restSeconds}
+              isGrouped={workoutExercise.supersetId != null}
+              weightUnit={weightUnit}
+              distanceUnit={distanceUnit}
+              rpeEnabled={rpeEnabled}
+              previousValuesMode={previousValuesMode}
+              routineId={workout.routineId}
+              onReorderPress={() => setReorderVisible(true)}
+              onReplacePress={handleReplacePress}
+              onAddToSupersetPress={handleAddToSupersetPress}
+              onRemove={handleRemoveExercise}
+            />
           );
         })}
       </ScrollView>
 
-      {/* Footer — + Add Exercise (primary, stub for M2-09), Settings (tonal, stub for M2-17), Discard Workout (destructive, confirm) (02 §2). */}
+      {/* Remove-exercise Snackbars — one per pending removal (02 §3: "Remove Exercise ... Snackbar with Undo, 5 s"). */}
+      {Object.entries(pendingRemovals).map(([workoutExerciseId, exerciseName]) => (
+        <Snackbar
+          key={workoutExerciseId}
+          testID={`${testID}-remove-snackbar-${workoutExerciseId}`}
+          visible
+          message={`Removed "${exerciseName}"`}
+          actionLabel="Undo"
+          onAction={() => handleUndoRemoval(workoutExerciseId)}
+          onDismiss={() => handleFinalizeRemoval(workoutExerciseId)}
+          style={{ marginHorizontal: spacing['4'], marginBottom: spacing['2'] }}
+        />
+      ))}
+
+      {/* Footer — + Add Exercise (primary), Settings (tonal, stub for M2-17), Discard Workout (destructive, confirm) (02 §2). */}
       <View style={[styles.footer, { padding: spacing['4'], gap: spacing['2'] }]}>
         <Button
           testID={`${testID}-add-exercise`}
@@ -454,6 +625,41 @@ export function ActiveWorkoutScreen({
         onSaveDuration={handleSaveDuration}
         onPause={handlePause}
         onResume={handleResume}
+      />
+
+      <ExercisePickerSheet
+        testID={`${testID}-exercise-picker`}
+        visible={pickerVisible}
+        onDismiss={handleClosePicker}
+        repository={exerciseRepository}
+        mode={pickerMode}
+        onAdd={(exerciseIds, superset) => void handlePickerAdd(exerciseIds, superset)}
+        onReplace={handlePickerReplace}
+      />
+
+      <ReorderExercisesSheet
+        testID={`${testID}-reorder-sheet`}
+        visible={reorderVisible}
+        onDismiss={() => setReorderVisible(false)}
+        exercises={workout.exercises.map((workoutExercise) => ({
+          id: workoutExercise.id,
+          name: exercisesQuery.data?.get(workoutExercise.exerciseId)?.name ?? '…',
+        }))}
+        onSave={handleReorderSave}
+      />
+
+      <AddToSupersetSheet
+        testID={`${testID}-add-to-superset-sheet`}
+        visible={supersetTargetId != null}
+        onDismiss={() => setSupersetTargetId(null)}
+        candidates={workout.exercises
+          .filter((workoutExercise) => workoutExercise.id !== supersetTargetId)
+          .map((workoutExercise) => ({
+            id: workoutExercise.id,
+            name: exercisesQuery.data?.get(workoutExercise.exerciseId)?.name ?? '…',
+            position: workoutExercise.position,
+          }))}
+        onConfirm={handleAddToSupersetConfirm}
       />
     </View>
   );

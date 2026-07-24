@@ -1,0 +1,288 @@
+/**
+ * `ExerciseCard` unit tests (M2-09) — direct render (not through the full
+ * `ActiveWorkoutScreen`) covering the card's own chrome and card-local ⋯
+ * menu items: superset indicator, note row visibility + edit, rest-timer
+ * row + sheet, `+ Add Set`, name-tap detail sheet, and every ⋯ menu item's
+ * wiring (the cross-card ones as bubbled callback assertions, the
+ * card-local ones — Remove from Superset, Add Warm-Up Sets stub — against
+ * real store/DB state). Real `WorkoutRepositoryImpl`/`ExerciseRepositoryImpl`
+ * over an in-memory `better-sqlite3` driver (08 §5), same convention as
+ * every other M2 suite.
+ */
+import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import React from 'react';
+import { Alert } from 'react-native';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+import { ExerciseRepositoryImpl } from '@/data/exercises/exercise-repository';
+import type { Exercise, ExerciseRepository } from '@/data/exercises/types';
+import { openBetterSqlite3Driver } from '@/data/sqlite/driver.better-sqlite3';
+import type { SqliteDriver } from '@/data/sqlite/driver';
+import { migrate } from '@/data/sqlite/migrator';
+import { WorkoutRepositoryImpl } from '@/data/workouts/workout-repository';
+import { ThemeProvider } from '@/ui/theme-provider';
+
+import { ExerciseCard, type ExerciseCardProps } from '../ExerciseCard';
+import { useActiveWorkoutStore } from '../activeWorkoutStore';
+
+jest.mock('@sentry/react-native', () => ({
+  init: jest.fn(),
+  addBreadcrumb: jest.fn(),
+  captureException: jest.fn(),
+}));
+
+// `ExerciseDetailSheet` -> `ExerciseDetailScreen` -> `@/lib/files` (native-only
+// top-level imports, unavailable under Jest, 08 §5) — same convention every
+// other consumer of that seam uses.
+jest.mock('@/lib/files');
+
+interface Fixture {
+  driver: SqliteDriver;
+  workoutRepo: WorkoutRepositoryImpl;
+  exerciseRepo: ExerciseRepository;
+  exercise: Exercise;
+  workoutExerciseId: string;
+}
+
+async function setup(): Promise<Fixture> {
+  const driver = openBetterSqlite3Driver(':memory:');
+  migrate(driver);
+  const workoutRepo = new WorkoutRepositoryImpl(driver, {});
+  const exerciseRepo = new ExerciseRepositoryImpl(driver);
+  await useActiveWorkoutStore.getState().rehydrate(workoutRepo);
+
+  const exercise = await exerciseRepo.create({
+    name: 'Incline Bench Press',
+    exerciseType: 'weight_reps',
+    primaryMuscleGroup: 'chest',
+  });
+  await useActiveWorkoutStore.getState().startEmpty({ title: 'Today', startTime: Date.now() });
+  const [added] = await useActiveWorkoutStore.getState().addExercises([{ exerciseId: exercise.id }]);
+
+  return { driver, workoutRepo, exerciseRepo, exercise, workoutExerciseId: added!.id };
+}
+
+async function renderCard(fixture: Fixture, overrides: Partial<ExerciseCardProps> = {}) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { gcTime: 0 } } });
+  const props: ExerciseCardProps = {
+    testID: 'card',
+    workoutExerciseId: fixture.workoutExerciseId,
+    exercise: fixture.exercise,
+    exerciseRepository: fixture.exerciseRepo,
+    notes: null,
+    restSeconds: null,
+    isGrouped: false,
+    weightUnit: 'kg',
+    distanceUnit: 'km',
+    rpeEnabled: false,
+    previousValuesMode: 'any_workout',
+    routineId: null,
+    onReorderPress: jest.fn(),
+    onReplacePress: jest.fn(),
+    onAddToSupersetPress: jest.fn(),
+    onRemove: jest.fn(),
+    ...overrides,
+  };
+  const result = await render(
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider preference="dark">
+        <ExerciseCard {...props} />
+      </ThemeProvider>
+    </QueryClientProvider>,
+  );
+  return { props, ...result };
+}
+
+beforeEach(() => {
+  jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+});
+
+describe('ExerciseCard — chrome (02 §3)', () => {
+  it('renders the thumb, name, and rest-timer row (Off by default)', async () => {
+    const fixture = await setup();
+    await renderCard(fixture);
+    expect(screen.getByText('Incline Bench Press')).toBeTruthy();
+    expect(screen.getByText('Rest Timer: Off')).toBeTruthy();
+    expect(screen.queryByTestId('card-superset-indicator')).toBeNull();
+    expect(screen.queryByTestId('card-note-row')).toBeNull();
+  });
+
+  it('renders the rest-timer value and a note row when notes are present', async () => {
+    const fixture = await setup();
+    await renderCard(fixture, { restSeconds: 90, notes: 'Keep elbows tucked' });
+    expect(screen.getByText('Rest Timer: 1min 30s')).toBeTruthy();
+    expect(screen.getByTestId('card-note-row')).toBeTruthy();
+    expect(screen.getByText('Keep elbows tucked')).toBeTruthy();
+  });
+
+  it('renders the superset indicator when isGrouped is true', async () => {
+    const fixture = await setup();
+    await renderCard(fixture, { isGrouped: true });
+    expect(screen.getByTestId('card-superset-indicator')).toBeTruthy();
+    expect(screen.getByText('Superset')).toBeTruthy();
+  });
+
+  it('tapping the name opens the read-only exercise detail sheet', async () => {
+    const fixture = await setup();
+    await renderCard(fixture);
+    await fireEvent.press(screen.getByTestId('card-name'));
+    await waitFor(() => expect(screen.getByTestId('card-detail-sheet')).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByTestId('card-detail-sheet-content-name')).toHaveTextContent(
+        'Incline Bench Press',
+      ),
+    );
+  });
+
+  it('"+ Add Set" appends a bare normal row to the store/DB', async () => {
+    const fixture = await setup();
+    await renderCard(fixture);
+    await waitFor(() => expect(screen.getByTestId('card-table-row-0-value-weight')).toBeTruthy());
+    expect(screen.queryByTestId('card-table-row-1-value-weight')).toBeNull();
+
+    await fireEvent.press(screen.getByTestId('card-add-set'));
+
+    await waitFor(() => expect(screen.getByTestId('card-table-row-1-value-weight')).toBeTruthy());
+    const persisted = await fixture.workoutRepo.getFull(
+      useActiveWorkoutStore.getState().workout!.id,
+    );
+    expect(persisted!.exercises[0]!.sets).toHaveLength(2);
+  });
+});
+
+describe('ExerciseCard — note row + sheet (02 §9)', () => {
+  it('tapping the note row opens the note sheet pre-filled; saving persists it', async () => {
+    const fixture = await setup();
+    await renderCard(fixture, { notes: 'Old note' });
+
+    await fireEvent.press(screen.getByTestId('card-note-row'));
+    await waitFor(() => expect(screen.getByTestId('card-note-sheet-input')).toBeTruthy());
+    expect(screen.getByTestId('card-note-sheet-input').props.value).toBe('Old note');
+
+    await fireEvent.changeText(screen.getByTestId('card-note-sheet-input'), 'New note');
+    await fireEvent.press(screen.getByTestId('card-note-sheet-save'));
+
+    // The sheet dismisses; `notes` itself is a plain prop here (this test
+    // renders `ExerciseCard` directly, not through `ActiveWorkoutScreen`'s
+    // store-subscribed re-render), so the persisted DB write is the
+    // meaningful assertion, not the still-static on-screen text.
+    await waitFor(() => expect(screen.queryByTestId('card-note-sheet-input')).toBeNull());
+    await waitFor(async () => {
+      const persisted = await fixture.workoutRepo.getFull(
+        useActiveWorkoutStore.getState().workout!.id,
+      );
+      expect(persisted!.exercises[0]!.notes).toBe('New note');
+    });
+  });
+
+  it('⋯ → Add a Note opens the note sheet even with no existing note', async () => {
+    const fixture = await setup();
+    await renderCard(fixture);
+
+    await fireEvent.press(screen.getByTestId('card-menu-button'));
+    await waitFor(() => expect(screen.getByTestId('card-menu-add-note')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('card-menu-add-note'));
+
+    await waitFor(() => expect(screen.getByTestId('card-note-sheet-input')).toBeTruthy());
+    expect(screen.getByTestId('card-note-sheet-input').props.value).toBe('');
+  });
+});
+
+describe('ExerciseCard — rest timer row + sheet (02 §3, §7)', () => {
+  it('tapping the rest-timer row opens the picker; selecting a value persists it', async () => {
+    const fixture = await setup();
+    await renderCard(fixture);
+
+    await fireEvent.press(screen.getByTestId('card-rest-timer-row'));
+    await waitFor(() => expect(screen.getByTestId('card-rest-timer-sheet')).toBeTruthy());
+
+    await fireEvent.press(screen.getByTestId('card-rest-timer-sheet-wheel-option-90'));
+
+    // `restSeconds` is a plain prop here (direct render, not through
+    // `ActiveWorkoutScreen`'s store-subscribed re-render) — assert the
+    // persisted DB write, not the still-static row label.
+    await waitFor(async () => {
+      const persisted = await fixture.workoutRepo.getFull(
+        useActiveWorkoutStore.getState().workout!.id,
+      );
+      expect(persisted!.exercises[0]!.restSeconds).toBe(90);
+    });
+  });
+
+  it('⋯ → Rest Timer opens the same sheet', async () => {
+    const fixture = await setup();
+    await renderCard(fixture);
+
+    await fireEvent.press(screen.getByTestId('card-menu-button'));
+    await fireEvent.press(screen.getByTestId('card-menu-rest-timer'));
+    await waitFor(() => expect(screen.getByTestId('card-rest-timer-sheet')).toBeTruthy());
+  });
+});
+
+describe('ExerciseCard — ⋯ menu wiring (02 §3)', () => {
+  it('Reorder Exercises bubbles onReorderPress', async () => {
+    const fixture = await setup();
+    const { props } = await renderCard(fixture);
+
+    await fireEvent.press(screen.getByTestId('card-menu-button'));
+    await fireEvent.press(screen.getByTestId('card-menu-reorder'));
+    expect(props.onReorderPress).toHaveBeenCalled();
+  });
+
+  it('Replace Exercise bubbles onReplacePress with this card\'s workoutExerciseId', async () => {
+    const fixture = await setup();
+    const { props } = await renderCard(fixture);
+
+    await fireEvent.press(screen.getByTestId('card-menu-button'));
+    await fireEvent.press(screen.getByTestId('card-menu-replace'));
+    expect(props.onReplacePress).toHaveBeenCalledWith(fixture.workoutExerciseId);
+  });
+
+  it('Add to Superset bubbles onAddToSupersetPress when ungrouped', async () => {
+    const fixture = await setup();
+    const { props } = await renderCard(fixture, { isGrouped: false });
+
+    await fireEvent.press(screen.getByTestId('card-menu-button'));
+    await waitFor(() => expect(screen.getByTestId('card-menu-add-to-superset')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('card-menu-add-to-superset'));
+    expect(props.onAddToSupersetPress).toHaveBeenCalledWith(fixture.workoutExerciseId);
+  });
+
+  it('Remove from Superset (grouped) clears supersetId locally, no bubbling needed', async () => {
+    const fixture = await setup();
+    await useActiveWorkoutStore.getState().updateExercise(fixture.workoutExerciseId, { supersetId: 0 });
+    await renderCard(fixture, { isGrouped: true });
+
+    await fireEvent.press(screen.getByTestId('card-menu-button'));
+    await waitFor(() => expect(screen.getByTestId('card-menu-remove-from-superset')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('card-menu-remove-from-superset'));
+
+    await waitFor(async () => {
+      const persisted = await fixture.workoutRepo.getFull(
+        useActiveWorkoutStore.getState().workout!.id,
+      );
+      expect(persisted!.exercises[0]!.supersetId).toBeNull();
+    });
+  });
+
+  it('Add Warm-Up Sets shows the M2-16 stub alert', async () => {
+    const fixture = await setup();
+    await renderCard(fixture);
+
+    await fireEvent.press(screen.getByTestId('card-menu-button'));
+    await fireEvent.press(screen.getByTestId('card-menu-warmup-sets'));
+    expect(Alert.alert).toHaveBeenCalledWith(
+      'Add Warm-Up Sets',
+      'The warm-up calculator arrives in M2-16.',
+    );
+  });
+
+  it('Remove Exercise bubbles onRemove with the id and exercise name', async () => {
+    const fixture = await setup();
+    const { props } = await renderCard(fixture);
+
+    await fireEvent.press(screen.getByTestId('card-menu-button'));
+    await fireEvent.press(screen.getByTestId('card-menu-remove-exercise'));
+    expect(props.onRemove).toHaveBeenCalledWith(fixture.workoutExerciseId, 'Incline Bench Press');
+  });
+});
