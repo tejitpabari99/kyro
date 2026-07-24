@@ -130,7 +130,7 @@ Task count: **19**
 **Acceptance / test gate:** 08 §4.4 suite green: 102.5 on 20 → [25,15,1.25]/side; exact bar; target < bar; limited inventory; impossible → ≤/≥ suggestions; lb path; EZ/short bars. UI: write-back to input works.
 **Est:** 1 d
 
-### M2-16 — Warm-up calculator
+### M2-16 — Warm-up calculator [done]
 **Description:** Pure formula engine + Add Warm-Up Sets flow + settings config.
 **How:** `domain/warmup-calc.ts`: `warmupSets(workingWeight, formula, rounding) → rows[]`; default formula (P8) bar×10 (percent 0 = empty bar), 40%×8, 60%×5, 80%×3; rounding **round-half-up** to nearest increment (43.75 → 45, per 08 §4.3 resolution — document in code); plate increment default 2.5 kg/5 lb, dumbbell increment 2 kg/5 lb; floor at bar weight for barbell exercises; lb working weight converts before math, output rounds in display-unit increments. Flow: exercise ⋯ → Add Warm-Up Sets → working weight pre-filled from first normal set's value/placeholder → insert generated `W` rows above existing sets, unchecked, without disturbing working-set numbering. Settings UI: formula rows add/remove/edit + Reset to Default; increments.
 **References:** 02 §12; 00 P8; 05 §3.5 (warmup_calc); 08 §4.3.
