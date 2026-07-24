@@ -27,10 +27,12 @@ import { SettingsRepository } from '@/data/settings/settings-repository';
 import { WorkoutRepositoryImpl } from '@/data/workouts/workout-repository';
 import { SUPERSET_PALETTE } from '@/domain/supersets';
 import { useSettingsStore } from '@/features/settings/settings-store';
+import { cancelNotification } from '@/lib/notifications';
 import { ThemeProvider } from '@/ui/theme-provider';
 
 import { ActiveWorkoutScreen } from '../ActiveWorkoutScreen';
 import { useActiveWorkoutStore } from '../activeWorkoutStore';
+import { useRestTimerStore } from '../restTimerStore';
 
 jest.mock('@sentry/react-native', () => ({
   init: jest.fn(),
@@ -48,6 +50,12 @@ jest.mock('expo-router', () => ({
 // imports, unavailable under Jest, 08 §5) — mocked wholesale, same
 // convention `ExerciseDetailScreen.test.tsx` established.
 jest.mock('@/lib/files');
+
+// M2-19 follow-up review (§3.3): removing an exercise whose set owns a
+// running rest timer must cancel that timer's notification too — mocked per
+// 08 §5 ("mock only true natives ... via src/lib/ seams") so this suite
+// never touches the real `expo-notifications` native module.
+jest.mock('@/lib/notifications');
 
 // M2-13: see `ActiveWorkoutScreen.test.tsx`'s identical note — a **factory**
 // mock, since even a bare `jest.mock('expo-keep-awake')` still has to load
@@ -94,6 +102,10 @@ beforeEach(() => {
 
 afterEach(() => {
   jest.useRealTimers();
+  // M2-10: `restTimerStore` is a module-level singleton — reset it so a
+  // timer started by one test never leaks into the next (same reasoning
+  // `ExerciseSetTableSection.test.tsx`'s own `afterEach` documents).
+  useRestTimerStore.setState({ timer: null, permissionDeniedNoticePending: false });
 });
 
 describe('ExerciseCard — add exercise recreates history row count + PREVIOUS (02 §3)', () => {
@@ -332,6 +344,53 @@ describe('ExerciseCard — Remove Exercise + Undo (02 §3)', () => {
       const persisted = await workoutRepo.getFull(active!.id);
       expect(persisted!.exercises).toHaveLength(0);
     });
+  });
+
+  // M2-19 follow-up review (§3.3): removing (via the ⋯ menu, finalized after
+  // the Snackbar's own timeout) an exercise whose checked set currently owns
+  // the one running rest timer previously left that timer's notification
+  // scheduled — it would fire later, referencing a set that no longer
+  // exists. Mirrors the existing "Discard Workout cancels any pending
+  // rest-timer notification" regression test in `ActiveWorkoutScreen.test.tsx`.
+  it('finalizing an exercise removal cancels a running rest timer owned by one of its sets', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+
+    const exercise = await exerciseRepo.create({
+      name: 'Lateral Raise',
+      exerciseType: 'weight_reps',
+      primaryMuscleGroup: 'shoulders',
+    });
+
+    await useActiveWorkoutStore.getState().startEmpty({ title: 'Today', startTime: Date.now() });
+    const [added] = await useActiveWorkoutStore.getState().addExercises([{ exerciseId: exercise.id }]);
+    const firstSetId = added!.sets[0]!.id;
+
+    await useRestTimerStore.getState().start({
+      exerciseId: exercise.id,
+      setId: firstSetId,
+      durationSeconds: 90,
+      exerciseName: exercise.name,
+      setNumber: 1,
+      notificationsEnabled: true,
+    });
+    expect(useRestTimerStore.getState().timer).not.toBeNull();
+    const pendingNotificationId = useRestTimerStore.getState().timer!.notificationId!;
+
+    jest.useFakeTimers();
+    await renderScreen(exerciseRepo);
+    await waitFor(() => expect(screen.getByText('Lateral Raise')).toBeTruthy());
+
+    await fireEvent.press(screen.getByTestId(`screen-exercise-${added!.id}-menu-button`));
+    await fireEvent.press(screen.getByTestId(`screen-exercise-${added!.id}-menu-remove-exercise`));
+
+    await act(async () => {
+      jest.advanceTimersByTime(5000);
+    });
+    jest.useRealTimers();
+
+    await waitFor(() => expect(useRestTimerStore.getState().timer).toBeNull());
+    expect(cancelNotification).toHaveBeenCalledWith(pendingNotificationId);
   });
 });
 

@@ -596,6 +596,20 @@ export function ActiveWorkoutScreen({
       delete next[workoutExerciseId];
       return next;
     });
+    // Cancel a running rest timer belonging to any set inside the exercise
+    // being removed — same "no stray scheduled notification for a set that
+    // no longer exists" contract discard/finish already honor (M2-19 §3.3
+    // found this exact gap for `ConnectedSetRow`'s own delete/remove
+    // handlers; this is the sibling exercise-level call site). `cancelForSet`
+    // is a no-op for every set id that isn't the currently-running timer's
+    // own `setId`, so it's safe to call for every set here without first
+    // reading the store's current timer.
+    const removedExercise = useActiveWorkoutStore
+      .getState()
+      .workout?.exercises.find((exercise) => exercise.id === workoutExerciseId);
+    for (const removedSet of removedExercise?.sets ?? []) {
+      void useRestTimerStore.getState().cancelForSet(removedSet.id);
+    }
     void useActiveWorkoutStore.getState().removeExercise(workoutExerciseId);
   };
 

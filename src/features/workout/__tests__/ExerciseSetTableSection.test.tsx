@@ -564,6 +564,61 @@ describe('ExerciseSetTableSection — check flow starts/cancels the rest timer (
   });
 });
 
+describe('ExerciseSetTableSection — deleting the set a running rest timer belongs to cancels it (M2-19 follow-up review, §3.3)', () => {
+  it('swipe-deleting the checked row that owns the running timer cancels its notification', async () => {
+    const { exercise, workoutExerciseId } = await setupExercise('weight_reps', { setCount: 2 });
+    await useActiveWorkoutStore.getState().updateExercise(workoutExerciseId, { restSeconds: 90 });
+    await renderSection(workoutExerciseId, exercise);
+
+    await fireEvent.changeText(screen.getByTestId('section-row-0-value-weight'), '60');
+    await fireEvent.changeText(screen.getByTestId('section-row-0-value-reps'), '8');
+    await fireEvent.press(screen.getByTestId('section-row-0-check'));
+    await waitFor(() => expect(useRestTimerStore.getState().timer).not.toBeNull());
+    const notificationId = useRestTimerStore.getState().timer!.notificationId!;
+
+    await fireEvent.press(screen.getByTestId('section-row-0-delete-button'));
+
+    await waitFor(() => expect(useRestTimerStore.getState().timer).toBeNull());
+    expect(cancelNotification).toHaveBeenCalledWith(notificationId);
+  });
+
+  it('"Remove Set" from the set-type menu on the checked row that owns the running timer cancels its notification', async () => {
+    const { exercise, workoutExerciseId } = await setupExercise('weight_reps', { setCount: 2 });
+    await useActiveWorkoutStore.getState().updateExercise(workoutExerciseId, { restSeconds: 90 });
+    await renderSection(workoutExerciseId, exercise);
+
+    await fireEvent.changeText(screen.getByTestId('section-row-0-value-weight'), '60');
+    await fireEvent.changeText(screen.getByTestId('section-row-0-value-reps'), '8');
+    await fireEvent.press(screen.getByTestId('section-row-0-check'));
+    await waitFor(() => expect(useRestTimerStore.getState().timer).not.toBeNull());
+    const notificationId = useRestTimerStore.getState().timer!.notificationId!;
+
+    await fireEvent.press(screen.getByTestId('section-row-0-badge'));
+    await fireEvent.press(screen.getByTestId('section-row-0-set-type-remove'));
+
+    await waitFor(() => expect(useRestTimerStore.getState().timer).toBeNull());
+    expect(cancelNotification).toHaveBeenCalledWith(notificationId);
+  });
+
+  it('deleting a DIFFERENT (unchecked) row than the one that owns the running timer leaves it untouched', async () => {
+    const { exercise, workoutExerciseId } = await setupExercise('weight_reps', { setCount: 2 });
+    await useActiveWorkoutStore.getState().updateExercise(workoutExerciseId, { restSeconds: 90 });
+    await renderSection(workoutExerciseId, exercise);
+
+    await fireEvent.changeText(screen.getByTestId('section-row-0-value-weight'), '60');
+    await fireEvent.changeText(screen.getByTestId('section-row-0-value-reps'), '8');
+    await fireEvent.press(screen.getByTestId('section-row-0-check'));
+    await waitFor(() => expect(useRestTimerStore.getState().timer).not.toBeNull());
+    const runningTimer = useRestTimerStore.getState().timer;
+
+    // Row 1 never held the timer — deleting it must not cancel row 0's.
+    await fireEvent.press(screen.getByTestId('section-row-1-delete-button'));
+
+    expect(useRestTimerStore.getState().timer).toEqual(runningTimer);
+    expect(cancelNotification).not.toHaveBeenCalled();
+  });
+});
+
 describe('ConnectedSetRow — rep-range targets never auto-commit on check (04 §2.3)', () => {
   it('blocks the check when the only PREVIOUS source is a rep-range target, even though a label shows', async () => {
     const { exercise, workoutRepo } = await setupExercise('reps_only');

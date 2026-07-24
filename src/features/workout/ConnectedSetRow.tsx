@@ -607,10 +607,19 @@ function ConnectedSetRowImpl({
 
   const handleRemove = (): void => {
     setMenuVisible(false);
+    // M2-19 §3.3 follow-up: a running rest timer attached to this exact set
+    // must not outlive the set itself — same "cancel before it's gone"
+    // contract `handleToggleCompleted`'s uncheck branch and the
+    // discard/finish paths already honor. No-op if the running timer (if
+    // any) belongs to a different set.
+    void useRestTimerStore.getState().cancelForSet(setId);
     void useActiveWorkoutStore.getState().removeSet(setId);
   };
 
   const handleDelete = (): void => {
+    // Swipe-delete — same rest-timer-cancellation contract as `handleRemove`
+    // above (M2-19 §3.3 follow-up).
+    void useRestTimerStore.getState().cancelForSet(setId);
     void useActiveWorkoutStore.getState().removeSet(setId);
   };
 
