@@ -152,6 +152,11 @@ export function ExerciseSetTableSection({
             previousResult={previousResults[index]!}
             units={units}
             exerciseType={exercise.exerciseType}
+            exerciseId={exercise.id}
+            exerciseName={exercise.name}
+            restSeconds={workoutExercise.restSeconds}
+            nextSetType={workoutExercise.sets[index + 1]?.setType ?? null}
+            setNumber={index + 1}
           />
         );
       })}

@@ -1,5 +1,6 @@
 /**
- * `ConnectedSetRow` (M2-06/M2-07) — the store-connected wrapper around
+ * `ConnectedSetRow` (M2-06/M2-07, rest timer wired in M2-10) — the
+ * store-connected wrapper around
  * `src/ui/SetRow`: this is the component that actually subscribes to
  * `activeWorkoutStore`'s per-set selector (`selectWorkoutSet(setId)`, 06
  * §8), owns the local "typed-but-not-committed" text buffer (06 §5.3:
@@ -43,17 +44,19 @@
  *      applied — ordering is safe without awaiting either call). Then:
  *      `impactLight` haptic; volume/checked-set counters update for free
  *      (`ActiveWorkoutScreen`'s meta row derives them live from
- *      `workout.exercises`, no separate counter action to call). The
- *      remaining four success-path items are each **hook points for a
- *      later milestone that doesn't exist yet** — every one is a clearly
- *      TODO-labeled no-op call site, not a fake implementation:
- *      sound (M2-11's `src/lib/sound.ts`), rest-timer start (M2-10's
- *      `restTimerStore`), live-PR check (M4-10's records provider, no-op
- *      until then per the M2 task notes), smart-superset scroll (M2-12).
- *  - **Uncheck** (`set.isCompleted` already `true`): just `setCompleted
- *    (false)` — counters reverse for free (same live-derivation as above).
- *    "Cancels its own timer only" is M2-10's job once a timer can exist at
- *    all; the TODO call site below is where that cancel call lands.
+ *      `workout.exercises`, no separate counter action to call). Then
+ *      (M2-10): `shouldStartRestTimer` decides whether to start this
+ *      exercise's rest timer (`restTimerStore.start`) — Off setting or a
+ *      next-row-same-exercise dropset suppress it. The remaining two
+ *      success-path items are still **hook points for a later milestone
+ *      that doesn't exist yet** — clearly TODO-labeled no-op call sites:
+ *      sound (M2-11's `src/lib/sound.ts`), live-PR check (M4-10's records
+ *      provider, no-op until then per the M2 task notes), smart-superset
+ *      scroll (M2-12).
+ *  - **Uncheck** (`set.isCompleted` already `true`): `restTimerStore
+ *    .cancelForSet(setId)` (M2-10 — no-op unless the running timer, if
+ *    any, was started by *this* set) then `setCompleted(false)` — counters
+ *    reverse for free (same live-derivation as above).
  */
 import React, { useMemo, useState } from 'react';
 
@@ -63,12 +66,14 @@ import { evaluateSetCheck, type SetCheckColumnInput } from '@/domain/set-check';
 import type { SetColumnSpec } from '@/domain/set-table-columns';
 import type { PreviousValueResult } from '@/domain/previous-values';
 import { RPE_VALUES, type ExerciseType, type Rpe, type SetType } from '@/domain/enums';
+import { useSettingsStore } from '@/features/settings/settings-store';
 import { triggerImpact, triggerNotificationFeedback } from '@/lib/haptics';
 import { ListRow } from '@/ui/ListRow';
 import { Sheet } from '@/ui/Sheet';
 import { SetRow, type SetBadgeKind } from '@/ui/SetRow';
 
 import { selectWorkoutSet, useActiveWorkoutStore } from './activeWorkoutStore';
+import { shouldStartRestTimer, useRestTimerStore } from './restTimerStore';
 
 export interface ConnectedSetRowProps {
   setId: string;
@@ -80,6 +85,16 @@ export interface ConnectedSetRowProps {
   units: SetCellUnits;
   /** Drives `domain/set-check.ts`'s per-type required-field rules (02 §4). */
   exerciseType: ExerciseType;
+  /** The library exercise id (`exercise.id`, not the workout-local `workoutExerciseId`) — `restTimerStore`'s own `exerciseId` field (M2-10). */
+  exerciseId: string;
+  /** For the rest-timer notification body, "Rest over — set N of {exercise}" (M2-10, 06 §6.2). */
+  exerciseName: string;
+  /** This workout-exercise's own rest-timer duration (`workoutExercise.restSeconds`) — `null`/`<= 0` means the timer is Off (02 §7, M2-10). */
+  restSeconds: number | null;
+  /** The *next* row's set type within this same exercise (`null` when this is the exercise's last row) — a `dropset` next row suppresses the rest-timer start (02 §7, M2-10). */
+  nextSetType: SetType | null;
+  /** 1-based position of this row within its exercise's set list (all types) — the "N" in the rest-timer notification body (M2-10). */
+  setNumber: number;
   testID?: string;
 }
 
@@ -177,6 +192,11 @@ function ConnectedSetRowImpl({
   previousResult,
   units,
   exerciseType,
+  exerciseId,
+  exerciseName,
+  restSeconds,
+  nextSetType,
+  setNumber,
   testID,
 }: ConnectedSetRowProps): React.JSX.Element | null {
   const set = useActiveWorkoutStore(selectWorkoutSet(setId));
@@ -302,9 +322,10 @@ function ConnectedSetRowImpl({
       // this set"). Volume/checked-set counters are derived live from
       // `isCompleted` (`ActiveWorkoutScreen`'s meta row) — flipping this
       // flag back reverses them for free, no separate counter action.
-      // TODO(M2-10): cancel *this set's own* rest timer, if it started one
-      // — `restTimerStore` doesn't exist yet, so there is nothing to
-      // cancel today; this is the call site M2-10 fills in.
+      // M2-10: cancel *this set's own* rest timer only — `cancelForSet` is
+      // a no-op if the currently running timer (if any) belongs to a
+      // different set, matching "cancels its own timer only."
+      void useRestTimerStore.getState().cancelForSet(setId);
       void useActiveWorkoutStore.getState().setCompleted(setId, false);
       return;
     }
@@ -364,9 +385,25 @@ function ConnectedSetRowImpl({
     // TODO(M2-11): play the set-check chime once `src/lib/sound.ts` exists
     // (Settings → Sounds' set-check volume) — no-op today, this is the hook
     // point M2-11 wires up.
-    // TODO(M2-10): start this exercise's rest timer here, unless the timer
-    // setting is Off or the next row (same exercise, next index) is a drop
-    // set — `restTimerStore` doesn't exist yet; no-op today.
+    // M2-10: start this exercise's rest timer unless the timer setting is
+    // Off or the next row (same exercise, next index) is a drop set (02 §7).
+    if (shouldStartRestTimer({ restSeconds, nextSetType })) {
+      const { rest_notifications_enabled: notificationsEnabled, sounds } =
+        useSettingsStore.getState().settings;
+      void useRestTimerStore.getState().start({
+        exerciseId,
+        setId,
+        // `shouldStartRestTimer` above already guarantees `restSeconds` is
+        // a positive number on this branch; the `?? 0` is just a type-level
+        // fallback TS can't narrow across the function-call boundary.
+        durationSeconds: restSeconds ?? 0,
+        exerciseName,
+        setNumber,
+        notificationsEnabled,
+        soundChoice: sounds.timer_sound,
+        volume: sounds.timer_volume,
+      });
+    }
     // TODO(M4-10): run the live-PR check against this newly-committed set
     // and surface a PR banner — the records provider is intentionally a
     // no-op until M4-10 (per the M2 task notes), so there is nothing to

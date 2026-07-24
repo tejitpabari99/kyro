@@ -23,6 +23,7 @@
     "expo-image-manipulator": "~56.0.23",
     "expo-image-picker": "~56.0.22",
     "expo-linking": "~56.0.16",
+    "expo-notifications": "~56.0.22",
     "expo-router": "~56.2.16",
     "expo-splash-screen": "~56.0.14",
     "expo-sqlite": "~56.0.5",
@@ -86,7 +87,9 @@
   "private": true,
   "expo": {
     "install": {
-      "exclude": ["@shopify/flash-list"]
+      "exclude": [
+        "@shopify/flash-list"
+      ]
     }
   },
   "prettier": {

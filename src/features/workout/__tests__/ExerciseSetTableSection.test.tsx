@@ -32,11 +32,13 @@ import { WorkoutRepositoryImpl } from '@/data/workouts/workout-repository';
 import type { ExerciseType } from '@/domain/enums';
 import { columnsForExerciseType } from '@/domain/set-table-columns';
 import { triggerImpact, triggerNotificationFeedback } from '@/lib/haptics';
+import { cancelNotification, scheduleRestNotification } from '@/lib/notifications';
 import { ThemeProvider } from '@/ui/theme-provider';
 
 import { ConnectedSetRow, readCanonical, writeCanonical } from '../ConnectedSetRow';
 import { ExerciseSetTableSection } from '../ExerciseSetTableSection';
 import { useActiveWorkoutStore } from '../activeWorkoutStore';
+import { useRestTimerStore } from '../restTimerStore';
 
 jest.mock('@sentry/react-native', () => ({
   init: jest.fn(),
@@ -45,6 +47,11 @@ jest.mock('@sentry/react-native', () => ({
 }));
 
 jest.mock('@/lib/haptics');
+// M2-10: checking a set can now start a rest timer (`restTimerStore.start`),
+// which calls through to `@/lib/notifications` — mocked per 08 §5 ("mock
+// only true natives ... via src/lib/ seams") so these RNTL tests never
+// touch the real `expo-notifications` native module.
+jest.mock('@/lib/notifications');
 
 function renderSection(
   workoutExerciseId: string,
@@ -109,6 +116,10 @@ async function setupExercise(
 
 afterEach(() => {
   jest.clearAllMocks();
+  // M2-10: `restTimerStore` is a module-level singleton (same reasoning as
+  // `useActiveWorkoutStore` in this file's header) — reset it so a timer
+  // started by one test never leaks into the next.
+  useRestTimerStore.setState({ timer: null, permissionDeniedNoticePending: false });
 });
 
 const ALL_TYPES: { type: ExerciseType; labels: string[] }[] = [
@@ -437,6 +448,115 @@ describe('ExerciseSetTableSection — check flow (M2-07, 02 §4 / 00 P6)', () =>
   });
 });
 
+describe('ExerciseSetTableSection — check flow starts/cancels the rest timer (M2-10, 02 §7)', () => {
+  it('checking a set with the exercise\'s rest timer set starts restTimerStore and schedules a notification', async () => {
+    const { exercise, workoutExerciseId, workoutRepo } = await setupExercise('weight_reps');
+    await useActiveWorkoutStore.getState().updateExercise(workoutExerciseId, { restSeconds: 90 });
+    await renderSection(workoutExerciseId, exercise);
+
+    await fireEvent.changeText(screen.getByTestId('section-row-0-value-weight'), '60');
+    await fireEvent.changeText(screen.getByTestId('section-row-0-value-reps'), '8');
+    await fireEvent.press(screen.getByTestId('section-row-0-check'));
+
+    const setId = (await workoutRepo.getActive())!.exercises[0]!.sets[0]!.id;
+    await waitFor(() => expect(useRestTimerStore.getState().timer).not.toBeNull());
+    expect(useRestTimerStore.getState().timer).toMatchObject({ exerciseId: exercise.id, setId });
+    expect(scheduleRestNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ secondsFromNow: 90, body: expect.stringContaining(`of ${exercise.name}`) }),
+    );
+  });
+
+  it('checking a set does NOT start a timer when the exercise\'s rest timer is Off (restSeconds null)', async () => {
+    const { exercise, workoutExerciseId } = await setupExercise('weight_reps');
+    // restSeconds defaults to null (Off) from `setupExercise`'s plain `addExercises` call.
+    await renderSection(workoutExerciseId, exercise);
+
+    await fireEvent.changeText(screen.getByTestId('section-row-0-value-weight'), '60');
+    await fireEvent.changeText(screen.getByTestId('section-row-0-value-reps'), '8');
+    await fireEvent.press(screen.getByTestId('section-row-0-check'));
+
+    expect(useRestTimerStore.getState().timer).toBeNull();
+    expect(scheduleRestNotification).not.toHaveBeenCalled();
+  });
+
+  it('checking a set does NOT start a timer when the next row (same exercise) is a drop set', async () => {
+    const { exercise, workoutExerciseId, workoutRepo } = await setupExercise('weight_reps', { setCount: 2 });
+    await useActiveWorkoutStore.getState().updateExercise(workoutExerciseId, { restSeconds: 60 });
+    const active = await workoutRepo.getActive();
+    const secondSetId = active!.exercises[0]!.sets[1]!.id;
+    await useActiveWorkoutStore.getState().setSetType(secondSetId, 'dropset');
+
+    await renderSection(workoutExerciseId, exercise);
+
+    await fireEvent.changeText(screen.getByTestId('section-row-0-value-weight'), '60');
+    await fireEvent.changeText(screen.getByTestId('section-row-0-value-reps'), '8');
+    await fireEvent.press(screen.getByTestId('section-row-0-check'));
+
+    expect(screen.getByTestId('section-row-0-check').props.accessibilityState.checked).toBe(true);
+    expect(useRestTimerStore.getState().timer).toBeNull();
+    expect(scheduleRestNotification).not.toHaveBeenCalled();
+  });
+
+  it('checking a set DOES start a timer when it is itself followed only by its own last row (no suppression for last-row checks)', async () => {
+    const { exercise, workoutExerciseId, workoutRepo } = await setupExercise('weight_reps', { setCount: 2 });
+    await useActiveWorkoutStore.getState().updateExercise(workoutExerciseId, { restSeconds: 45 });
+    await renderSection(workoutExerciseId, exercise);
+
+    // Check the *last* row — no next row at all, must still start a timer.
+    await fireEvent.changeText(screen.getByTestId('section-row-1-value-weight'), '20');
+    await fireEvent.changeText(screen.getByTestId('section-row-1-value-reps'), '10');
+    await fireEvent.press(screen.getByTestId('section-row-1-check'));
+
+    const setId = (await workoutRepo.getActive())!.exercises[0]!.sets[1]!.id;
+    await waitFor(() => expect(useRestTimerStore.getState().timer).not.toBeNull());
+    expect(useRestTimerStore.getState().timer!.setId).toBe(setId);
+  });
+
+  it('unchecking the set that started the timer cancels it (its own timer only)', async () => {
+    const { exercise, workoutExerciseId } = await setupExercise('weight_reps');
+    await useActiveWorkoutStore.getState().updateExercise(workoutExerciseId, { restSeconds: 90 });
+    await renderSection(workoutExerciseId, exercise);
+
+    await fireEvent.changeText(screen.getByTestId('section-row-0-value-weight'), '60');
+    await fireEvent.changeText(screen.getByTestId('section-row-0-value-reps'), '8');
+    await fireEvent.press(screen.getByTestId('section-row-0-check'));
+    await waitFor(() => expect(useRestTimerStore.getState().timer).not.toBeNull());
+    const notificationId = useRestTimerStore.getState().timer!.notificationId!;
+
+    await fireEvent.press(screen.getByTestId('section-row-0-check'));
+
+    await waitFor(() => expect(useRestTimerStore.getState().timer).toBeNull());
+    expect(cancelNotification).toHaveBeenCalledWith(notificationId);
+  });
+
+  it('unchecking a DIFFERENT set than the one that started the running timer leaves it untouched', async () => {
+    const { exercise, workoutExerciseId } = await setupExercise('weight_reps', { setCount: 2 });
+    await useActiveWorkoutStore.getState().updateExercise(workoutExerciseId, { restSeconds: 90 });
+    await renderSection(workoutExerciseId, exercise);
+
+    // Check + immediately uncheck row 0 with the timer setting Off would be
+    // the simplest isolation, but the real "own timer only" scenario needs
+    // *some other already-checked row* whose own check never started a
+    // timer (e.g. it was checked before the rest-timer setting existed /
+    // via a direct store call) while row 1's check owns the running timer.
+    await useActiveWorkoutStore.getState().setCompleted(
+      useActiveWorkoutStore.getState().workout!.exercises[0]!.sets[0]!.id,
+      true,
+    );
+    await fireEvent.changeText(screen.getByTestId('section-row-1-value-weight'), '20');
+    await fireEvent.changeText(screen.getByTestId('section-row-1-value-reps'), '10');
+    await fireEvent.press(screen.getByTestId('section-row-1-check'));
+    await waitFor(() => expect(useRestTimerStore.getState().timer).not.toBeNull());
+    const runningTimer = useRestTimerStore.getState().timer;
+
+    // Uncheck row 0 (never started a timer of its own).
+    await fireEvent.press(screen.getByTestId('section-row-0-check'));
+
+    expect(useRestTimerStore.getState().timer).toEqual(runningTimer);
+    expect(cancelNotification).not.toHaveBeenCalled();
+  });
+});
+
 describe('ConnectedSetRow — rep-range targets never auto-commit on check (04 §2.3)', () => {
   it('blocks the check when the only PREVIOUS source is a rep-range target, even though a label shows', async () => {
     const { exercise, workoutRepo } = await setupExercise('reps_only');
@@ -468,6 +588,11 @@ describe('ConnectedSetRow — rep-range targets never auto-commit on check (04 �
           }}
           units={{ weightUnit: 'kg', distanceUnit: 'km' }}
           exerciseType={exercise.exerciseType}
+          exerciseId={exercise.id}
+          exerciseName={exercise.name}
+          restSeconds={null}
+          nextSetType={null}
+          setNumber={1}
         />
       </ThemeProvider>,
     );
@@ -729,6 +854,11 @@ describe('ConnectedSetRow — unresolved set renders nothing', () => {
           previousResult={{ label: null, autofill: null, source: 'none', isRepRange: false }}
           units={{ weightUnit: 'kg', distanceUnit: 'km' }}
           exerciseType={exercise.exerciseType}
+          exerciseId={exercise.id}
+          exerciseName={exercise.name}
+          restSeconds={null}
+          nextSetType={null}
+          setNumber={1}
         />
       </ThemeProvider>,
     );

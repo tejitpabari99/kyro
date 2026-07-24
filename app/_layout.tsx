@@ -42,7 +42,14 @@
  *     `recordBreadcrumb`/`captureError` (`src/lib/sentry.ts`) for the 06 §9
  *     "log to Sentry as warning" requirement `WorkoutRepositoryDeps
  *     .onAutoHeal`'s own doc comment describes.
- * Either step throwing rejects the same boot promise as a migration failure
+ *  4. (M2-10) `useRestTimerStore.getState().restore(openExpoKvStore())` —
+ *     restores any in-progress rest timer (06 §5.1's "... + timer", same
+ *     step as #3 above). Wrapped in its own try/catch, deliberately
+ *     **not** part of the boot promise chain that steps 1–3 share: a
+ *     kv-store read failure is a minor, recoverable UX gap (worst case, no
+ *     timer resumes), not the data-integrity risk a DB/settings failure is
+ *     — it must never turn into the blocking error screen below.
+ * Either of steps 1–3 throwing rejects the same boot promise as a migration failure
  * would, landing on the same blocking error screen below (06 §9) — dataset
  * seeding is exactly as boot-critical as migrations: the exercise library
  * must exist before the tabs (in particular the Exercises tab, M1-07+) can
@@ -86,6 +93,8 @@ import { SettingsRepository } from '@/data/settings/settings-repository';
 import { WorkoutRepositoryImpl } from '@/data/workouts/workout-repository';
 import { useSettingsStore } from '@/features/settings/settings-store';
 import { useActiveWorkoutStore } from '@/features/workout/activeWorkoutStore';
+import { useRestTimerStore } from '@/features/workout/restTimerStore';
+import { openExpoKvStore } from '@/lib/kv-store.expo';
 import { captureError, initSentry, recordBreadcrumb } from '@/lib/sentry';
 import { MigrationErrorScreen } from '@/ui/MigrationErrorScreen';
 import { ThemeProvider } from '@/ui/theme-provider';
@@ -135,6 +144,21 @@ export default function RootLayout(): React.JSX.Element | null {
           },
         });
         await useActiveWorkoutStore.getState().rehydrate(workoutRepository);
+        // M2-10: restore any in-progress rest timer right after the active
+        // workout itself (06 §5.1: "rehydrate active workout + timer").
+        // Best-effort, wrapped separately from the rest of boot: a kv-store
+        // read failure (corrupt entry, storage unavailable) must not turn
+        // into a blocking migration-error screen the way a DB/settings
+        // failure does — losing a rest-timer restore is a minor, recoverable
+        // UX gap (worst case: no timer resumes), not a data-integrity risk
+        // (mirrors `lib/logger.ts`'s "persistence failure must never affect
+        // the source of truth" posture).
+        try {
+          await useRestTimerStore.getState().restore(openExpoKvStore());
+        } catch (error) {
+          recordBreadcrumb('restTimer.restore.failed');
+          captureError(error instanceof Error ? error : new Error(String(error)));
+        }
         if (!cancelled) {
           setGate({ status: 'ready' });
         }
