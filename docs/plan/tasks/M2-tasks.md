@@ -106,7 +106,7 @@ Task count: **19**
 **Acceptance / test gate:** 02 §8 acceptance: 3-member circuit A/B/C one shared color, scroll cycles skipping completed; removing second-to-last member dissolves group; ids survive save (repo assertion). CSV round-trip covered later (M5-08).
 **Est:** 1 d
 
-### M2-13 — Minimize, GlobalWorkoutBar, resume-on-launch, keep-awake
+### M2-13 — Minimize, GlobalWorkoutBar, resume-on-launch, keep-awake [done]
 **Description:** The mini-player pattern and lifecycle glue.
 **How:** Minimize = `router.back()` from the fullScreenModal; store keeps the workout. `GlobalWorkoutBar` rendered in the tabs layout slot (M0-08): title + live elapsed; when a rest timer runs, remaining time replaces elapsed (accent); tap re-presents `workout/active`. Swipe-down on logger header also minimizes. On app launch with an active workout: rehydrate then show mini-bar (NOT the full logger). AppState handler: on active, recompute stopwatch/timer from wall clock, reconcile expired timer silently (06 §5.4). `useKeepAwake()` mounted only in the logger screen, gated by the setting, released on minimize.
 **References:** 02 §10; 06 §3 (minimize pattern), §5.4, §6.3.
