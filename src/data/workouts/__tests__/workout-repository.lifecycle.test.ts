@@ -277,6 +277,41 @@ describe('WorkoutRepositoryImpl — lifecycle (M2-01 integration, better-sqlite3
       );
     });
 
+    it('superset auto-dissolve: a member entirely dropped (all sets unchecked) leaves the survivor ungrouped (M2-19 follow-up review)', async () => {
+      const workout = await repo.startEmpty({ title: 'Push Day', startTime: 1_000 });
+
+      // Two-member superset (group id 0): bench survives (one checked set),
+      // squat is dropped entirely (its only set is unchecked) — bench
+      // should come out of finish() with superset_id NULL, not still 0.
+      const benchWe = insertWorkoutExercise(driver, workout.id, benchId, 0, { supersetId: 0 });
+      insertSet(driver, benchWe, 0, { weightKg: 60, reps: 8, isCompleted: 1 });
+
+      const squatWe = insertWorkoutExercise(driver, workout.id, squatId, 1, { supersetId: 0 });
+      insertSet(driver, squatWe, 0, { weightKg: 100, reps: 5, isCompleted: 0 });
+
+      const finished = await repo.finish(workout.id);
+
+      expect(finished.exercises).toHaveLength(1);
+      expect(finished.exercises[0]!.id).toBe(benchWe);
+      expect(finished.exercises[0]!.supersetId).toBeNull();
+    });
+
+    it('superset auto-dissolve: a still-2+-member group keeps its superset_id (control case)', async () => {
+      const workout = await repo.startEmpty({ title: 'Push Day', startTime: 1_000 });
+
+      const benchWe = insertWorkoutExercise(driver, workout.id, benchId, 0, { supersetId: 0 });
+      insertSet(driver, benchWe, 0, { weightKg: 60, reps: 8, isCompleted: 1 });
+
+      const benchWe2 = insertWorkoutExercise(driver, workout.id, benchId, 1, { supersetId: 0 });
+      insertSet(driver, benchWe2, 0, { weightKg: 65, reps: 7, isCompleted: 1 });
+
+      const finished = await repo.finish(workout.id);
+
+      expect(finished.exercises).toHaveLength(2);
+      expect(finished.exercises[0]!.supersetId).toBe(0);
+      expect(finished.exercises[1]!.supersetId).toBe(0);
+    });
+
     it('throws WorkoutNotFoundError for an unknown id', async () => {
       await expect(repo.finish('does-not-exist')).rejects.toBeInstanceOf(WorkoutNotFoundError);
     });

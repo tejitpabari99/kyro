@@ -49,12 +49,13 @@
  *   contiguous from 0"): one transaction that (1) deletes every unchecked
  *   `sets` row for the workout, (2) renumbers each remaining exercise's
  *   surviving sets back to contiguous 0-based positions, (3) drops any
- *   `workout_exercises` row left with zero sets, (4) renumbers the
- *   workout's remaining exercises back to contiguous 0-based positions, (5)
- *   applies `meta` overrides and flips `state`/`end_time`. Superset
- *   dissolution (a group shrinking to size 1) is deliberately **not**
- *   handled here — that is M2-12's feature-layer concern (its own ⋯ menu
- *   operations own that decision), not a side effect of finishing.
+ *   `workout_exercises` row left with zero sets, (3b) auto-dissolves any
+ *   superset group step 3 left with exactly one surviving member (02 §8
+ *   "group of 1 dissolves automatically" — added per the M2-19 follow-up
+ *   review; previously this only fired from the explicit "Remove from
+ *   Superset" action, `activeWorkoutStore.removeFromSuperset`), (4) renumbers
+ *   the workout's remaining exercises back to contiguous 0-based positions,
+ *   (5) applies `meta` overrides and flips `state`/`end_time`.
  * - **Id generation**: `../shared/uuid.ts`'s `generateUuid` (async — the
  *   OS CSPRNG on device). Every mutator that both mints new ids **and**
  *   needs multi-statement atomicity pre-generates all needed ids via
@@ -394,6 +395,39 @@ export class WorkoutRepositoryImpl implements WorkoutRepository {
            AND id NOT IN (SELECT DISTINCT workout_exercise_id FROM sets)`,
         [id],
       );
+
+      // 3b. Superset auto-dissolve (02 §8: "group of 1 dissolves
+      // automatically"). Dropping a zero-set exercise above can leave a
+      // superset group with exactly one surviving member — without this
+      // pass that lone survivor would keep its `superset_id`, showing up in
+      // saved history as a "superset" with no partner. This mirrors
+      // `domain/supersets.ts`'s `computeDissolution`, which
+      // `activeWorkoutStore.removeFromSuperset` already applies for the
+      // explicit "Remove from Superset" action — `finish()` is the other
+      // place group membership can shrink (every set of a member
+      // unchecked), so it needs the same invariant (M2-19 follow-up review
+      // finding, `docs/qa/M2-checklist.md` §3.1).
+      const survivingExercises = this.driver.queryAll<{ id: string; superset_id: number | null }>(
+        `SELECT id, superset_id FROM workout_exercises WHERE workout_id = ?`,
+        [id],
+      );
+      const groupMemberIds = new Map<number, string[]>();
+      for (const exercise of survivingExercises) {
+        if (exercise.superset_id === null) {
+          continue;
+        }
+        const members = groupMemberIds.get(exercise.superset_id) ?? [];
+        members.push(exercise.id);
+        groupMemberIds.set(exercise.superset_id, members);
+      }
+      for (const members of groupMemberIds.values()) {
+        if (members.length === 1) {
+          this.driver.execute(
+            `UPDATE workout_exercises SET superset_id = NULL WHERE id = ?`,
+            [members[0]],
+          );
+        }
+      }
 
       // 4. Renumber the workout's remaining exercises to stay contiguous.
       this.renumberExercisePositions(id);
