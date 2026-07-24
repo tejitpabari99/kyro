@@ -57,7 +57,8 @@
           "cameraPermission": "Kyro uses your camera to take a picture for a custom exercise."
         }
       ],
-      "expo-audio"
+      "expo-audio",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true,
