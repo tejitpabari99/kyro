@@ -34,6 +34,27 @@
  * Only `focusedFieldId`/`focusedIsWeight` — what `KeyboardAccessoryBar`'s
  * caller actually needs to re-render for — live in reactive state.
  *
+ * ## Value read/write by explicit field id (M2-15)
+ *
+ * The plate calculator (`PlateCalculatorSheet.tsx`) needs to (a) pre-fill
+ * its target weight from whichever weight field was focused when
+ * `Calculator` was pressed, and (b) later write the chosen achieved weight
+ * back into that *same* field — even though opening the sheet's own
+ * editable target-weight input steals native focus away from the
+ * originating field the moment it renders (a real `TextInput.focus()` call
+ * elsewhere fires the old field's `onBlur`, clearing `focusedFieldId`, same
+ * mechanism the file header's "keyboard-never-dismisses" section already
+ * describes). So the caller (`ActiveWorkoutScreen`) captures
+ * `focusedFieldId` once, synchronously, at the moment `Calculator` is
+ * pressed — *before* the sheet can steal focus — and every subsequent
+ * read/write below addresses that captured id directly, never the live
+ * `focusedFieldId`. `getFieldValue`/`writeFieldValue` are therefore plain
+ * registry lookups by explicit id (like `focusNext`, not part of reactive
+ * `state`) — a field's registration (and thus its `getValue`/`setValue`)
+ * survives blur, only mount/unmount (`registerField`/`unregisterField`)
+ * removes it, so this keeps working for as long as the row stays mounted
+ * (true while a modal sheet is open above it).
+
  * ## Keyboard-never-dismisses (06 §8, this task's own "How")
  *
  * `focusNext` calls the next field's own `.focus()` directly — it never
@@ -64,6 +85,10 @@ interface FieldRegistration {
   order: FieldOrder;
   /** Column kind is one of the three "weight" kinds — drives the Calculator button's visibility gate (02 §4/07 §5). */
   isWeight: boolean;
+  /** Canonical-kg current value of this field (M2-15) — only ever set for weight fields; never called for any other kind. */
+  getValue?: () => number | null;
+  /** Writes `value` (canonical kg) into this field's own local buffer + commits it (M2-15's plate-calculator "Use this value" write-back) — only ever set for weight fields. */
+  setValue?: (value: number) => void;
 }
 
 interface KeyboardFocusState {
@@ -75,6 +100,10 @@ interface KeyboardFocusState {
   handleBlur: (fieldId: string) => void;
   /** Moves native focus to the next field in traversal order after the currently-focused one. No-op if nothing is focused or the focused field is the last in the whole workout (02 §4 doesn't specify end-of-list behavior beyond "traverses... without dismissing the keyboard" — simply staying put is the safe reading, never an implicit dismiss). */
   focusNext: () => void;
+  /** M2-15: canonical-kg current value of the field registered under `fieldId`, or `null` if unregistered or if that field never registered a `getValue` (non-weight fields). */
+  getFieldValue: (fieldId: string) => number | null;
+  /** M2-15: writes `value` (canonical kg) into the field registered under `fieldId` — a no-op if unregistered or if that field never registered a `setValue`. */
+  writeFieldValue: (fieldId: string, value: number) => void;
 }
 
 /** Module-scoped, non-reactive registry — see file header. */
@@ -138,6 +167,12 @@ export const useKeyboardFocusStore = create<KeyboardFocusState>((set, get) => ({
       }
     }
     next?.registration.focus();
+  },
+
+  getFieldValue: (fieldId) => fields.get(fieldId)?.getValue?.() ?? null,
+
+  writeFieldValue: (fieldId, value) => {
+    fields.get(fieldId)?.setValue?.(value);
   },
 }));
 

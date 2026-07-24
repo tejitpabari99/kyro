@@ -172,6 +172,56 @@ describe('keyboardFocusStore — focusNext', () => {
   });
 });
 
+describe('keyboardFocusStore — getFieldValue / writeFieldValue (M2-15)', () => {
+  it('getFieldValue reads through a registered getValue', () => {
+    useKeyboardFocusStore.getState().registerField('weight', {
+      focus: jest.fn(),
+      order: { exercisePosition: 0, rowIndex: 0, columnIndex: 0 },
+      isWeight: true,
+      getValue: () => 42,
+    });
+    expect(useKeyboardFocusStore.getState().getFieldValue('weight')).toBe(42);
+  });
+
+  it('getFieldValue returns null for an unregistered field id', () => {
+    expect(useKeyboardFocusStore.getState().getFieldValue('ghost')).toBeNull();
+  });
+
+  it('getFieldValue returns null for a field with no getValue registered (non-weight fields)', () => {
+    useKeyboardFocusStore.getState().registerField('reps', {
+      focus: jest.fn(),
+      order: { exercisePosition: 0, rowIndex: 0, columnIndex: 1 },
+      isWeight: false,
+    });
+    expect(useKeyboardFocusStore.getState().getFieldValue('reps')).toBeNull();
+  });
+
+  it('writeFieldValue calls through to a registered setValue', () => {
+    const setValue = jest.fn();
+    useKeyboardFocusStore.getState().registerField('weight', {
+      focus: jest.fn(),
+      order: { exercisePosition: 0, rowIndex: 0, columnIndex: 0 },
+      isWeight: true,
+      setValue,
+    });
+    useKeyboardFocusStore.getState().writeFieldValue('weight', 102.5);
+    expect(setValue).toHaveBeenCalledWith(102.5);
+  });
+
+  it('writeFieldValue on an unregistered field id is a harmless no-op', () => {
+    expect(() => useKeyboardFocusStore.getState().writeFieldValue('ghost', 100)).not.toThrow();
+  });
+
+  it('writeFieldValue on a field with no setValue registered is a harmless no-op', () => {
+    useKeyboardFocusStore.getState().registerField('reps', {
+      focus: jest.fn(),
+      order: { exercisePosition: 0, rowIndex: 0, columnIndex: 1 },
+      isWeight: false,
+    });
+    expect(() => useKeyboardFocusStore.getState().writeFieldValue('reps', 5)).not.toThrow();
+  });
+});
+
 describe('keyboardFocusStore — KEYBOARD_ACCESSORY_VIEW_ID', () => {
   it('is exported as a stable, non-empty string', () => {
     expect(typeof KEYBOARD_ACCESSORY_VIEW_ID).toBe('string');

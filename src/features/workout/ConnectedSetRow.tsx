@@ -47,12 +47,15 @@
  *      `workout.exercises`, no separate counter action to call). Then
  *      (M2-10): `shouldStartRestTimer` decides whether to start this
  *      exercise's rest timer (`restTimerStore.start`) — Off setting or a
- *      next-row-same-exercise dropset suppress it. The remaining two
- *      success-path items are still **hook points for a later milestone
- *      that doesn't exist yet** — clearly TODO-labeled no-op call sites:
- *      sound (M2-11's `src/lib/sound.ts`), live-PR check (M4-10's records
- *      provider, no-op until then per the M2 task notes), smart-superset
- *      scroll (M2-12).
+ *      next-row-same-exercise dropset suppress it. Then (M2-12): `onChecked?.()`
+ *      — this row's own report, unconditional, that a set here was just
+ *      successfully checked; `ActiveWorkoutScreen` (not this file) owns the
+ *      "is this exercise grouped, is the setting on, which member's next"
+ *      decision (`domain/supersets.ts`). The remaining two success-path
+ *      items are still **hook points for a later milestone that doesn't
+ *      exist yet** — clearly TODO-labeled no-op call sites: sound (M2-11's
+ *      `src/lib/sound.ts`), live-PR check (M4-10's records provider, no-op
+ *      until then per the M2 task notes).
  *  - **Uncheck** (`set.isCompleted` already `true`): `restTimerStore
  *    .cancelForSet(setId)` (M2-10 — no-op unless the running timer, if
  *    any, was started by *this* set) then `setCompleted(false)` — counters
@@ -76,8 +79,25 @@
  * opens `DurationTimerSheet` for whichever TIME column was tapped; its
  * `onCommit` writes the elapsed seconds through the exact same
  * values-buffer + `updateSet` path `handlePreviousPress` already uses.
+ *
+ * ## Plate-calculator value read/write (M2-15)
+ *
+ * Weight-kind columns additionally register `getValue`/`setValue` on their
+ * `keyboardFocusStore` entry (see that file's own M2-15 addition) — a
+ * canonical-kg read of "what's currently typed here" and a write-back that
+ * mirrors `handleDurationTimerCommit`'s exact values-buffer + `updateSet`
+ * shape. These closures are created once, inside the same memoized
+ * `fieldRefs` map `focus`/`order`/`isWeight` already live in (so they don't
+ * re-register on every keystroke either) — but unlike those three fields,
+ * `getValue`/`setValue` must never go stale as `values`/`units` change on
+ * every keystroke/unit-toggle after that one-time registration. `latestRef`
+ * (a plain `useRef` mirrored unconditionally on every render — the same
+ * "synchronously-current snapshot for a callback outside the normal render
+ * cycle" pattern `ActiveWorkoutScreen.tsx`'s own `pendingRemovalsRef`
+ * already uses) is what keeps those two closures reading/writing the
+ * *current* buffer instead of whatever it was at registration time.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { TextInput } from 'react-native';
 
 import type { UpdateSetInput } from '@/data/workouts/types';
@@ -119,6 +139,8 @@ export interface ConnectedSetRowProps {
   nextSetType: SetType | null;
   /** 1-based position of this row within its exercise's set list (all types) — the "N" in the rest-timer notification body (M2-10). */
   setNumber: number;
+  /** M2-12: fired once, after a successful check (never on uncheck or a blocked/shaken attempt) — `ExerciseSetTableSection`'s own pass-through of `ExerciseCard`'s `onSetChecked` prop, the Smart Superset Scrolling hook point this file's header used to TODO. */
+  onChecked?: () => void;
   testID?: string;
 }
 
@@ -227,6 +249,7 @@ function ConnectedSetRowImpl({
   restSeconds,
   nextSetType,
   setNumber,
+  onChecked,
   testID,
 }: ConnectedSetRowProps): React.JSX.Element | null {
   const set = useActiveWorkoutStore(selectWorkoutSet(setId));
@@ -241,6 +264,20 @@ function ConnectedSetRowImpl({
   const [values, setValues] = useState<Record<string, string>>(() =>
     set ? seedValues(set, columns, units) : {},
   );
+
+  // M2-15: mirrors `values`/`units` for the `fieldRefs` registry's
+  // `getValue`/`setValue` closures below — see file header's "Plate-
+  // calculator value read/write" section for why a plain memoized closure
+  // (which would only capture the render-time snapshot) isn't enough here.
+  // Synced in an effect (never written directly in the render body) so it
+  // stays a plain post-commit mirror rather than a render-time ref mutation
+  // (React Compiler's `react-hooks/refs` purity rule) — by the time
+  // `getValue`/`setValue` are ever actually called (a button press outside
+  // the render cycle entirely), the effect has always already flushed.
+  const latestRef = useRef({ values, units });
+  useEffect(() => {
+    latestRef.current = { values, units };
+  });
 
   // Re-seed from the canonical set whenever *this row's own* set reference
   // changes (post-commit reconciliation, PREVIOUS autofill, set-type
@@ -298,12 +335,37 @@ function ConnectedSetRowImpl({
     const map: Record<string, (instance: TextInput | null) => void> = {};
     inputColumns.forEach((column, columnIndex) => {
       const columnFieldId = `${setId}:${column.key}`;
+      const isWeight = isWeightColumnKind(column.kind);
       map[column.key] = (instance) => {
         if (instance) {
           useKeyboardFocusStore.getState().registerField(columnFieldId, {
             focus: () => instance.focus(),
             order: { exercisePosition, rowIndex: setNumber - 1, columnIndex },
-            isWeight: isWeightColumnKind(column.kind),
+            isWeight,
+            // M2-15: only weight columns ever get a Calculator write-back
+            // target — see file header. Reads/writes go through
+            // `latestRef` (never the closed-over `values`/`units` from this
+            // memo's own creation render) so they stay live across every
+            // keystroke after registration.
+            ...(isWeight
+              ? {
+                  getValue: () =>
+                    parseCellValue(
+                      column.kind,
+                      latestRef.current.values[column.key] ?? '',
+                      latestRef.current.units,
+                    ),
+                  setValue: (value: number) => {
+                    setValues((prev) => ({
+                      ...prev,
+                      [column.key]: formatCellValue(column.kind, value, latestRef.current.units),
+                    }));
+                    const patch: UpdateSetInput = {};
+                    writeCanonical(patch, column.key, value);
+                    void useActiveWorkoutStore.getState().updateSet(setId, patch);
+                  },
+                }
+              : {}),
           });
         } else {
           useKeyboardFocusStore.getState().unregisterField(columnFieldId);
@@ -509,9 +571,13 @@ function ConnectedSetRowImpl({
     // and surface a PR banner — the records provider is intentionally a
     // no-op until M4-10 (per the M2 task notes), so there is nothing to
     // wire yet.
-    // TODO(M2-12): if this exercise is in a superset and Smart Superset
-    // Scrolling is on, scroll to the next member with sets remaining —
-    // supersets don't exist until M2-12; no-op today.
+    // M2-12: Smart Superset Scrolling hook — `onChecked` is `ExerciseCard`'s
+    // own `onSetChecked` prop, threaded through unchanged; `ActiveWorkoutScreen`
+    // decides whether this exercise is actually grouped, whether the setting
+    // is on, and which member (if any) to scroll to (`domain/supersets.ts`'s
+    // `nextSupersetScrollTarget`) — this row only reports "a set here was
+    // just successfully checked."
+    onChecked?.();
   };
 
   const handleSelectSetType = (type: SetType): void => {

@@ -70,6 +70,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import type { Exercise, ExerciseRepository } from '@/data/exercises/types';
 import { autoTitleForDate } from '@/domain/auto-title';
+import { nextSupersetScrollTarget, supersetVisualsByExerciseId } from '@/domain/supersets';
 import { formatDuration } from '@/domain/units';
 import {
   formatVolumeDisplay,
@@ -89,6 +90,7 @@ import { DurationEditSheet } from './DurationEditSheet';
 import { ExerciseCard } from './ExerciseCard';
 import { ExercisePickerSheet, type ExercisePickerMode } from './ExercisePickerSheet';
 import { KEYBOARD_ACCESSORY_VIEW_ID, useKeyboardFocusStore } from './keyboardFocusStore';
+import { PlateCalculatorSheet } from './PlateCalculatorSheet';
 import { ReorderExercisesSheet } from './ReorderExercisesSheet';
 import { selectActiveWorkout, useActiveWorkoutStore } from './activeWorkoutStore';
 import { useWorkoutStopwatch } from './useWorkoutStopwatch';
@@ -109,6 +111,9 @@ function defaultRetroStartTime(): number {
   date.setHours(12, 0, 0, 0);
   return date.getTime();
 }
+
+/** M2-12: small top breathing room above a Smart-Superset-Scrolling target so its header isn't flush against the screen edge. */
+const SUPERSET_SCROLL_TOP_PADDING = 12;
 
 export function ActiveWorkoutScreen({
   exerciseRepository,
@@ -186,6 +191,86 @@ export function ActiveWorkoutScreen({
     },
     enabled: exerciseIds.length > 0,
   });
+
+  // M2-12 (02 §8 / 07 §2.5): every grouped exercise's own label/color,
+  // recomputed whenever the workout's exercise list changes identity —
+  // `activeWorkoutStore`'s structural-sharing helpers (`withExercise`, see
+  // that file's header) always hand back a *new* `exercises` array on any
+  // exercise-level mutation (even ones unrelated to supersets), so this stays
+  // cheap and correct without a narrower dependency to hand-maintain.
+  const supersetVisuals = useMemo(
+    () =>
+      workout
+        ? supersetVisualsByExerciseId(
+            workout.exercises.map((workoutExercise) => ({
+              id: workoutExercise.id,
+              position: workoutExercise.position,
+              supersetId: workoutExercise.supersetId,
+            })),
+          )
+        : new Map(),
+    [workout],
+  );
+
+  // M2-12: Smart Superset Scrolling (02 §8, setting default-on,
+  // `settings.smart_superset_scroll`) — `cardOffsetsRef` is populated by
+  // each exercise card's own wrapping `onLayout` (below, in the render
+  // body) with its y-offset *within the scroll content*, i.e. exactly what
+  // `ScrollView.scrollTo({y})` expects; `scrollViewRef` is the imperative
+  // handle that call goes through. Both are refs (not state) because
+  // neither should ever trigger a re-render on their own — they're read
+  // only reactively, from `handleSetChecked` below, in response to a real
+  // user action (checking a set).
+  const scrollViewRef = useRef<ScrollView>(null);
+  const cardOffsetsRef = useRef<Record<string, number>>({});
+
+  const handleCardLayout = (workoutExerciseId: string, y: number): void => {
+    cardOffsetsRef.current[workoutExerciseId] = y;
+  };
+
+  // `ExerciseCard`'s own `onSetChecked` prop (bubbled from `ConnectedSetRow`
+  // via `ExerciseSetTableSection`) fires unconditionally on every successful
+  // check — this is the one place that turns "a set was checked" into "is
+  // there anywhere to scroll." Reads `useActiveWorkoutStore.getState()`
+  // rather than the `workout` selector value closed over by this render:
+  // `setCompleted`'s own optimistic `set()` call has already applied by the
+  // time `ConnectedSetRow`'s check handler calls `onChecked()` (same
+  // same-tick-ordering guarantee that file's own header documents for
+  // `updateSet`-then-`setCompleted`), so the store's *current* state already
+  // reflects the just-checked set — reading the stale closed-over `workout`
+  // here could evaluate "is this exercise's group now fully done" one check
+  // behind.
+  const handleSetChecked = (workoutExerciseId: string): void => {
+    if (!useSettingsStore.getState().settings.smart_superset_scroll) {
+      return;
+    }
+    const current = useActiveWorkoutStore.getState().workout;
+    if (!current) {
+      return;
+    }
+    const exercise = current.exercises.find((we) => we.id === workoutExerciseId);
+    if (!exercise || exercise.supersetId == null) {
+      return;
+    }
+    const members = current.exercises
+      .filter((we) => we.supersetId === exercise.supersetId)
+      .sort((a, b) => a.position - b.position);
+    const memberIds = members.map((we) => we.id);
+    const fullyCompletedIds = new Set(
+      members
+        .filter((we) => we.sets.length > 0 && we.sets.every((s) => s.isCompleted))
+        .map((we) => we.id),
+    );
+    const targetId = nextSupersetScrollTarget(memberIds, fullyCompletedIds, workoutExerciseId);
+    if (!targetId) {
+      return;
+    }
+    const targetY = cardOffsetsRef.current[targetId];
+    if (targetY == null) {
+      return;
+    }
+    scrollViewRef.current?.scrollTo({ y: Math.max(0, targetY - SUPERSET_SCROLL_TOP_PADDING), animated: true });
+  };
 
   const stopwatch = useWorkoutStopwatch({
     startTime: workout?.startTime ?? retroStartTimeResolved ?? mountTimeFallback,
@@ -408,13 +493,30 @@ export function ActiveWorkoutScreen({
     void useActiveWorkoutStore.getState().removeExercise(workoutExerciseId);
   };
 
-  // M2-08 seam: the plate calculator UI itself is M2-15's job (not yet
-  // built) — this task's own brief calls for "the correct conditional
-  // hook/seam so M2-15 can wire in later," so `onCalculatorPress` is a
-  // labeled stub, same pattern `handleSettingsPress`/`ExerciseCard`'s own
-  // Add-Warm-Up-Sets item already use for their own not-yet-built targets.
+  // M2-15: the field id `keyboardFocusStore` reports focused *at the
+  // moment Calculator is pressed* — captured into local state rather than
+  // read live by the sheet, because the sheet's own editable target-weight
+  // input will steal native focus the instant it renders, which would
+  // otherwise clear `focusedFieldId` before "Use this value" ever gets a
+  // chance to address the right field (see `keyboardFocusStore.ts`'s own
+  // M2-15 header note and `PlateCalculatorSheet.tsx`'s). `null` both means
+  // "sheet closed" and gates `visible` below.
+  const [calculatorTargetFieldId, setCalculatorTargetFieldId] = useState<string | null>(null);
+
   const handleCalculatorPress = (): void => {
-    Alert.alert('Plate Calculator', 'The plate calculator arrives in M2-15.');
+    const fieldId = useKeyboardFocusStore.getState().focusedFieldId;
+    // `showCalculator` (below) only ever renders this button while a
+    // weight field is genuinely focused, so `fieldId` is always non-null
+    // here in practice — the guard is just defensive against a
+    // theoretically-possible race, never reachable through the real UI.
+    if (!fieldId) {
+      return;
+    }
+    setCalculatorTargetFieldId(fieldId);
+  };
+
+  const handleCalculatorDismiss = (): void => {
+    setCalculatorTargetFieldId(null);
   };
 
   const handleNextPress = (): void => {
@@ -561,6 +663,7 @@ export function ActiveWorkoutScreen({
       {/* Body — exercise cards, in workout order (02 §3). `keyboardShouldPersistTaps="handled"` (M2-08, 02 §4): tapping the ✓ check button (or anything else with its own `onPress`) while a set-table `NumericInput` is focused must commit and NOT dismiss the keyboard — RN's default `ScrollView` behavior ('never') swallows the very first tap outside the focused field purely to dismiss the keyboard, before it ever reaches a child `Pressable`; 'handled' lets any touchable that declares a responder (every `Pressable` in this tree does) receive the tap on the first press instead. */}
       <ScrollView
         testID={`${testID}-body`}
+        ref={scrollViewRef}
         style={styles.body}
         contentContainerStyle={{ padding: spacing['4'], gap: spacing['4'] }}
         keyboardShouldPersistTaps="handled"
@@ -576,26 +679,38 @@ export function ActiveWorkoutScreen({
             return null;
           }
           return (
-            <ExerciseCard
+            // M2-12: this wrapper's only job is `onLayout` — its y-offset
+            // (relative to the `ScrollView`'s own content, since it's a
+            // direct content child) is exactly what `scrollTo({y})` needs
+            // (`handleCardLayout`/`cardOffsetsRef` above), captured fresh on
+            // every layout pass (set count changes, add/remove exercise,
+            // etc. all reflow every card below them).
+            <View
               key={workoutExercise.id}
-              testID={`${testID}-exercise-${workoutExercise.id}`}
-              workoutExerciseId={workoutExercise.id}
-              exercisePosition={workoutExercise.position}
-              exercise={exercise}
-              exerciseRepository={exerciseRepository}
-              notes={workoutExercise.notes}
-              restSeconds={workoutExercise.restSeconds}
-              isGrouped={workoutExercise.supersetId != null}
-              weightUnit={weightUnit}
-              distanceUnit={distanceUnit}
-              rpeEnabled={rpeEnabled}
-              previousValuesMode={previousValuesMode}
-              routineId={workout.routineId}
-              onReorderPress={() => setReorderVisible(true)}
-              onReplacePress={handleReplacePress}
-              onAddToSupersetPress={handleAddToSupersetPress}
-              onRemove={handleRemoveExercise}
-            />
+              testID={`${testID}-exercise-${workoutExercise.id}-layout`}
+              onLayout={(e) => handleCardLayout(workoutExercise.id, e.nativeEvent.layout.y)}
+            >
+              <ExerciseCard
+                testID={`${testID}-exercise-${workoutExercise.id}`}
+                workoutExerciseId={workoutExercise.id}
+                exercisePosition={workoutExercise.position}
+                exercise={exercise}
+                exerciseRepository={exerciseRepository}
+                notes={workoutExercise.notes}
+                restSeconds={workoutExercise.restSeconds}
+                supersetVisual={supersetVisuals.get(workoutExercise.id) ?? null}
+                weightUnit={weightUnit}
+                distanceUnit={distanceUnit}
+                rpeEnabled={rpeEnabled}
+                previousValuesMode={previousValuesMode}
+                routineId={workout.routineId}
+                onReorderPress={() => setReorderVisible(true)}
+                onReplacePress={handleReplacePress}
+                onAddToSupersetPress={handleAddToSupersetPress}
+                onRemove={handleRemoveExercise}
+                onSetChecked={() => handleSetChecked(workoutExercise.id)}
+              />
+            </View>
           );
         })}
       </ScrollView>
@@ -687,13 +802,21 @@ export function ActiveWorkoutScreen({
         onConfirm={handleAddToSupersetConfirm}
       />
 
-      {/* M2-08: one shared accessory bar for every set-table `NumericInput` in this screen (each passes `KEYBOARD_ACCESSORY_VIEW_ID` as its own `inputAccessoryViewID` — `ConnectedSetRow.tsx`). Calculator shows only when a weight field is focused (`focusedIsWeight`) and the plate-calculator setting is on (02 §4); `onCalculatorPress` is the labeled M2-15 stub above. */}
+      {/* M2-08: one shared accessory bar for every set-table `NumericInput` in this screen (each passes `KEYBOARD_ACCESSORY_VIEW_ID` as its own `inputAccessoryViewID` — `ConnectedSetRow.tsx`). Calculator shows only when a weight field is focused (`focusedIsWeight`) and the plate-calculator setting is on (02 §4); `onCalculatorPress` captures the focused field id and opens `PlateCalculatorSheet` below (M2-15). */}
       <KeyboardAccessoryBar
         testID={`${testID}-keyboard-accessory-bar`}
         nativeID={KEYBOARD_ACCESSORY_VIEW_ID}
         showCalculator={focusedIsWeight && plateCalcEnabled}
         onCalculatorPress={handleCalculatorPress}
         onNextPress={handleNextPress}
+      />
+
+      <PlateCalculatorSheet
+        testID={`${testID}-plate-calculator-sheet`}
+        visible={calculatorTargetFieldId != null}
+        onDismiss={handleCalculatorDismiss}
+        targetFieldId={calculatorTargetFieldId ?? ''}
+        weightUnit={weightUnit}
       />
     </View>
   );

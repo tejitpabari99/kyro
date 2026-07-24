@@ -555,7 +555,7 @@ describe('Keyboard flow — ActiveWorkoutScreen wiring (KeyboardAccessoryBar, ke
     expect(screen.queryByTestId('screen-keyboard-accessory-bar-calculator')).toBeNull();
   });
 
-  it('the labeled M2-15 stub fires when Calculator is tapped', async () => {
+  it('Calculator opens the plate calculator sheet pre-filled from the focused field, and "Use this value" writes the achieved weight back into that field (M2-15)', async () => {
     const { driver, workoutRepo, exerciseRepo } = setup();
     await rehydrateStores(workoutRepo, driver);
     await useSettingsStore.getState().setSetting('plate_calc', {
@@ -574,13 +574,34 @@ describe('Keyboard flow — ActiveWorkoutScreen wiring (KeyboardAccessoryBar, ke
 
     const weightTestID = `screen-exercise-${added!.id}-table-row-0-value-weight`;
     await waitFor(() => expect(screen.getByTestId(weightTestID)).toBeTruthy());
+
     await fireEvent(screen.getByTestId(weightTestID), 'focus');
+    await act(async () => {
+      fireEvent.changeText(screen.getByTestId(weightTestID), '18');
+    });
+
     await fireEvent.press(screen.getByTestId('screen-keyboard-accessory-bar-calculator'));
 
-    expect(Alert.alert).toHaveBeenCalledWith(
-      'Plate Calculator',
-      'The plate calculator arrives in M2-15.',
-    );
+    const sheetTestID = 'screen-plate-calculator-sheet';
+    // Pre-filled from the field's own current (uncommitted, still-focused)
+    // typed value — proving the read goes through `latestRef`, not a stale
+    // registration-time snapshot (`ConnectedSetRow.tsx`'s M2-15 addition).
+    expect(screen.getByTestId(`${sheetTestID}-target-input`).props.value).toBe('18');
+
+    await act(async () => {
+      fireEvent.changeText(screen.getByTestId(`${sheetTestID}-target-input`), '22.5');
+    });
+    // 22.5 on the default 20 kg Barbell -> exact via a single 1.25 kg plate/side.
+    expect(screen.getByTestId(`${sheetTestID}-achieved`).props.children.join('')).toBe('22.5kg');
+
+    await fireEvent.press(screen.getByTestId(`${sheetTestID}-use-value`));
+
+    expect(screen.queryByTestId(`${sheetTestID}-target-input`)).toBeNull();
+    expect(screen.getByTestId(weightTestID).props.value).toBe('22.5');
+    await waitFor(async () => {
+      const active = await workoutRepo.getActive();
+      expect(active!.exercises[0]!.sets[0]!.weightKg).toBe(22.5);
+    });
   });
 
   it("the accessory bar's Next button drives keyboardFocusStore.focusNext()", async () => {
