@@ -64,6 +64,49 @@
  * never has to hand over dummy no-op functions just to satisfy the type —
  * they're `undefined` in that mode and never invoked, by construction (no
  * live `Pressable`/`GestureDetector` remains to invoke them from).
+ *
+ * **Target mode** (M3-04, 04 §2.1 — the routine editor reusing this same
+ * row for TARGETs instead of logged values): unlike `readOnly`, `targetMode`
+ * does **not** turn the row static — SET still cycles set types, value
+ * cells stay editable, and swipe-delete stays live (the editor edits its own
+ * draft, it just doesn't log). The three things it changes: (1) the ✓ cell
+ * is omitted from the tree entirely, not merely inert — a target has no
+ * "completed" concept, so there's nothing honest to show there (contrast
+ * `readOnly`, which still *displays* `isCompleted` for history's own read
+ * context); (2) PREVIOUS reverts to `readOnly`'s static-`Text` treatment
+ * regardless of `readOnly` itself, per 04 §2.1's "PREVIOUS column shows the
+ * exercise's last logged values as reference (read-only, no tap action)" —
+ * every other cell in the row stays exactly as interactive as a normal row,
+ * so this can't reuse the single `readOnly` flag wholesale; (3) the REPS
+ * column (`column.kind === 'reps'`) gains the rep-range affordance (04 §2.1:
+ * "tapping the REPS column header (or long-press the cell) toggles rep
+ * range mode for that set → two inputs `from`–`to`"). This component only
+ * owns the *long-press* half of that toggle (`onToggleRepRange`, fired by a
+ * `Pressable` wrapping the REPS cell's content) — the *header* tap is
+ * `SetTable`'s own affordance (that's where column headers live), see its
+ * file header for the paired half and for this task's own resolution of the
+ * spec text's "for that set" ambiguity (single-row long-press vs.
+ * whole-exercise header tap). `repRangeMode` (caller-owned, mirrors
+ * `isCompleted`'s "derived state passed in, not owned here" shape) decides
+ * which of the two is currently showing; when `true`, the REPS cell renders
+ * two `NumericInput`s keyed `` `${column.key}_from` `` / `` `${column.key}_to` ``
+ * (reusing the existing generic `onChangeValue`/`onBlurValue`/`values`/
+ * `placeholders` plumbing with two synthetic column keys, rather than
+ * growing a parallel prop surface just for this one column) instead of the
+ * single `column.key` field. The caller (`src/features/routines/
+ * RoutineSetRow.tsx`) is responsible for translating those two synthetic
+ * keys to/from `rep_range_start`/`rep_range_end` — this component has no
+ * opinion on storage, same as every other column.
+ *
+ * *Known on-device caveat, not verifiable in this headless sandbox* (same
+ * "gesture feel deferred to physical device" posture `RoutinesHubScreen
+ * .tsx`'s M3-03 drag-and-drop note already established for this repo):
+ * nesting a `Pressable`'s `onLongPress` around a live `NumericInput`
+ * (rather than around inert `Text`, as PREVIOUS/RPE do) means a real touch
+ * has to arbitrate between "focus the text field" and "start a long-press
+ * timer" — RN's native responder system generally lets a short tap still
+ * reach the child `TextInput` while a sustained hold reaches the outer
+ * `Pressable` first, but this hasn't been confirmed on real hardware here.
  */
 import React, { useEffect, useMemo } from 'react';
 import { Check, Timer, Trash2 } from 'lucide-react-native';
@@ -117,6 +160,12 @@ export interface SetRowProps {
   onDelete?: () => void;
   /** M2-14 (07 §5) — see file header's "Read-only mode" section. Defaults `false`. */
   readOnly?: boolean;
+  /** M3-04 (04 §2.1) — see file header's "Target mode" section. Defaults `false`. */
+  targetMode?: boolean;
+  /** M3-04 — only meaningful when `targetMode`: is this row's REPS cell currently showing the `from`–`to` range inputs (`true`) or a single value (`false`/unset)? Caller-owned, same shape as `isCompleted`. */
+  repRangeMode?: boolean;
+  /** M3-04 — fires on long-press of the REPS cell's content (target mode only) to toggle `repRangeMode` for this row. */
+  onToggleRepRange?: () => void;
   /** M2-08 — per-column `ref` callbacks for each value cell's `NumericInput`, keyed by `column.key`. Supply a referentially-stable map (see `ConnectedSetRow.tsx`'s own `useMemo`) — an inline object recreated every render would thrash the registry (React detaches+reattaches on every ref-callback identity change). */
   fieldRefs?: Record<string, (instance: TextInput | null) => void>;
   /** M2-08 — shared `KeyboardAccessoryBar` `nativeID`, forwarded to every value cell's `NumericInput` as its `inputAccessoryViewID`. */
@@ -174,6 +223,9 @@ function SetRowImpl({
   onRpePress,
   onDelete,
   readOnly = false,
+  targetMode = false,
+  repRangeMode = false,
+  onToggleRepRange,
   fieldRefs,
   inputAccessoryViewID,
   inlineTimerEnabled,
@@ -297,7 +349,7 @@ function SetRowImpl({
           </SetCell>
 
           <SetCell testID={testID ? `${testID}-previous-cell` : undefined} flex={1.3}>
-            {readOnly ? (
+            {readOnly || targetMode ? (
               <Text
                 testID={testID ? `${testID}-previous` : undefined}
                 style={[typography.subhead, { color: colors.text.secondary }]}
@@ -355,6 +407,77 @@ function SetRowImpl({
               );
             }
 
+            // M3-04 (04 §2.1): target-mode REPS gets the rep-range affordance
+            // — see file header's "Target mode" section for why this is its
+            // own branch rather than folding into the generic value-cell
+            // rendering below (two synthetic `_from`/`_to` column keys
+            // instead of one, plus the long-press wrapper).
+            if (column.kind === 'reps' && targetMode) {
+              const fromKey = `${column.key}_from`;
+              const toKey = `${column.key}_to`;
+              const repsCellContent = repRangeMode ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <NumericInput
+                    testID={testID ? `${testID}-value-${fromKey}` : undefined}
+                    accessibilityLabel="Rep range from"
+                    mode="integer"
+                    value={values[fromKey] ?? ''}
+                    placeholder={placeholders[fromKey]}
+                    onChangeText={(text) => onChangeValue?.(fromKey, text)}
+                    onBlur={() => onBlurValue?.(fromKey)}
+                    onFocus={onFocusValue ? () => onFocusValue(fromKey) : undefined}
+                    inputAccessoryViewID={inputAccessoryViewID}
+                    style={{ minWidth: 40 }}
+                  />
+                  <Text style={[setValueStyle, { color: colors.text.secondary, marginHorizontal: 2 }]}>
+                    –
+                  </Text>
+                  <NumericInput
+                    testID={testID ? `${testID}-value-${toKey}` : undefined}
+                    accessibilityLabel="Rep range to"
+                    mode="integer"
+                    value={values[toKey] ?? ''}
+                    placeholder={placeholders[toKey]}
+                    onChangeText={(text) => onChangeValue?.(toKey, text)}
+                    onBlur={() => onBlurValue?.(toKey)}
+                    onFocus={onFocusValue ? () => onFocusValue(toKey) : undefined}
+                    inputAccessoryViewID={inputAccessoryViewID}
+                    style={{ minWidth: 40 }}
+                  />
+                </View>
+              ) : (
+                <NumericInput
+                  ref={fieldRefs?.[column.key]}
+                  testID={testID ? `${testID}-value-${column.key}` : undefined}
+                  accessibilityLabel={`${column.label} field`}
+                  mode="integer"
+                  value={values[column.key] ?? ''}
+                  placeholder={placeholders[column.key]}
+                  onChangeText={(text) => onChangeValue?.(column.key, text)}
+                  onBlur={() => onBlurValue?.(column.key)}
+                  onFocus={onFocusValue ? () => onFocusValue(column.key) : undefined}
+                  inputAccessoryViewID={inputAccessoryViewID}
+                  style={{ minWidth: 56 }}
+                />
+              );
+
+              return (
+                <SetCell key={column.key} testID={testID ? `${testID}-cell-${column.key}` : undefined}>
+                  {onToggleRepRange ? (
+                    <Pressable
+                      testID={testID ? `${testID}-reps-target-cell` : undefined}
+                      onLongPress={onToggleRepRange}
+                      delayLongPress={400}
+                    >
+                      {repsCellContent}
+                    </Pressable>
+                  ) : (
+                    repsCellContent
+                  )}
+                </SetCell>
+              );
+            }
+
             const prefix = VALUE_PREFIX[column.kind];
 
             return (
@@ -404,6 +527,7 @@ function SetRowImpl({
             );
           })}
 
+          {targetMode ? null : (
           <SetCell testID={testID ? `${testID}-check-cell` : undefined} width={CHECK_CELL_WIDTH}>
             {readOnly ? (
               <View
@@ -449,6 +573,7 @@ function SetRowImpl({
               </Pressable>
             )}
           </SetCell>
+          )}
         </Animated.View>
       </GestureDetector>
     </View>

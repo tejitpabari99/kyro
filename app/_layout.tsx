@@ -240,6 +240,16 @@ export default function RootLayout(): React.JSX.Element | null {
             name="workout/active"
             options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
           />
+          {/* M3-04, 04 §2.1 / 06 §3: "Full-screen modal" — same presentation
+              as workout/active above. */}
+          <Stack.Screen
+            name="routine/new"
+            options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
+          />
+          <Stack.Screen
+            name="routine/[id]/edit"
+            options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
+          />
         </Stack>
       </ThemeProvider>
     </QueryClientProvider>

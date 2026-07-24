@@ -409,3 +409,133 @@ describe('SetRow — readOnly mode (M2-14, 07 §5 read-only SetTable)', () => {
     expect(screen.getByTestId('row-previous').props.children).toBe('—');
   });
 });
+
+describe('SetRow — target mode (M3-04, 04 §2.1)', () => {
+  it('omits the ✓ check cell entirely', async () => {
+    await render(
+      <ThemeProvider preference="dark">
+        <SetRow {...baseProps({ targetMode: true })} />
+      </ThemeProvider>,
+    );
+    expect(screen.queryByTestId('row-check-cell')).toBeNull();
+    expect(screen.queryByTestId('row-check')).toBeNull();
+  });
+
+  it('SET cell stays interactive (still cycles set types)', async () => {
+    const onSetCellPress = jest.fn();
+    await render(
+      <ThemeProvider preference="dark">
+        <SetRow {...baseProps({ targetMode: true, onSetCellPress })} />
+      </ThemeProvider>,
+    );
+    await fireEvent.press(screen.getByTestId('row-badge'));
+    expect(onSetCellPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('value cells stay editable (weight column renders a NumericInput, not static text)', async () => {
+    await render(
+      <ThemeProvider preference="dark">
+        <SetRow {...baseProps({ targetMode: true, values: { weight: '60' } })} />
+      </ThemeProvider>,
+    );
+    expect(screen.getByTestId('row-value-weight').props.value).toBe('60');
+  });
+
+  it('swipe-delete stays live (delete button fires onDelete)', async () => {
+    const onDelete = jest.fn();
+    await render(
+      <ThemeProvider preference="dark">
+        <SetRow {...baseProps({ targetMode: true, onDelete })} />
+      </ThemeProvider>,
+    );
+    await fireEvent.press(screen.getByTestId('row-delete-button'));
+    expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it('PREVIOUS is static text (no tap action) even though the row is otherwise interactive', async () => {
+    const onPreviousPress = jest.fn();
+    await render(
+      <ThemeProvider preference="dark">
+        <SetRow {...baseProps({ targetMode: true, onPreviousPress, previousLabel: '45kg × 9' })} />
+      </ThemeProvider>,
+    );
+    fireEvent.press(screen.getByTestId('row-previous'));
+    expect(onPreviousPress).not.toHaveBeenCalled();
+    expect(screen.getByText('45kg × 9')).toBeTruthy();
+  });
+
+  it('renders a single REPS input when repRangeMode is false/unset', async () => {
+    await render(
+      <ThemeProvider preference="dark">
+        <SetRow {...baseProps({ targetMode: true, values: { reps: '8' } })} />
+      </ThemeProvider>,
+    );
+    expect(screen.getByTestId('row-value-reps').props.value).toBe('8');
+    expect(screen.queryByTestId('row-value-reps_from')).toBeNull();
+  });
+
+  it('renders two inputs (reps_from/reps_to) when repRangeMode is true, seeded from values', async () => {
+    await render(
+      <ThemeProvider preference="dark">
+        <SetRow
+          {...baseProps({
+            targetMode: true,
+            repRangeMode: true,
+            values: { reps_from: '6', reps_to: '8' },
+          })}
+        />
+      </ThemeProvider>,
+    );
+    expect(screen.queryByTestId('row-value-reps')).toBeNull();
+    expect(screen.getByTestId('row-value-reps_from').props.value).toBe('6');
+    expect(screen.getByTestId('row-value-reps_to').props.value).toBe('8');
+  });
+
+  it('fires onChangeValue/onBlurValue with the synthetic reps_from/reps_to keys', async () => {
+    const onChangeValue = jest.fn();
+    const onBlurValue = jest.fn();
+    await render(
+      <ThemeProvider preference="dark">
+        <SetRow
+          {...baseProps({ targetMode: true, repRangeMode: true, onChangeValue, onBlurValue })}
+        />
+      </ThemeProvider>,
+    );
+    await fireEvent.changeText(screen.getByTestId('row-value-reps_from'), '6');
+    expect(onChangeValue).toHaveBeenCalledWith('reps_from', '6');
+    await fireEvent(screen.getByTestId('row-value-reps_to'), 'blur');
+    expect(onBlurValue).toHaveBeenCalledWith('reps_to');
+  });
+
+  it('long-pressing the REPS cell fires onToggleRepRange', async () => {
+    const onToggleRepRange = jest.fn();
+    await render(
+      <ThemeProvider preference="dark">
+        <SetRow {...baseProps({ targetMode: true, onToggleRepRange })} />
+      </ThemeProvider>,
+    );
+    await fireEvent(screen.getByTestId('row-reps-target-cell'), 'longPress');
+    expect(onToggleRepRange).toHaveBeenCalledTimes(1);
+  });
+
+  it('long-pressing the REPS cell in range mode also fires onToggleRepRange (toggle back to single)', async () => {
+    const onToggleRepRange = jest.fn();
+    await render(
+      <ThemeProvider preference="dark">
+        <SetRow {...baseProps({ targetMode: true, repRangeMode: true, onToggleRepRange })} />
+      </ThemeProvider>,
+    );
+    await fireEvent(screen.getByTestId('row-reps-target-cell'), 'longPress');
+    expect(onToggleRepRange).toHaveBeenCalledTimes(1);
+  });
+
+  it('non-REPS columns never get the range/long-press treatment even in target mode', async () => {
+    await render(
+      <ThemeProvider preference="dark">
+        <SetRow {...baseProps({ targetMode: true, onToggleRepRange: jest.fn() })} />
+      </ThemeProvider>,
+    );
+    expect(screen.queryByTestId('row-value-weight_from')).toBeNull();
+    expect(screen.getByTestId('row-value-weight')).toBeTruthy();
+  });
+});
