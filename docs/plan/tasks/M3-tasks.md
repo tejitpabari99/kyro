@@ -24,7 +24,7 @@ Task count: **8**
 **Acceptance / test gate:** 04 §1 acceptance: folder CRUD + collapse persists across launches; both folder-delete paths; RNTL smoke both themes; empty state renders.
 **Est:** 1.5 d
 
-### M3-03 — Drag-reorder spike + implementation
+### M3-03 — Drag-reorder spike + implementation [done]
 **Description:** Decide the dnd library and implement reorder mode for routines/folders (and adopt for exercise reorder sheet if it wins).
 **How:** Time-boxed spike (≤ 0.5 d) per 06 §1: `react-native-reanimated-dnd` vs `react-native-draggable-flatlist` on RN 0.85/New Architecture — evaluate stability, FlashList coexistence, haptics hooks. Record the decision in the task log/PR. Implement reorder mode: drag handles, routines within/between folders, folders among themselves, `impactLight` on pickup/drop (07 §8), persist via `index`/position columns.
 **References:** 06 §1 (decide at M3 spike); 04 §1; 07 §8.

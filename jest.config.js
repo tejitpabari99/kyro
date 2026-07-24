@@ -139,9 +139,12 @@ module.exports = {
       // pattern jest-expo ships, verbatim, with one more alternative added
       // — not a hand-rolled replacement — so every other package that
       // preset already handles (including pnpm's `.pnpm/` un-ignoring)
-      // keeps working.
+      // keeps working. `react-native-reanimated-dnd` (M3-03) is the same
+      // story — its own `package.json` is `"type": "module"` with only an
+      // ESM `lib/index.js` build, no CJS fallback — added to the same
+      // allow-list for the same reason.
       transformIgnorePatterns: [
-        '/node_modules/(?!(.pnpm|react-native|@react-native|@react-native-community|expo|@expo|@expo-google-fonts|react-navigation|@react-navigation|@sentry/react-native|native-base|standard-navigation|@shopify/flash-list))',
+        '/node_modules/(?!(.pnpm|react-native|@react-native|@react-native-community|expo|@expo|@expo-google-fonts|react-navigation|@react-navigation|@sentry/react-native|native-base|standard-navigation|@shopify/flash-list|react-native-reanimated-dnd))',
         '/node_modules/react-native-reanimated/plugin/',
         '/node_modules/@react-native/babel-preset/',
       ],

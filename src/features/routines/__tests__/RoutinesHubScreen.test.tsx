@@ -7,12 +7,15 @@
  * genuinely hides the folder's routine cards), both folder-delete paths
  * (cascade vs keep-routines), routine ⋯ menu actions (Duplicate/Move to
  * Folder/Delete calling the right repository methods; Start
- * Routine/Edit/Reorder's navigation/stub seams), and the
- * one-active-workout gate this screen inherited verbatim from the old
+ * Routine/Edit/Reorder's navigation/stub seams), the one-active-workout
+ * gate this screen inherited verbatim from the old
  * `app/(tabs)/workout/index.tsx` placeholder (moved here per this task's
  * "route file is now a thin wiring shim" split — see
  * `RoutinesHubScreen.tsx`'s own header and the sibling route test,
- * `app/(tabs)/workout/__tests__/index.test.tsx`).
+ * `app/(tabs)/workout/__tests__/index.test.tsx`), and (M3-03) reorder
+ * mode's toggle + drag/drop-callback-to-repository wiring (see the
+ * `react-native-reanimated-dnd` mock below — real pan gestures aren't
+ * driveable in RNTL, `docs/plan/BLOCKERS.md`'s M3-03 entry).
  *
  * Every `fireEvent.press` is `await`ed (RNTL v14 async fire-event
  * convention, same reasoning `ExerciseBrowseScreen.test.tsx`'s header
@@ -29,6 +32,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { WorkoutFull } from '@/data/workouts/types';
 import { useActiveWorkoutStore } from '@/features/workout/activeWorkoutStore';
 import { useRestTimerStore } from '@/features/workout/restTimerStore';
+import { dragReorder } from '@/lib/haptics';
 import { ThemeProvider } from '@/ui/theme-provider';
 
 import { FakeExerciseRepository, FIXTURE_EXERCISES } from '../../exercises/__tests__/exercise-fixtures';
@@ -50,6 +54,66 @@ jest.mock('expo-router', () => ({
 // cancels a running rest-timer notification on discard) — see
 // `RoutinesHubScreen.tsx`'s copied-verbatim Quick Start logic.
 jest.mock('@/lib/notifications');
+
+// 08 §5 native-seam mocking pattern (`src/lib/__mocks__/haptics.ts`) — M3-03
+// wires `dragReorder()` into reorder-mode pickup/drop.
+jest.mock('@/lib/haptics');
+
+// `react-native-reanimated-dnd` (M3-03) drives real pan gestures, which
+// RNTL cannot fire — `docs/plan/BLOCKERS.md`'s M3-03 entry / this task's
+// own brief both call that expected. This mock replaces `Draggable`/
+// `Droppable`/`DropProvider` with plain, gesture-free stand-ins so the
+// *reachable* logic (reorder-mode toggle, and the repository-call wiring a
+// drop triggers) stays testable: each mock `Draggable` renders an extra
+// hidden `Pressable` (`mock-pickup-<draggableId>`) that, when pressed,
+// stashes that `Draggable`'s `data` in module state and calls
+// `onDragStart` — simulating "pick this item up"; each mock `Droppable`
+// renders an extra hidden `Pressable` (`mock-drop-<droppableId>`) that
+// calls its `onDrop` with whatever is currently stashed — simulating
+// "release the held item here." A real drag's continuous gesture becomes
+// two discrete `fireEvent.press` calls, but the exact same `onDragStart`/
+// `onDrop` callback props `FolderSection.tsx` wires to the real library are
+// exercised, so this proves the wiring, not just the pure math
+// `routine-reorder.test.ts` already covers independently.
+let mockDraggedData: unknown = null;
+jest.mock('react-native-reanimated-dnd', () => {
+  const RN = jest.requireActual('react-native');
+  const ReactActual = jest.requireActual('react');
+
+  function MockDraggable({ data, draggableId, onDragStart, children }: any) {
+    return ReactActual.createElement(
+      ReactActual.Fragment,
+      null,
+      ReactActual.createElement(RN.Pressable, {
+        testID: `mock-pickup-${draggableId}`,
+        onPress: () => {
+          mockDraggedData = data;
+          onDragStart?.(data);
+        },
+      }),
+      children,
+    );
+  }
+  MockDraggable.Handle = ({ children }: any) => children;
+
+  function MockDroppable({ droppableId, onDrop, children }: any) {
+    return ReactActual.createElement(
+      ReactActual.Fragment,
+      null,
+      ReactActual.createElement(RN.Pressable, {
+        testID: `mock-drop-${droppableId}`,
+        onPress: () => onDrop(mockDraggedData),
+      }),
+      children,
+    );
+  }
+
+  function MockDropProvider({ children }: any) {
+    return children;
+  }
+
+  return { Draggable: MockDraggable, Droppable: MockDroppable, DropProvider: MockDropProvider };
+});
 
 function newTestQueryClient(): QueryClient {
   return new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
@@ -91,6 +155,7 @@ beforeEach(() => {
   jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
   useActiveWorkoutStore.setState({ workout: null, loaded: true, error: null });
   useRestTimerStore.setState({ timer: null });
+  mockDraggedData = null;
 });
 
 function renderHub(routineRepository: FakeRoutineRepository, theme: 'dark' | 'light' = 'dark') {
@@ -261,13 +326,15 @@ describe('RoutinesHubScreen — routine ⋯ menu', () => {
     await waitFor(() => expect(repo.routines[0]!.folderId).toBe(2));
   });
 
-  it('⋯ → Reorder shows an inert "coming soon" stub (M3-03 seam, no repository call)', async () => {
+  it('⋯ → Reorder enters reorder mode (M3-03) — no repository call by itself', async () => {
     const repo = repoWithRoutine();
     await renderHub(repo);
     await fireEvent.press(await screen.findByTestId('routine-card-r1-menu'));
     await fireEvent.press(await screen.findByTestId('routine-actions-sheet-reorder'));
 
-    expect(Alert.alert).toHaveBeenCalledWith('Reorder', 'Drag-to-reorder is coming soon.');
+    expect(await screen.findByTestId('reorder-done-button')).toBeTruthy();
+    expect(screen.getByTestId('routine-card-r1-drag-handle')).toBeTruthy();
+    expect(screen.queryByTestId('routine-card-r1-start')).toBeNull();
     expect(repo.routines).toHaveLength(1);
   });
 
@@ -384,5 +451,151 @@ describe('RoutinesHubScreen — one-active-workout gate (02 §1, inherited from 
 
     expect(useRestTimerStore.getState().timer).toBeNull();
     expect(router.push).toHaveBeenCalledWith('/workout/active');
+  });
+});
+
+describe('RoutinesHubScreen — reorder mode (M3-03)', () => {
+  function repoWithTwoFoldersAndRoutines(): FakeRoutineRepository {
+    const folderA = fixtureFolder({ id: 1, title: 'Folder A', position: 0 });
+    const folderB = fixtureFolder({ id: 2, title: 'Folder B', position: 1 });
+    const r1 = fixtureRoutine({ id: 'r1', title: 'Push Day', folderId: 1, position: 0 });
+    const r2 = fixtureRoutine({ id: 'r2', title: 'Pull Day', folderId: 1, position: 1 });
+    const r3 = fixtureRoutine({ id: 'r3', title: 'Leg Day', folderId: 2, position: 0 });
+    return new FakeRoutineRepository({
+      folders: [folderA, folderB],
+      routines: [r1, r2, r3],
+      fulls: [
+        fixtureRoutineFull({ id: 'r1', title: 'Push Day', folderId: 1 }),
+        fixtureRoutineFull({ id: 'r2', title: 'Pull Day', folderId: 1 }),
+        fixtureRoutineFull({ id: 'r3', title: 'Leg Day', folderId: 2 }),
+      ],
+    });
+  }
+
+  it('folder ⋯ → Reorder also enters reorder mode (same screen-wide mode as the routine ⋯ item)', async () => {
+    const repo = repoWithTwoFoldersAndRoutines();
+    await renderHub(repo);
+    await screen.findByTestId('routine-card-r1');
+
+    await fireEvent.press(screen.getByTestId('folder-section-1-menu'));
+    await fireEvent.press(await screen.findByTestId('folder-actions-sheet-reorder'));
+
+    expect(await screen.findByTestId('reorder-done-button')).toBeTruthy();
+    expect(screen.getByTestId('folder-section-1-drag-handle')).toBeTruthy();
+    // New-folder/new-routine icons are replaced by Done while reordering —
+    // nowhere to create a folder/routine mid-drag (file header).
+    expect(screen.queryByTestId('new-folder-button')).toBeNull();
+    expect(screen.queryByTestId('new-routine-button')).toBeNull();
+  });
+
+  it('Done exits reorder mode and restores the ⋯ menus / Start Routine buttons', async () => {
+    const repo = repoWithTwoFoldersAndRoutines();
+    await renderHub(repo);
+    await fireEvent.press(await screen.findByTestId('routine-card-r1-menu'));
+    await fireEvent.press(await screen.findByTestId('routine-actions-sheet-reorder'));
+    await screen.findByTestId('reorder-done-button');
+
+    await fireEvent.press(screen.getByTestId('reorder-done-button'));
+
+    expect(screen.queryByTestId('reorder-done-button')).toBeNull();
+    expect(screen.getByTestId('routine-card-r1-start')).toBeTruthy();
+    expect(screen.getByTestId('new-folder-button')).toBeTruthy();
+  });
+
+  it('dragging a routine before another routine within the same folder calls reorderRoutines with the new order', async () => {
+    const repo = repoWithTwoFoldersAndRoutines();
+    await renderHub(repo);
+    await fireEvent.press(await screen.findByTestId('routine-card-r1-menu'));
+    await fireEvent.press(await screen.findByTestId('routine-actions-sheet-reorder'));
+    await screen.findByTestId('reorder-done-button');
+
+    // Pick up r2, drop it on r1's row — "insert before r1" within folder 1.
+    await fireEvent.press(screen.getByTestId('mock-pickup-routine-r2'));
+    await fireEvent.press(screen.getByTestId('mock-drop-routine-drop-r1'));
+
+    await waitFor(() => {
+      const ordered = repo.routines
+        .filter((r) => r.folderId === 1)
+        .sort((a, b) => a.position - b.position)
+        .map((r) => r.id);
+      expect(ordered).toEqual(['r2', 'r1']);
+    });
+    expect(dragReorder).toHaveBeenCalled();
+  });
+
+  it('dragging a routine onto a different folder\'s header moves it there (moveToFolder) and persists the new order (reorderRoutines) — 04 §1 acceptance', async () => {
+    const repo = repoWithTwoFoldersAndRoutines();
+    await renderHub(repo);
+    await fireEvent.press(await screen.findByTestId('routine-card-r1-menu'));
+    await fireEvent.press(await screen.findByTestId('routine-actions-sheet-reorder'));
+    await screen.findByTestId('reorder-done-button');
+
+    // Pick up r1 (folder 1), drop it on folder 2's header zone.
+    await fireEvent.press(screen.getByTestId('mock-pickup-routine-r1'));
+    await fireEvent.press(screen.getByTestId('mock-drop-folder-drop-2'));
+
+    await waitFor(() => expect(repo.routines.find((r) => r.id === 'r1')?.folderId).toBe(2));
+    // Appended after folder 2's existing routine (r3), not inserted before it.
+    const orderedInFolder2 = repo.routines
+      .filter((r) => r.folderId === 2)
+      .sort((a, b) => a.position - b.position)
+      .map((r) => r.id);
+    expect(orderedInFolder2).toEqual(['r3', 'r1']);
+    // Folder 1's remaining routine (r2) is still there, unaffected.
+    expect(repo.routines.find((r) => r.id === 'r2')?.folderId).toBe(1);
+  });
+
+  it('dropping a routine on its own row is a no-op (no repository call)', async () => {
+    const repo = repoWithTwoFoldersAndRoutines();
+    await renderHub(repo);
+    await fireEvent.press(await screen.findByTestId('routine-card-r1-menu'));
+    await fireEvent.press(await screen.findByTestId('routine-actions-sheet-reorder'));
+    await screen.findByTestId('reorder-done-button');
+
+    const before = repo.routines.map((r) => ({ id: r.id, folderId: r.folderId, position: r.position }));
+    await fireEvent.press(screen.getByTestId('mock-pickup-routine-r1'));
+    await fireEvent.press(screen.getByTestId('mock-drop-routine-drop-r1'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(repo.routines.map((r) => ({ id: r.id, folderId: r.folderId, position: r.position }))).toEqual(
+      before,
+    );
+  });
+
+  it('dragging a folder before another folder calls reorderFolders with the new order', async () => {
+    const repo = repoWithTwoFoldersAndRoutines();
+    await renderHub(repo);
+    await fireEvent.press(await screen.findByTestId('folder-section-2-menu'));
+    await fireEvent.press(await screen.findByTestId('folder-actions-sheet-reorder'));
+    await screen.findByTestId('reorder-done-button');
+
+    // Pick up folder B (id 2), drop it on folder A's (id 1) header — "insert before folder A".
+    await fireEvent.press(screen.getByTestId('mock-pickup-folder-2'));
+    await fireEvent.press(screen.getByTestId('mock-drop-folder-drop-1'));
+
+    await waitFor(() => {
+      const ordered = repo.folders.slice().sort((a, b) => a.position - b.position).map((f) => f.id);
+      expect(ordered).toEqual([2, 1]);
+    });
+    expect(dragReorder).toHaveBeenCalled();
+  });
+
+  it('dropping a folder-shaped drag onto a routine row is ignored (folders only reorder against folder headers)', async () => {
+    const repo = repoWithTwoFoldersAndRoutines();
+    await renderHub(repo);
+    await fireEvent.press(await screen.findByTestId('folder-section-2-menu'));
+    await fireEvent.press(await screen.findByTestId('folder-actions-sheet-reorder'));
+    await screen.findByTestId('reorder-done-button');
+
+    const foldersBefore = repo.folders.map((f) => ({ id: f.id, position: f.position }));
+    await fireEvent.press(screen.getByTestId('mock-pickup-folder-2'));
+    await fireEvent.press(screen.getByTestId('mock-drop-routine-drop-r1'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(repo.folders.map((f) => ({ id: f.id, position: f.position }))).toEqual(foldersBefore);
   });
 });

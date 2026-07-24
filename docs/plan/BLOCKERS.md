@@ -183,6 +183,43 @@ Practical effect: M1-03 vendored the **real** free-exercise-db dataset (873 exer
 images, pinned commit hash — see `data/free-exercise-db/VENDORED.md`), not a synthetic
 placeholder. M1-04 onward build against real data.
 
+## Drag-reorder gesture feel + frame rate (M3-03 finding)
+
+M3-03 implemented `RoutinesHubScreen`'s drag-reorder mode on
+`react-native-reanimated-dnd` (`Draggable`/`Droppable`/`DropProvider`
+primitives — see that file's header for the library-choice reasoning and
+`docs/plan/EXECUTION-LOG.md`'s M3-03 row). Same "physical-device QA drills"
+category the Machine profile section above already covers (no iOS
+Simulator/device here) applies to two specific pieces of that task's own
+acceptance gate that could not be verified in this sandbox:
+
+- **On-device gesture feel** — whether pickup/drag/drop actually feels
+  smooth, whether `react-native-reanimated-dnd`'s collision detection
+  correctly recognizes a drop against the right `Droppable` zone under real
+  touch input (as opposed to this task's RNTL tests, which fire the same
+  `onDragStart`/`onDrop` callback props through a mocked stand-in for the
+  library rather than a real pan gesture — see
+  `RoutinesHubScreen.test.tsx`'s M3-03 section header for exactly what that
+  does and doesn't prove), and whether `impactLight` haptics actually fire
+  on a physical device (`src/lib/haptics.ts`'s own header already notes this
+  sandbox hits the "native module unavailable" branch on every haptics call
+  — true here too, `dragReorder()` is exercised via the mocked
+  `@/lib/haptics` module in tests, never the real `expo-haptics` bridge).
+- **"No frame drops on a 30-routine list"** (M3-03's own acceptance line,
+  04 §1) — an explicitly manual/on-device performance check with no Jest or
+  static-analysis equivalent; nothing in this sandbox can render 30 real
+  routine cards under a live 60fps compositor and measure dropped frames.
+
+The *data-persistence* half of M3-03's acceptance gate ("drag routine
+between folders persists and order stable after relaunch") **is** verified
+here, end-to-end, against the real position-math (`routine-reorder.ts`,
+node-testable pure functions) and the real `RoutineRepository` call wiring
+(RNTL, mocked-drop-callback pattern above) — only the on-device gesture
+feel/frame-rate half is deferred, matching the M2-08 update's precedent
+above (in "Practical impact on the task list") for exactly this split
+("the *logic* is fully covered by Jest/RNTL instead... [the physical feel]
+cannot be measured here").
+
 ## Everything else
 
 Every other task — all of M0 through M7 except the six owner-gated tasks listed above — is

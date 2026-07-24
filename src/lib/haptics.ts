@@ -98,7 +98,7 @@ export function destructiveConfirm(): void {
   safeImpact(Haptics.ImpactFeedbackStyle.Medium);
 }
 
-/** Drag reorder pickup/drop (07 §8: `impactLight`). Exported for completeness against 07 §8's table; not yet wired into `ReorderExercisesSheet`'s drag gesture (same reasoning as {@link destructiveConfirm} — out of this task's scope). */
+/** Drag reorder pickup/drop (07 §8: `impactLight`). Wired (M3-03) into `RoutinesHubScreen`'s reorder mode — both `Draggable`'s `onDragStart` (pickup) and every `Droppable`'s `onDrop` (drop) call this, matching 07 §8's literal "pickup/drop" wording. Still NOT wired into `ReorderExercisesSheet`'s up/down-button reorder (M2-09) — that sheet has no drag gesture to hang a pickup/drop haptic off of; see `RoutinesHubScreen.tsx`'s header for M3-03's "leave it as up/down controls" decision. */
 export function dragReorder(): void {
   safeImpact(Haptics.ImpactFeedbackStyle.Light);
 }

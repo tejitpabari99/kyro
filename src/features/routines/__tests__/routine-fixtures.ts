@@ -6,10 +6,10 @@
  * while only genuinely implementing the subset of methods
  * `RoutinesHubScreen` actually calls: `listFolders`/`list`/`getFull`/
  * `createFolder`/`renameFolder`/`setFolderCollapsed`/`deleteFolder`/
- * `duplicate`/`moveToFolder`/`delete`. The rest throw — same
- * "unused by <screen>" convention `FakeExerciseRepository` uses — so a
- * test that accidentally exercises an unwired path fails loudly instead
- * of silently no-opping.
+ * `reorderFolders`/`duplicate`/`moveToFolder`/`reorderRoutines` (M3-03)/
+ * `delete`. The rest throw — same "unused by <screen>" convention
+ * `FakeExerciseRepository` uses — so a test that accidentally exercises an
+ * unwired path fails loudly instead of silently no-opping.
  */
 import type {
   DeleteFolderOptions,
@@ -159,9 +159,20 @@ export class FakeRoutineRepository implements RoutineRepository {
     return updatedFull;
   }
 
-  async reorderRoutines(): Promise<void> {
-    throw new Error(
-      'FakeRoutineRepository.reorderRoutines is not implemented — unused by RoutinesHubScreen (M3-02 leaves Reorder as an inert stub, M3-03 scope).',
+  async reorderRoutines(folderId: number | null, orderedRoutineIds: string[]): Promise<void> {
+    // M3-03: real implementation now that `RoutinesHubScreen`'s reorder mode
+    // actually calls this. Same lenient "map positions for the ids given,
+    // leave everything else untouched" shape as `reorderFolders` above
+    // (rather than the real repository's strict-permutation validation,
+    // `RoutineReorderMismatchError`) — this fake exists to drive
+    // `RoutinesHubScreen`'s screen-level tests, not to re-prove M3-01's own
+    // repository-boundary validation, which already has its own integration
+    // test coverage.
+    const position = new Map(orderedRoutineIds.map((id, index) => [id, index]));
+    this.routines = this.routines.map((routine) =>
+      routine.folderId === folderId && position.has(routine.id)
+        ? { ...routine, position: position.get(routine.id)! }
+        : routine,
     );
   }
 

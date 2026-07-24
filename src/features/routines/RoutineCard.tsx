@@ -5,6 +5,17 @@
  * single-accent hierarchy under the page-level primary"). Built on `Card`
  * (`src/ui/Card.tsx`) — no one-off surface styling (07 §5's "no
  * feature-local one-off buttons/cards" rule).
+ *
+ * **Reorder mode (M3-03):** when `reorderMode` is true the ⋯ trigger and
+ * `Start Routine` button are replaced by `dragHandle` (a
+ * `Draggable.Handle`-wrapped grip icon `FolderSection.tsx` supplies — this
+ * component itself stays dnd-library-agnostic, matching `RoutineCard`'s
+ * existing "dumb, presentational" role; all `react-native-reanimated-dnd`
+ * wiring lives one level up) and the preview line is hidden to declutter
+ * the row while dragging. Tapping neither Start nor ⋯ while mid-drag is a
+ * deliberate simplification, not an oversight — both actions are
+ * meaningless mid-reorder (starting a workout or opening a menu while a
+ * drag gesture might be in flight on the same row).
  */
 import React from 'react';
 import { Ellipsis } from 'lucide-react-native';
@@ -21,6 +32,10 @@ export interface RoutineCardProps {
   preview: string;
   onStart: () => void;
   onMenuPress: () => void;
+  /** M3-03 reorder mode — see file header. */
+  reorderMode?: boolean;
+  /** Rendered in place of the ⋯ trigger when `reorderMode` is true; ignored otherwise. */
+  dragHandle?: React.ReactNode;
   testID?: string;
 }
 
@@ -29,6 +44,8 @@ export function RoutineCard({
   preview,
   onStart,
   onMenuPress,
+  reorderMode = false,
+  dragHandle,
   testID = 'routine-card',
 }: RoutineCardProps): React.JSX.Element {
   const { colors, spacing, typography } = useTheme();
@@ -42,17 +59,21 @@ export function RoutineCard({
         >
           {routine.title}
         </Text>
-        <Pressable
-          testID={`${testID}-menu`}
-          accessibilityRole="button"
-          accessibilityLabel={`More actions for ${routine.title}`}
-          hitSlop={8}
-          onPress={onMenuPress}
-        >
-          <Ellipsis size={22} strokeWidth={1.75} color={colors.text.primary} />
-        </Pressable>
+        {reorderMode ? (
+          dragHandle
+        ) : (
+          <Pressable
+            testID={`${testID}-menu`}
+            accessibilityRole="button"
+            accessibilityLabel={`More actions for ${routine.title}`}
+            hitSlop={8}
+            onPress={onMenuPress}
+          >
+            <Ellipsis size={22} strokeWidth={1.75} color={colors.text.primary} />
+          </Pressable>
+        )}
       </View>
-      {preview.length > 0 ? (
+      {!reorderMode && preview.length > 0 ? (
         <Text
           testID={`${testID}-preview`}
           style={[typography.subhead, { color: colors.text.secondary, marginTop: spacing['1'] }]}
@@ -61,14 +82,16 @@ export function RoutineCard({
           {preview}
         </Text>
       ) : null}
-      <Button
-        testID={`${testID}-start`}
-        label="Start Routine"
-        variant="tonal"
-        size="lg"
-        onPress={onStart}
-        style={{ marginTop: spacing['4'] }}
-      />
+      {reorderMode ? null : (
+        <Button
+          testID={`${testID}-start`}
+          label="Start Routine"
+          variant="tonal"
+          size="lg"
+          onPress={onStart}
+          style={{ marginTop: spacing['4'] }}
+        />
+      )}
     </Card>
   );
 }

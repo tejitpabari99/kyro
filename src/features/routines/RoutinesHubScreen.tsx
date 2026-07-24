@@ -58,21 +58,89 @@
  * workout with no error — exactly the "fabricate a fake working screen"
  * outcome the task text says to avoid; a 404-style not-yet-built route is
  * the honest seam instead, same convention `ExerciseBrowseScreen.tsx`
- * documents for `/exercise/new`). Both routine and folder ⋯ menus' "Reorder"
- * item is an inert `Alert` stub, not a nav call — 04 §1's drag-reorder is
- * M3-03's explicit scope (dnd library not chosen yet); the item exists in
- * the menu today only so the ⋯ menu's shape matches 04 §1's spec.
+ * documents for `/exercise/new`).
+ *
+ * --- Reorder mode (M3-03, 04 §1) --------------------------------------
+ * Both routine and folder ⋯ menus' "Reorder" item now enters a single
+ * screen-wide `reorderMode` (there is one "Reorder mode," not a per-item
+ * one — dragging a routine *between* folders needs every folder visible
+ * and drag-handled at once, so a per-item mode wouldn't make sense) rather
+ * than navigating anywhere; a "Done" text button (replacing the
+ * folder-plus/`+` icons while active, so there's nowhere to create a
+ * folder/routine mid-drag) exits it. `FolderSection.tsx` owns the actual
+ * `react-native-reanimated-dnd` `Draggable`/`Droppable` wiring per-row (see
+ * its own header); this screen owns turning a drop into real
+ * `RoutineRepository` calls via `routine-reorder.ts`'s pure position math
+ * (`computeRoutineReorderPlan`/`computeFolderReorderIds`) plus the
+ * `impactLight` pickup/drop haptic (07 §8, `src/lib/haptics.ts`'s
+ * `dragReorder`).
+ *
+ * **Library choice — `react-native-reanimated-dnd` over
+ * `react-native-draggable-flatlist`** (06 §1's spike, done as part of this
+ * task): `npm view` on 2026-07-24 showed `react-native-reanimated-dnd`
+ * (2.0.0, published 2026-03-16) declares peer deps
+ * `react-native-reanimated >=4.2.0` / `react-native-worklets >=0.7.0` /
+ * `react-native >=0.80.0` — an exact match for this repo's installed
+ * versions (4.3.1 / 0.8.3 / 0.85.3) — and its README states it is "Built
+ * for the modern React Native architecture," explicitly targets Expo SDK
+ * 55+/RN 0.83+, and migrated to Reanimated 4 + `react-native-worklets`.
+ * `react-native-draggable-flatlist` (latest 4.0.3, published 2025-05-06 —
+ * 14 months stale relative to this task) declares only
+ * `react-native-reanimated >=2.8.0` and never mentions the New Architecture,
+ * Reanimated 4, or `react-native-worklets` anywhere in its README —
+ * Reanimated 4 replaced the old `react-native-reanimated/plugin` worklet
+ * pipeline with the separate `react-native-worklets` package, a breaking
+ * change libraries built against Reanimated 2/3 commonly don't survive
+ * un-updated. Both installed cleanly with zero peer-dependency warnings on
+ * this repo's exact dependency set, so this wasn't the deciding factor —
+ * the *currency* of each library's own stated Reanimated-4/New-Architecture
+ * support was. `react-native-reanimated-dnd`'s own README also disclosed
+ * (under its own roadmap section) that true cross-list "Kanban" dragging
+ * between independent lists is NOT yet shipped (listed under "Next
+ * Release," not current) — its high-level `Sortable`/`SortableItem`
+ * components only reorder within one list's own internal state. Rather
+ * than depend on an unshipped feature, this screen builds the
+ * within-folder-reorder *and* cross-folder-move cases uniformly on the
+ * library's lower-level `Draggable`/`Droppable`/`DropProvider` primitives
+ * (confirmed shipped, used in the README's own most basic Quick Start
+ * example, not the roadmap section) — see `FolderSection.tsx`'s header for
+ * exactly how. This also sidesteps `Sortable`'s documented
+ * internal-state-ownership model ("do NOT update external state... in
+ * `onMove`"), which fit poorly against this app's existing
+ * TanStack-Query-is-the-source-of-truth architecture anyway.
+ * **Deferred to physical-device verification** (no iOS Simulator in this
+ * sandbox, `docs/plan/BLOCKERS.md`): actual on-device gesture feel/frame
+ * rate — this spike is a desk review of the library's shipped API surface
+ * and peer-dependency currency, not an empirical stability test.
+ *
+ * **Exercise reorder sheet (`ReorderExercisesSheet.tsx`, M2-09) — NOT
+ * migrated.** That sheet deliberately uses up/down move buttons instead of
+ * a drag gesture (its own header explains why: no dnd library existed in
+ * this project's dependency set at the time, and up/down buttons stay
+ * RNTL-testable where a raw pan gesture wouldn't). Now that
+ * `react-native-reanimated-dnd` is installed, migrating it *would* be
+ * possible, but this task's own brief calls it optional ("if it wins," not
+ * a hard requirement) and explicitly warns against "a risky wide-blast-
+ * radius migration of working, tested M2 code just for the sake of it if
+ * the payoff is marginal." The payoff here is marginal: that sheet is a
+ * full-screen modal over a single flat list (no cross-folder-equivalent
+ * concept, no "between two lists" case this task's dnd work was actually
+ * chosen to solve) and its up/down buttons are independently accessible
+ * (screen-reader/switch-control users get a working reorder affordance for
+ * free, which a drag-only interaction would regress) — left as-is.
  */
 import React, { useMemo, useState } from 'react';
 import { Dumbbell, FolderPlus, Plus } from 'lucide-react-native';
 import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { DropProvider } from 'react-native-reanimated-dnd';
 
 import type { ExerciseRepository } from '@/data/exercises/types';
 import type { RoutineFolder, RoutineRepository, RoutineSummary } from '@/data/routines/types';
 import { selectActiveWorkout, useActiveWorkoutStore } from '@/features/workout/activeWorkoutStore';
 import { useRestTimerStore } from '@/features/workout/restTimerStore';
+import { dragReorder } from '@/lib/haptics';
 import { Button } from '@/ui/Button';
 import { EmptyState } from '@/ui/EmptyState';
 import { useTheme } from '@/ui/theme-provider';
@@ -82,6 +150,8 @@ import { FolderSection } from './FolderSection';
 import { MoveToFolderSheet } from './MoveToFolderSheet';
 import { RoutineActionsSheet } from './RoutineActionsSheet';
 import { buildExercisePreview, buildFolderSections } from './routine-hub-model';
+import { computeFolderReorderIds, computeRoutineReorderPlan } from './routine-reorder';
+import type { RoutineDragData, RoutineDropTarget } from './routine-reorder';
 
 export interface RoutinesHubScreenProps {
   routineRepository: RoutineRepository;
@@ -195,6 +265,38 @@ export function RoutinesHubScreen({
     ]);
   };
 
+  // -- Reorder mode (M3-03, 04 §1) — see file header for the design. ---
+  const [reorderMode, setReorderMode] = useState(false);
+
+  const handleRoutineDrop = (dragged: RoutineDragData, target: RoutineDropTarget): void => {
+    dragReorder(); // 07 §8 "Drag reorder pickup/drop" → impactLight, drop half.
+    const plan = computeRoutineReorderPlan(routines, dragged, target);
+    if (plan.orderedIds === null) return; // Dropped back where it already was.
+    const orderedIds = plan.orderedIds;
+    const persist = async (): Promise<void> => {
+      // `moveToFolder` then `reorderRoutines` on the destination scope —
+      // exactly the composition `data/routines/types.ts`'s header
+      // prescribes for a cross-folder drag-drop.
+      if (plan.crossFolder) {
+        await routineRepository.moveToFolder(dragged.routineId, plan.targetFolderId);
+      }
+      await routineRepository.reorderRoutines(plan.targetFolderId, orderedIds);
+    };
+    persist()
+      .then(invalidateRoutineQueries)
+      .catch(() => reportError('This routine could not be reordered. Please try again.'));
+  };
+
+  const handleFolderDrop = (draggedFolderId: number, beforeFolderId: number | null): void => {
+    dragReorder();
+    const orderedIds = computeFolderReorderIds(folders, draggedFolderId, beforeFolderId);
+    if (orderedIds === null) return;
+    routineRepository
+      .reorderFolders(orderedIds)
+      .then(invalidateRoutineQueries)
+      .catch(() => reportError('These folders could not be reordered. Please try again.'));
+  };
+
   // -- Folder mutations -----------------------------------------------
   const [folderNameSheet, setFolderNameSheet] = useState<FolderNameSheetState>(null);
   const [folderActionsFolder, setFolderActionsFolder] = useState<RoutineFolder | null>(null);
@@ -224,8 +326,9 @@ export function RoutinesHubScreen({
       .catch(() => reportError('This folder could not be updated. Please try again.'));
   };
 
-  const handleFolderReorderStub = (): void => {
-    Alert.alert('Reorder', 'Drag-to-reorder is coming soon.');
+  const handleFolderReorderPress = (): void => {
+    setFolderActionsFolder(null);
+    setReorderMode(true);
   };
 
   const performDeleteFolder = (folder: RoutineFolder, mode: 'cascade' | 'moveToMyRoutines'): void => {
@@ -286,9 +389,9 @@ export function RoutinesHubScreen({
       .catch(() => reportError('This routine could not be duplicated. Please try again.'));
   };
 
-  const handleRoutineReorderStub = (): void => {
+  const handleRoutineReorderPress = (): void => {
     setRoutineActions(null);
-    Alert.alert('Reorder', 'Drag-to-reorder is coming soon.');
+    setReorderMode(true);
   };
 
   const handleMoveToFolderPress = (routine: RoutineSummary): void => {
@@ -355,26 +458,38 @@ export function RoutinesHubScreen({
           }}
         >
           <Text style={[typography.title3, { color: colors.text.primary }]}>Routines</Text>
-          <View style={{ flexDirection: 'row', gap: spacing['4'] }}>
+          {reorderMode ? (
             <Pressable
-              testID="new-folder-button"
+              testID="reorder-done-button"
               accessibilityRole="button"
-              accessibilityLabel="New folder"
+              accessibilityLabel="Done reordering"
               hitSlop={8}
-              onPress={handleCreateFolder}
+              onPress={() => setReorderMode(false)}
             >
-              <FolderPlus size={22} strokeWidth={1.75} color={colors.accent.text} />
+              <Text style={[typography.headline, { color: colors.accent.text }]}>Done</Text>
             </Pressable>
-            <Pressable
-              testID="new-routine-button"
-              accessibilityRole="button"
-              accessibilityLabel="New routine"
-              hitSlop={8}
-              onPress={handleCreateRoutine}
-            >
-              <Plus size={22} strokeWidth={1.75} color={colors.accent.text} />
-            </Pressable>
-          </View>
+          ) : (
+            <View style={{ flexDirection: 'row', gap: spacing['4'] }}>
+              <Pressable
+                testID="new-folder-button"
+                accessibilityRole="button"
+                accessibilityLabel="New folder"
+                hitSlop={8}
+                onPress={handleCreateFolder}
+              >
+                <FolderPlus size={22} strokeWidth={1.75} color={colors.accent.text} />
+              </Pressable>
+              <Pressable
+                testID="new-routine-button"
+                accessibilityRole="button"
+                accessibilityLabel="New routine"
+                hitSlop={8}
+                onPress={handleCreateRoutine}
+              >
+                <Plus size={22} strokeWidth={1.75} color={colors.accent.text} />
+              </Pressable>
+            </View>
+          )}
         </View>
 
         {isEmpty ? (
@@ -394,22 +509,29 @@ export function RoutinesHubScreen({
           />
         ) : (
           <View style={{ paddingHorizontal: spacing['4'] }}>
-            {sections.map((section) => (
-              <FolderSection
-                key={section.folder?.id ?? 'my-routines'}
-                folder={section.folder}
-                routines={section.routines}
-                // 04 §1: "My Routines" only reads as its own header when a
-                // real folder also exists — see `buildFolderSections`'s doc
-                // comment / this file's header for the full reasoning.
-                showHeader={section.folder !== null || folders.length > 0}
-                previewByRoutineId={previewByRoutineId}
-                onToggleCollapsed={handleToggleCollapsed}
-                onFolderMenuPress={setFolderActionsFolder}
-                onStartRoutine={handleStartRoutine}
-                onRoutineMenuPress={setRoutineActions}
-              />
-            ))}
+            <DropProvider>
+              {sections.map((section) => (
+                <FolderSection
+                  key={section.folder?.id ?? 'my-routines'}
+                  folder={section.folder}
+                  routines={section.routines}
+                  // 04 §1: "My Routines" only reads as its own header when a
+                  // real folder also exists — see `buildFolderSections`'s doc
+                  // comment / this file's header for the full reasoning.
+                  showHeader={section.folder !== null || folders.length > 0}
+                  previewByRoutineId={previewByRoutineId}
+                  onToggleCollapsed={handleToggleCollapsed}
+                  onFolderMenuPress={setFolderActionsFolder}
+                  onStartRoutine={handleStartRoutine}
+                  onRoutineMenuPress={setRoutineActions}
+                  reorderMode={reorderMode}
+                  onRoutineDragStart={dragReorder}
+                  onRoutineDrop={handleRoutineDrop}
+                  onFolderDragStart={dragReorder}
+                  onFolderDrop={handleFolderDrop}
+                />
+              ))}
+            </DropProvider>
           </View>
         )}
       </ScrollView>
@@ -438,7 +560,7 @@ export function RoutinesHubScreen({
                 setFolderNameSheet({ mode: 'rename', folder });
               },
             },
-            { key: 'reorder', label: 'Reorder', onPress: handleFolderReorderStub },
+            { key: 'reorder', label: 'Reorder', onPress: handleFolderReorderPress },
             {
               key: 'delete',
               label: 'Delete',
@@ -467,7 +589,7 @@ export function RoutinesHubScreen({
               label: 'Move to Folder',
               onPress: () => handleMoveToFolderPress(routineActions),
             },
-            { key: 'reorder', label: 'Reorder', onPress: handleRoutineReorderStub },
+            { key: 'reorder', label: 'Reorder', onPress: handleRoutineReorderPress },
             {
               key: 'delete',
               label: 'Delete',
