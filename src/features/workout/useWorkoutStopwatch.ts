@@ -32,10 +32,31 @@
  * `initiallyPaused: true` — the hook seeds `pausedAt = startTime` on mount,
  * which makes the frozen formula evaluate to exactly `0` (`startTime -
  * startTime - 0`) without a separate "paused at zero" special case.
+ *
+ * **`computeElapsedMs` (M2-13):** the bare "`now − start_time − pause_offset`,
+ * floored at 0" formula, exported so `GlobalWorkoutBar`'s own mini-bar
+ * elapsed display (06 §6.1: "1 s interval hook mounted only in
+ * logger/mini-bar") shares the exact same math as this hook rather than risk
+ * a divergent reimplementation — the two surfaces must never show a
+ * different elapsed number for the same active workout. The mini-bar has no
+ * pause affordance of its own (that ephemeral `pausedAt` UI state lives only
+ * here, and is deliberately *not* durable across a minimize — see this file's
+ * own note above about that being an accepted M2-13-era gap, restated in
+ * `GlobalWorkoutBar.tsx`'s header), so it always calls this with the live
+ * `now`, never a frozen one.
  */
 import { useEffect, useState } from 'react';
 
 const TICK_MS = 1000;
+
+/** "`now − start_time − pause_offset`" (06 §6.1), floor-clamped at 0 — see file header. */
+export function computeElapsedMs(
+  startTime: number,
+  durationPauseOffsetMs: number,
+  now: number,
+): number {
+  return Math.max(0, now - startTime - durationPauseOffsetMs);
+}
 
 export interface UseWorkoutStopwatchParams {
   /** The active workout's `start_time` (epoch ms). */
@@ -73,10 +94,7 @@ export function useWorkoutStopwatch({
     return () => clearInterval(id);
   }, [pausedAt]);
 
-  const elapsedMs =
-    pausedAt !== null
-      ? Math.max(0, pausedAt - startTime - durationPauseOffsetMs)
-      : Math.max(0, now - startTime - durationPauseOffsetMs);
+  const elapsedMs = computeElapsedMs(startTime, durationPauseOffsetMs, pausedAt ?? now);
 
   const pause = (): void => {
     setPausedAt((current) => current ?? Date.now());

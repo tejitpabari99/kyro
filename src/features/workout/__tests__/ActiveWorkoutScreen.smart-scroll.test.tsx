@@ -59,6 +59,14 @@ jest.mock('expo-router', () => ({
 
 jest.mock('@/lib/files');
 
+// M2-13: see `ActiveWorkoutScreen.test.tsx`'s identical note — a **factory**
+// mock, since even a bare `jest.mock('expo-keep-awake')` still has to load
+// the real module once to learn its shape, which throws (its native module
+// isn't linked under Jest and has no `jest-expo` mock fallback).
+jest.mock('expo-keep-awake', () => ({
+  useKeepAwake: jest.fn(),
+}));
+
 // Checking a set (the whole point of this file) runs the real
 // `ConnectedSetRow.handleToggleCompleted` success path, which calls
 // `triggerImpact('light')` (`@/lib/haptics`) and, if a rest timer starts,

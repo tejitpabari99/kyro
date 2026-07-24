@@ -13,7 +13,22 @@
  */
 import { act, renderHook } from '@testing-library/react-native';
 
-import { useWorkoutStopwatch } from '../useWorkoutStopwatch';
+import { computeElapsedMs, useWorkoutStopwatch } from '../useWorkoutStopwatch';
+
+describe('computeElapsedMs (M2-13) — the shared formula GlobalWorkoutBar also uses', () => {
+  it('computes now - start - offset', () => {
+    expect(computeElapsedMs(1000, 200, 5000)).toBe(3800);
+  });
+
+  it('floors at 0 rather than going negative', () => {
+    expect(computeElapsedMs(5000, 0, 1000)).toBe(0);
+    expect(computeElapsedMs(1000, 10_000, 5000)).toBe(0);
+  });
+
+  it('zero offset, zero elapsed at start', () => {
+    expect(computeElapsedMs(1000, 0, 1000)).toBe(0);
+  });
+});
 
 describe('useWorkoutStopwatch', () => {
   beforeEach(() => {

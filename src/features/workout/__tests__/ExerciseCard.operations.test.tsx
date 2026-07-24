@@ -49,6 +49,14 @@ jest.mock('expo-router', () => ({
 // convention `ExerciseDetailScreen.test.tsx` established.
 jest.mock('@/lib/files');
 
+// M2-13: see `ActiveWorkoutScreen.test.tsx`'s identical note — a **factory**
+// mock, since even a bare `jest.mock('expo-keep-awake')` still has to load
+// the real module once to learn its shape, which throws (its native module
+// isn't linked under Jest and has no `jest-expo` mock fallback).
+jest.mock('expo-keep-awake', () => ({
+  useKeepAwake: jest.fn(),
+}));
+
 interface Fixture {
   driver: SqliteDriver;
   workoutRepo: WorkoutRepositoryImpl;

@@ -67,6 +67,22 @@ jest.mock('expo-router', () => ({
 // every other consumer of that seam.
 jest.mock('@/lib/files');
 
+// M2-13: `ActiveWorkoutScreen` now conditionally mounts `KeepAwakeGate`,
+// which calls `expo-keep-awake`'s `useKeepAwake` — a **factory** mock, not a
+// bare `jest.mock('expo-keep-awake')`: `expo-keep-awake`'s own
+// `ExpoKeepAwake.ts` calls `requireNativeModule('ExpoKeepAwake')`
+// synchronously at import time (its native module isn't linked under Jest,
+// and unlike `@/lib/files`'s native imports, this one has no `jest-expo`
+// mock fallback to fall back to — confirmed by reproducing the exact
+// failure with a bare automock first), and even Jest's own automocking has
+// to load the real module once to learn its shape — so a bare `jest.mock`
+// call still throws. A factory sidesteps that entirely by never touching
+// the real module (see `KeepAwakeGate.test.tsx`'s own header for the full
+// explanation).
+jest.mock('expo-keep-awake', () => ({
+  useKeepAwake: jest.fn(),
+}));
+
 interface Fixture {
   driver: SqliteDriver;
   workoutRepo: WorkoutRepositoryImpl;

@@ -64,6 +64,18 @@
  *    pre-M0-10 local-state fallback) — acceptable since there is no
  *    settings UI to reach behind a blocking error screen anyway.
  *
+ * --- Foreground rest-timer reconciliation (M2-13) --------------------------
+ * 06 §5.4: "On `AppState → active`: ... reconcile timer (fire 'ended while
+ * away' state silently)." `useForegroundReconciliation()`
+ * (`src/features/workout/useForegroundReconciliation.ts`) is called
+ * unconditionally below (same reasoning as the `themePreference` selector
+ * above — stable hook order across gate-state transitions) — it subscribes
+ * to `AppState` for the life of the app and silently completes an already-
+ * expired rest timer on every foreground transition, regardless of which
+ * tab/screen is currently showing (the mini-bar can display a running timer
+ * on any of the 4 tabs, not just the logger, so this belongs at the root,
+ * not tied to `ActiveWorkoutScreen`'s own mount lifecycle).
+ *
  * --- Sentry init (M0-11), deferred past first frame -----------------------
  * 06 §5.1/§8: "After first frame (never gating boot)". The
  * `requestAnimationFrame` callback below fires after this component's
@@ -94,6 +106,7 @@ import { WorkoutRepositoryImpl } from '@/data/workouts/workout-repository';
 import { useSettingsStore } from '@/features/settings/settings-store';
 import { useActiveWorkoutStore } from '@/features/workout/activeWorkoutStore';
 import { useRestTimerStore } from '@/features/workout/restTimerStore';
+import { useForegroundReconciliation } from '@/features/workout/useForegroundReconciliation';
 import { openExpoKvStore } from '@/lib/kv-store.expo';
 import { captureError, initSentry, recordBreadcrumb } from '@/lib/sentry';
 import { MigrationErrorScreen } from '@/ui/MigrationErrorScreen';
@@ -115,6 +128,10 @@ export default function RootLayout(): React.JSX.Element | null {
   const handleThemePreferenceChange = useCallback((preference: typeof themePreference) => {
     void useSettingsStore.getState().setSetting('theme', preference);
   }, []);
+
+  // M2-13 (06 §5.4) — see file header. Unconditional, same reasoning as the
+  // `themePreference` selector above.
+  useForegroundReconciliation();
 
   useEffect(() => {
     let cancelled = false;

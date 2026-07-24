@@ -66,6 +66,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ChevronDown } from 'lucide-react-native';
 import { router } from 'expo-router';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { runOnJS } from 'react-native-reanimated';
 import { useQuery } from '@tanstack/react-query';
 
 import type { Exercise, ExerciseRepository } from '@/data/exercises/types';
@@ -89,10 +91,12 @@ import { AddToSupersetSheet } from './AddToSupersetSheet';
 import { DurationEditSheet } from './DurationEditSheet';
 import { ExerciseCard } from './ExerciseCard';
 import { ExercisePickerSheet, type ExercisePickerMode } from './ExercisePickerSheet';
+import { KeepAwakeGate } from './KeepAwakeGate';
 import { KEYBOARD_ACCESSORY_VIEW_ID, useKeyboardFocusStore } from './keyboardFocusStore';
 import { PlateCalculatorSheet } from './PlateCalculatorSheet';
 import { ReorderExercisesSheet } from './ReorderExercisesSheet';
 import { selectActiveWorkout, useActiveWorkoutStore } from './activeWorkoutStore';
+import { useLoggerVisibilityStore } from './loggerVisibilityStore';
 import { useWorkoutStopwatch } from './useWorkoutStopwatch';
 
 export interface ActiveWorkoutScreenProps {
@@ -115,6 +119,9 @@ function defaultRetroStartTime(): number {
 /** M2-12: small top breathing room above a Smart-Superset-Scrolling target so its header isn't flush against the screen edge. */
 const SUPERSET_SCROLL_TOP_PADDING = 12;
 
+/** M2-13: swipe-down-past-this-many-pt-on-release minimizes the logger — matches `Sheet.tsx`'s own `DRAG_DISMISS_THRESHOLD` (M0-07, 07 §8 consistency). */
+const HEADER_SWIPE_MINIMIZE_THRESHOLD = 120;
+
 export function ActiveWorkoutScreen({
   exerciseRepository,
   retro = false,
@@ -132,6 +139,14 @@ export function ActiveWorkoutScreen({
   const warmupInStats = useSettingsStore((state) => state.settings.warmup_in_stats);
   const defaultRestSeconds = useSettingsStore((state) => state.settings.default_rest_seconds);
   const plateCalcEnabled = useSettingsStore((state) => state.settings.plate_calc.enabled);
+  // M2-13 (06 §6.3): "`useKeepAwake()` mounted in the logger screen only,
+  // gated by the setting" — read live (same "settings read at call time"
+  // convention every other per-workout setting on this screen already uses)
+  // so toggling it mid-workout (M2-17's future settings screen) takes effect
+  // immediately, not just on next mount. See `KeepAwakeGate.tsx`'s own header
+  // for how "gated" + "released on minimize" are both satisfied by
+  // conditionally mounting that tiny wrapper component.
+  const keepAwakeEnabled = useSettingsStore((state) => state.settings.keep_awake);
 
   // M2-08: the Calculator button in the shared `KeyboardAccessoryBar` shows
   // only "when a weight field is focused and plate calculator is enabled"
@@ -139,6 +154,19 @@ export function ActiveWorkoutScreen({
   // (subscribed here so this screen re-renders when it flips), the setting
   // half is `plateCalcEnabled` above.
   const focusedIsWeight = useKeyboardFocusStore((state) => state.focusedIsWeight);
+
+  // M2-13 (06 §3): `loggerVisibilityStore.visible` is what `GlobalWorkoutBar`
+  // reads to decide "logger currently on screen or not" — tied directly to
+  // this component's own React mount lifecycle (not to any individual
+  // dismiss call site) so every way of leaving this screen (chevron tap,
+  // swipe-down, `router.back()` from the Discard confirm, or any future
+  // path) flips it back correctly for free, with nothing to remember to
+  // wire at each call site. Runs before `workout` even loads (the `!workout`
+  // loading branch below still counts as "the logger is on screen").
+  useEffect(() => {
+    useLoggerVisibilityStore.getState().setVisible(true);
+    return () => useLoggerVisibilityStore.getState().setVisible(false);
+  }, []);
 
   // Resolved exactly once (see file header) — the single source of truth
   // both the stopwatch's initial freeze point and the mount effect's
@@ -344,6 +372,29 @@ export function ActiveWorkoutScreen({
   const handleMinimize = (): void => {
     router.back();
   };
+
+  // M2-13 (02 §10): "swipe-down on the header also minimizes" — same effect
+  // as the chevron button, recognized only on release past a deliberate
+  // distance (mirrors `Sheet.tsx`'s own `Gesture.Pan()` + `runOnJS` shape,
+  // M0-07, and reuses its exact `DRAG_DISMISS_THRESHOLD` value for a
+  // consistent app-wide "how far is a deliberate swipe" feel, 07 §8) so an
+  // incidental small drag on the header doesn't accidentally minimize. No
+  // visual drag-follow transform is needed here — 02 §10 only asks for the
+  // swipe to *trigger* minimize, not to visually track the finger the way a
+  // bottom sheet does. Calls `router.back` directly (not the `handleMinimize`
+  // closure above) since it's a stable reference — avoids the gesture object
+  // needing to be rebuilt (or referencing a stale closure) every render.
+  const headerSwipeGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetY(10)
+        .onEnd((e) => {
+          if (e.translationY > HEADER_SWIPE_MINIMIZE_THRESHOLD) {
+            runOnJS(router.back)();
+          }
+        }),
+    [],
+  );
 
   const handleTitlePress = (): void => {
     if (!workout) {
@@ -576,56 +627,61 @@ export function ActiveWorkoutScreen({
 
   return (
     <View testID={testID} style={[styles.container, { backgroundColor: colors.bg.base }]}>
-      {/* Header — chevron-down minimize, tappable inline-edit title, Finish accent pill (02 §2). */}
-      <View style={[styles.header, { paddingHorizontal: spacing['4'], paddingTop: spacing['3'] }]}>
-        <Pressable
-          testID={`${testID}-minimize`}
-          accessibilityRole="button"
-          accessibilityLabel="Minimize"
-          onPress={handleMinimize}
-          hitSlop={8}
+      {/* Header — chevron-down minimize, tappable inline-edit title, Finish accent pill (02 §2). M2-13: also wrapped in `GestureDetector` so a swipe-down anywhere on this row minimizes too (02 §10) — `activeOffsetY(10)` keeps ordinary taps on the chevron/title/Finish button from being swallowed by the pan recognizer. */}
+      <GestureDetector gesture={headerSwipeGesture}>
+        <View
+          testID={`${testID}-header`}
+          style={[styles.header, { paddingHorizontal: spacing['4'], paddingTop: spacing['3'] }]}
         >
-          <ChevronDown size={24} strokeWidth={1.75} color={colors.text.primary} />
-        </Pressable>
-
-        {titleDraft !== null ? (
-          <TextInput
-            testID={`${testID}-title-input`}
-            value={titleDraft}
-            onChangeText={setTitleDraft}
-            onBlur={commitTitle}
-            onSubmitEditing={commitTitle}
-            autoFocus
-            style={[
-              typography.headline,
-              { color: colors.text.primary, flex: 1, textAlign: 'center', padding: 0 },
-            ]}
-          />
-        ) : (
           <Pressable
-            testID={`${testID}-title`}
-            onPress={handleTitlePress}
-            style={styles.titlePressable}
+            testID={`${testID}-minimize`}
             accessibilityRole="button"
-            accessibilityLabel="Edit workout title"
+            accessibilityLabel="Minimize"
+            onPress={handleMinimize}
+            hitSlop={8}
           >
-            <Text
-              style={[typography.headline, { color: colors.text.primary, textAlign: 'center' }]}
-              numberOfLines={1}
-            >
-              {workout.title}
-            </Text>
+            <ChevronDown size={24} strokeWidth={1.75} color={colors.text.primary} />
           </Pressable>
-        )}
 
-        <Button
-          testID={`${testID}-finish`}
-          label="Finish"
-          variant="primary"
-          size="sm"
-          onPress={handleFinishPress}
-        />
-      </View>
+          {titleDraft !== null ? (
+            <TextInput
+              testID={`${testID}-title-input`}
+              value={titleDraft}
+              onChangeText={setTitleDraft}
+              onBlur={commitTitle}
+              onSubmitEditing={commitTitle}
+              autoFocus
+              style={[
+                typography.headline,
+                { color: colors.text.primary, flex: 1, textAlign: 'center', padding: 0 },
+              ]}
+            />
+          ) : (
+            <Pressable
+              testID={`${testID}-title`}
+              onPress={handleTitlePress}
+              style={styles.titlePressable}
+              accessibilityRole="button"
+              accessibilityLabel="Edit workout title"
+            >
+              <Text
+                style={[typography.headline, { color: colors.text.primary, textAlign: 'center' }]}
+                numberOfLines={1}
+              >
+                {workout.title}
+              </Text>
+            </Pressable>
+          )}
+
+          <Button
+            testID={`${testID}-finish`}
+            label="Finish"
+            variant="primary"
+            size="sm"
+            onPress={handleFinishPress}
+          />
+        </View>
+      </GestureDetector>
 
       {/* Meta row — Duration (live, accent), Volume, Sets (02 §2). */}
       <View
@@ -809,6 +865,9 @@ export function ActiveWorkoutScreen({
         targetFieldId={calculatorTargetFieldId ?? ''}
         weightUnit={weightUnit}
       />
+
+      {/* M2-13 (06 §6.3): conditionally mounted, not conditionally hooked — see `KeepAwakeGate.tsx`'s own header for why. Unmounting this screen (any minimize path) tears this down for free. */}
+      {keepAwakeEnabled ? <KeepAwakeGate /> : null}
     </View>
   );
 }
