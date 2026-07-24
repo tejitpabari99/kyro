@@ -74,7 +74,7 @@ Task count: **19**
 **Acceptance / test gate:** RNTL: Next traversal order across rows and exercises; check-while-keyboard-up. Manual: zero keyboard flicker; keypress-to-paint < 50 ms measured (React DevTools / simple timestamp harness — formal sign-off in M2-19).
 **Est:** 1.5 d
 
-### M2-09 — Exercise cards + picker sheet + card operations
+### M2-09 — Exercise cards + picker sheet + card operations [done]
 **Description:** Exercise card chrome and all add/remove/reorder/replace/note flows, including the library picker in multi-select mode.
 **How:** Card per 02 §3: 40 pt thumb, accent name (tap → detail as sheet, read-only, must not disturb active workout), note row (URLs tappable), rest-timer row (wheel picker sheet: Off/5 s–1 min in 5 s steps, then 15 s steps to 5 min; default from settings at add-time), `+ Add Set` (copies previous row type=normal + placeholders). ⋯ menu: Reorder (drag-handle sheet), Replace (keeps count, clears values, refreshes PREVIOUS), Add to/Remove from Superset (M2-12), Add Warm-Up Sets (M2-16), Add a Note, Rest Timer, Remove Exercise (no confirm; Snackbar Undo 5 s — undo restores card with values). Picker: reuse M1-07 browse as a Sheet in multi-select mode (checkmarks, counter, Superset toggle, `Add N exercises`, ⓘ opens detail without selecting). On add: if history exists, pre-create last session's row count with PREVIOUS placeholders, else one empty normal set. Build `WheelPicker` primitive here (07 §5).
 **References:** 02 §3; 03 §2 (picker mode); 07 §5.
