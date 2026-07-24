@@ -64,8 +64,26 @@
  * ("a pause that is still active when the app is killed does not survive
  * relaunch as 'still paused'") — minimizing is the same kind of unmount, so
  * the same acceptance applies; not silently assumed, restated here.
+ *
+ * **Reconciling a rest timer that expires while this bar is on screen
+ * (M2-13 review fix):** `restTimerStore.complete()`'s own doc comment
+ * defines its contract as "call once a mounted timer surface observes
+ * `remaining <= 0`." Today this bar *is* such a surface — M2-11's in-logger
+ * pill doesn't exist yet, and nothing in `ConnectedSetRow` observes
+ * completion either — so without this bar honoring that contract, a timer
+ * that reaches zero while the app stays foregrounded (never backgrounding,
+ * so `useForegroundReconciliation` never runs) would leave `timer` in the
+ * store forever: `remainingMs` floors at 0 and the accent "0:00" display
+ * would never revert to elapsed, contradicting 02 §10's "remaining time
+ * replaces elapsed" (which implies reverting once the rest period is over).
+ * The effect below calls `complete()` exactly once remaining reaches 0
+ * while `shouldShow` (this bar is actually mounted/ticking); `complete()`
+ * itself is idempotent (no-ops once `timer` is already `null`), and once it
+ * clears the store, this component's own `timer` selector re-renders with
+ * `null`, so `displaySeconds` naturally falls back to elapsed on the very
+ * next render — no separate "revert" branch needed.
  */
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Pressable, StyleSheet, Text } from 'react-native';
 import { router } from 'expo-router';
 
@@ -91,6 +109,19 @@ export function GlobalWorkoutBar(): React.JSX.Element | null {
 
   const shouldShow = workout != null && !loggerVisible;
   const now = useRestTimerTicker(shouldShow);
+
+  // See file header — this is the one mounted timer surface that exists
+  // today, so it must honor `restTimerStore.complete()`'s "call once a
+  // mounted timer surface observes remaining <= 0" contract or an expired
+  // timer never clears while the app stays foregrounded.
+  useEffect(() => {
+    if (!shouldShow || !timer) {
+      return;
+    }
+    if (timer.endsAt <= now) {
+      void useRestTimerStore.getState().complete();
+    }
+  }, [shouldShow, timer, now]);
 
   if (!shouldShow || !workout) {
     return null;

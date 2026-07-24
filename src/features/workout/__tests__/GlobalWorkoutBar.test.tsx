@@ -181,6 +181,35 @@ describe('GlobalWorkoutBar (M2-13)', () => {
     expect(screen.getByTestId('global-workout-bar-time')).toHaveTextContent('0:06');
   });
 
+  it('reconciles an expired timer (M2-13 review fix): reverts to elapsed and clears the store instead of sticking at 0:00', async () => {
+    const now = Date.now();
+    useActiveWorkoutStore.setState({
+      workout: fakeWorkout({ startTime: now - 120_000, durationPauseOffsetMs: 0 }),
+      loaded: true,
+    });
+    useRestTimerStore.setState({
+      timer: { endsAt: now + 4_000, exerciseId: 'ex1', setId: 'set1', notificationId: null },
+    });
+
+    await renderBar();
+    expect(screen.getByTestId('global-workout-bar-time')).toHaveTextContent('0:04');
+
+    // Advance past `endsAt` — without the fix, `timer` stays in the store
+    // forever and the display sticks at "0:00" in accent color rather than
+    // reverting to the (now ~124s) elapsed time.
+    await act(async () => {
+      jest.advanceTimersByTime(5_000);
+    });
+
+    expect(useRestTimerStore.getState().timer).toBeNull();
+    const timeNode = screen.getByTestId('global-workout-bar-time');
+    expect(timeNode).toHaveTextContent('2:05');
+    const flat = Array.isArray(timeNode.props.style)
+      ? Object.assign({}, ...timeNode.props.style)
+      : timeNode.props.style;
+    expect(flat.color).toBe(colors.dark.text.secondary);
+  });
+
   it('tapping the bar re-presents /workout/active', async () => {
     useActiveWorkoutStore.setState({ workout: fakeWorkout(), loaded: true });
 
