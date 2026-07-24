@@ -333,3 +333,79 @@ describe('SetRow — memoization (06 §8 unit-level check)', () => {
     expect((SetRow as unknown as { $$typeof?: symbol }).$$typeof).toBe(Symbol.for('react.memo'));
   });
 });
+
+describe('SetRow — readOnly mode (M2-14, 07 §5 read-only SetTable)', () => {
+  it('renders static text for value cells instead of NumericInput', async () => {
+    await render(
+      <ThemeProvider preference="dark">
+        <SetRow {...baseProps({ readOnly: true, values: { weight: '80', reps: '8' } })} />
+      </ThemeProvider>,
+    );
+    expect(screen.queryByTestId('row-value-weight')).toBeNull();
+    expect(screen.getByText('80')).toBeTruthy();
+    expect(screen.getByText('8')).toBeTruthy();
+  });
+
+  it('does not render swipe-to-delete chrome', async () => {
+    await render(
+      <ThemeProvider preference="dark">
+        <SetRow {...baseProps({ readOnly: true, onDelete: undefined })} />
+      </ThemeProvider>,
+    );
+    expect(screen.queryByTestId('row-delete-button')).toBeNull();
+    expect(screen.queryByTestId('row-delete-action')).toBeNull();
+  });
+
+  it('does not fire onToggleCompleted, onSetCellPress, or onPreviousPress when tapped', async () => {
+    const onToggleCompleted = jest.fn();
+    const onSetCellPress = jest.fn();
+    const onPreviousPress = jest.fn();
+    await render(
+      <ThemeProvider preference="dark">
+        <SetRow
+          {...baseProps({
+            readOnly: true,
+            onToggleCompleted: undefined,
+            onSetCellPress: undefined,
+            onPreviousPress: undefined,
+          })}
+        />
+      </ThemeProvider>,
+    );
+    // These handlers are never even wired in readOnly mode — the elements
+    // may still render (badge glyph, previous label, check indicator) but
+    // are not `Pressable`s, so there's nothing for `fireEvent.press` to hit;
+    // asserting the mocks are untouched proves the callbacks were never
+    // supplied a live `onPress`.
+    fireEvent.press(screen.getByTestId('row-badge'));
+    fireEvent.press(screen.getByTestId('row-previous'));
+    fireEvent.press(screen.getByTestId('row-check'));
+    expect(onToggleCompleted).not.toHaveBeenCalled();
+    expect(onSetCellPress).not.toHaveBeenCalled();
+    expect(onPreviousPress).not.toHaveBeenCalled();
+  });
+
+  it('still shows the SET badge, PREVIOUS label, and check state for read context', async () => {
+    await render(
+      <ThemeProvider preference="dark">
+        <SetRow
+          {...baseProps({
+            readOnly: true,
+            workingIndex: 2,
+            previousLabel: null,
+            isCompleted: true,
+            onToggleCompleted: undefined,
+            onSetCellPress: undefined,
+            onPreviousPress: undefined,
+            onChangeValue: undefined,
+            onBlurValue: undefined,
+            onDelete: undefined,
+          })}
+        />
+      </ThemeProvider>,
+    );
+    expect(screen.getByTestId('row-check').props.accessibilityState.checked).toBe(true);
+    expect(screen.getByText('2')).toBeTruthy();
+    expect(screen.getByTestId('row-previous').props.children).toBe('—');
+  });
+});

@@ -52,6 +52,18 @@
  * stopwatch-icon button next to TIME-kind cells only (Settings → Inline
  * Timer) — tapping it is the caller's job (`ConnectedSetRow` opens
  * `DurationTimerSheet`), this component only renders the affordance.
+ *
+ * **Read-only mode** (M2-14, 07 §5 — history detail reusing `SetTable` in
+ * read-only mode): `readOnly` swaps every editable/interactive cell for a
+ * static presentation of the same data — value cells render a plain `Text`
+ * of `values[column.key]` instead of `NumericInput`, the SET badge/PREVIOUS
+ * label/RPE cell/✓ indicator drop their `Pressable` wrapper entirely (not
+ * just an inert `onPress`), and the swipe-to-delete layer + its pan gesture
+ * are omitted outright. Every `on*` callback prop is optional specifically
+ * so a read-only caller (`src/features/history/HistoryDetailScreen.tsx`)
+ * never has to hand over dummy no-op functions just to satisfy the type —
+ * they're `undefined` in that mode and never invoked, by construction (no
+ * live `Pressable`/`GestureDetector` remains to invoke them from).
  */
 import React, { useEffect, useMemo } from 'react';
 import { Check, Timer, Trash2 } from 'lucide-react-native';
@@ -93,15 +105,18 @@ export interface SetRowProps {
   /** PREVIOUS cell's compact grey label, or `null` to render `—`. */
   previousLabel: string | null;
   isCompleted: boolean;
-  onChangeValue: (columnKey: string, text: string) => void;
-  onBlurValue: (columnKey: string) => void;
+  /** Optional only so `readOnly` callers don't need to supply a dummy no-op — every non-`readOnly` caller today (`ConnectedSetRow`) always passes it. */
+  onChangeValue?: (columnKey: string, text: string) => void;
+  onBlurValue?: (columnKey: string) => void;
   /** M2-08 — fires when a value cell's `NumericInput` gains focus (see file header). */
   onFocusValue?: (columnKey: string) => void;
-  onPreviousPress: () => void;
-  onSetCellPress: () => void;
-  onToggleCompleted: () => void;
+  onPreviousPress?: () => void;
+  onSetCellPress?: () => void;
+  onToggleCompleted?: () => void;
   onRpePress?: () => void;
-  onDelete: () => void;
+  onDelete?: () => void;
+  /** M2-14 (07 §5) — see file header's "Read-only mode" section. Defaults `false`. */
+  readOnly?: boolean;
   /** M2-08 — per-column `ref` callbacks for each value cell's `NumericInput`, keyed by `column.key`. Supply a referentially-stable map (see `ConnectedSetRow.tsx`'s own `useMemo`) — an inline object recreated every render would thrash the registry (React detaches+reattaches on every ref-callback identity change). */
   fieldRefs?: Record<string, (instance: TextInput | null) => void>;
   /** M2-08 — shared `KeyboardAccessoryBar` `nativeID`, forwarded to every value cell's `NumericInput` as its `inputAccessoryViewID`. */
@@ -158,6 +173,7 @@ function SetRowImpl({
   onToggleCompleted,
   onRpePress,
   onDelete,
+  readOnly = false,
   fieldRefs,
   inputAccessoryViewID,
   inlineTimerEnabled,
@@ -199,6 +215,7 @@ function SetRowImpl({
   const panGesture = useMemo(
     () =>
       Gesture.Pan()
+        .enabled(!readOnly)
         .onUpdate((e) => {
           if (e.translationX < 0) {
             translateX.value = Math.max(e.translationX, -DELETE_ACTION_WIDTH);
@@ -211,7 +228,7 @@ function SetRowImpl({
             translateX.value = withTiming(0, { duration: SWIPE_ANIMATION_MS });
           }
         }),
-    [translateX],
+    [translateX, readOnly],
   );
   /* eslint-enable react-hooks/immutability */
 
@@ -222,37 +239,39 @@ function SetRowImpl({
   // No translateX reset needed here — the row unmounts once `onDelete`
   // removes it from the store, so there's nothing left to animate back.
   const handleDelete = (): void => {
-    onDelete();
+    onDelete?.();
   };
 
   return (
     <View testID={testID} style={[{ overflow: 'hidden' }, style]}>
-      <View
-        testID={testID ? `${testID}-delete-action` : undefined}
-        style={[
-          StyleSheet.absoluteFill,
-          {
-            backgroundColor: colors.semantic.danger,
-            alignItems: 'flex-end',
-            justifyContent: 'center',
-          },
-        ]}
-      >
-        <Pressable
-          testID={testID ? `${testID}-delete-button` : undefined}
-          accessibilityRole="button"
-          accessibilityLabel="Delete set"
-          onPress={handleDelete}
-          style={{
-            width: DELETE_ACTION_WIDTH,
-            height: '100%',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
+      {!readOnly ? (
+        <View
+          testID={testID ? `${testID}-delete-action` : undefined}
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              backgroundColor: colors.semantic.danger,
+              alignItems: 'flex-end',
+              justifyContent: 'center',
+            },
+          ]}
         >
-          <Trash2 size={20} strokeWidth={1.75} color={colors.accent.onAccent} />
-        </Pressable>
-      </View>
+          <Pressable
+            testID={testID ? `${testID}-delete-button` : undefined}
+            accessibilityRole="button"
+            accessibilityLabel="Delete set"
+            onPress={handleDelete}
+            style={{
+              width: DELETE_ACTION_WIDTH,
+              height: '100%',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Trash2 size={20} strokeWidth={1.75} color={colors.accent.onAccent} />
+          </Pressable>
+        </View>
+      ) : null}
 
       <GestureDetector gesture={panGesture}>
         <Animated.View
@@ -273,48 +292,65 @@ function SetRowImpl({
               testID={testID ? `${testID}-badge` : undefined}
               kind={badgeKind}
               workingIndex={workingIndex}
-              onPress={onSetCellPress}
+              onPress={readOnly ? undefined : onSetCellPress}
             />
           </SetCell>
 
           <SetCell testID={testID ? `${testID}-previous-cell` : undefined} flex={1.3}>
-            <Pressable
-              testID={testID ? `${testID}-previous` : undefined}
-              accessibilityRole="button"
-              accessibilityLabel={previousLabel ? `Previous: ${previousLabel}` : 'No previous value'}
-              onPress={onPreviousPress}
-              hitSlop={8}
-            >
+            {readOnly ? (
               <Text
+                testID={testID ? `${testID}-previous` : undefined}
                 style={[typography.subhead, { color: colors.text.secondary }]}
                 numberOfLines={1}
               >
                 {previousLabel ?? '—'}
               </Text>
-            </Pressable>
+            ) : (
+              <Pressable
+                testID={testID ? `${testID}-previous` : undefined}
+                accessibilityRole="button"
+                accessibilityLabel={previousLabel ? `Previous: ${previousLabel}` : 'No previous value'}
+                onPress={onPreviousPress}
+                hitSlop={8}
+              >
+                <Text
+                  style={[typography.subhead, { color: colors.text.secondary }]}
+                  numberOfLines={1}
+                >
+                  {previousLabel ?? '—'}
+                </Text>
+              </Pressable>
+            )}
           </SetCell>
 
           {columns.map((column) => {
             if (column.kind === 'rpe') {
               const rpeValue = values[column.key];
+              const rpeText = (
+                <Text
+                  style={[
+                    setValueStyle,
+                    { color: rpeValue ? colors.text.primary : colors.text.tertiary },
+                  ]}
+                >
+                  {rpeValue || '—'}
+                </Text>
+              );
               return (
                 <SetCell key={column.key} testID={testID ? `${testID}-cell-${column.key}` : undefined}>
-                  <Pressable
-                    testID={testID ? `${testID}-rpe` : undefined}
-                    accessibilityRole="button"
-                    accessibilityLabel={rpeValue ? `RPE ${rpeValue}` : 'RPE not set'}
-                    onPress={onRpePress}
-                    hitSlop={8}
-                  >
-                    <Text
-                      style={[
-                        setValueStyle,
-                        { color: rpeValue ? colors.text.primary : colors.text.tertiary },
-                      ]}
+                  {readOnly ? (
+                    <View testID={testID ? `${testID}-rpe` : undefined}>{rpeText}</View>
+                  ) : (
+                    <Pressable
+                      testID={testID ? `${testID}-rpe` : undefined}
+                      accessibilityRole="button"
+                      accessibilityLabel={rpeValue ? `RPE ${rpeValue}` : 'RPE not set'}
+                      onPress={onRpePress}
+                      hitSlop={8}
                     >
-                      {rpeValue || '—'}
-                    </Text>
-                  </Pressable>
+                      {rpeText}
+                    </Pressable>
+                  )}
                 </SetCell>
               );
             }
@@ -329,20 +365,29 @@ function SetRowImpl({
                       {prefix}
                     </Text>
                   ) : null}
-                  <NumericInput
-                    ref={fieldRefs?.[column.key]}
-                    testID={testID ? `${testID}-value-${column.key}` : undefined}
-                    accessibilityLabel={`${column.label} field`}
-                    mode={inputModeFor(column.kind)}
-                    value={values[column.key] ?? ''}
-                    placeholder={placeholders[column.key]}
-                    onChangeText={(text) => onChangeValue(column.key, text)}
-                    onBlur={() => onBlurValue(column.key)}
-                    onFocus={onFocusValue ? () => onFocusValue(column.key) : undefined}
-                    inputAccessoryViewID={inputAccessoryViewID}
-                    style={{ minWidth: 56 }}
-                  />
-                  {column.kind === 'time' && inlineTimerEnabled && onDurationTimerPress ? (
+                  {readOnly ? (
+                    <Text
+                      testID={testID ? `${testID}-value-text-${column.key}` : undefined}
+                      style={[setValueStyle, { color: colors.text.primary, minWidth: 56 }]}
+                    >
+                      {values[column.key] || '—'}
+                    </Text>
+                  ) : (
+                    <NumericInput
+                      ref={fieldRefs?.[column.key]}
+                      testID={testID ? `${testID}-value-${column.key}` : undefined}
+                      accessibilityLabel={`${column.label} field`}
+                      mode={inputModeFor(column.kind)}
+                      value={values[column.key] ?? ''}
+                      placeholder={placeholders[column.key]}
+                      onChangeText={(text) => onChangeValue?.(column.key, text)}
+                      onBlur={() => onBlurValue?.(column.key)}
+                      onFocus={onFocusValue ? () => onFocusValue(column.key) : undefined}
+                      inputAccessoryViewID={inputAccessoryViewID}
+                      style={{ minWidth: 56 }}
+                    />
+                  )}
+                  {!readOnly && column.kind === 'time' && inlineTimerEnabled && onDurationTimerPress ? (
                     <Pressable
                       testID={testID ? `${testID}-timer-${column.key}` : undefined}
                       accessibilityRole="button"
@@ -360,28 +405,49 @@ function SetRowImpl({
           })}
 
           <SetCell testID={testID ? `${testID}-check-cell` : undefined} width={CHECK_CELL_WIDTH}>
-            <Pressable
-              testID={testID ? `${testID}-check` : undefined}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: isCompleted }}
-              accessibilityLabel={isCompleted ? 'Completed' : 'Mark set complete'}
-              onPress={onToggleCompleted}
-              hitSlop={6}
-              style={{
-                width: CHECK_VISUAL_SIZE,
-                height: CHECK_VISUAL_SIZE,
-                borderRadius: 6,
-                borderWidth: isCompleted ? 0 : 1.5,
-                borderColor: colors.border.input,
-                backgroundColor: isCompleted ? colors.accent.primary : 'transparent',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              {isCompleted ? (
-                <Check size={18} strokeWidth={2.25} color={colors.accent.onAccent} />
-              ) : null}
-            </Pressable>
+            {readOnly ? (
+              <View
+                testID={testID ? `${testID}-check` : undefined}
+                accessibilityState={{ checked: isCompleted }}
+                style={{
+                  width: CHECK_VISUAL_SIZE,
+                  height: CHECK_VISUAL_SIZE,
+                  borderRadius: 6,
+                  borderWidth: isCompleted ? 0 : 1.5,
+                  borderColor: colors.border.input,
+                  backgroundColor: isCompleted ? colors.accent.primary : 'transparent',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {isCompleted ? (
+                  <Check size={18} strokeWidth={2.25} color={colors.accent.onAccent} />
+                ) : null}
+              </View>
+            ) : (
+              <Pressable
+                testID={testID ? `${testID}-check` : undefined}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: isCompleted }}
+                accessibilityLabel={isCompleted ? 'Completed' : 'Mark set complete'}
+                onPress={onToggleCompleted}
+                hitSlop={6}
+                style={{
+                  width: CHECK_VISUAL_SIZE,
+                  height: CHECK_VISUAL_SIZE,
+                  borderRadius: 6,
+                  borderWidth: isCompleted ? 0 : 1.5,
+                  borderColor: colors.border.input,
+                  backgroundColor: isCompleted ? colors.accent.primary : 'transparent',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {isCompleted ? (
+                  <Check size={18} strokeWidth={2.25} color={colors.accent.onAccent} />
+                ) : null}
+              </Pressable>
+            )}
           </SetCell>
         </Animated.View>
       </GestureDetector>

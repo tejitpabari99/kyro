@@ -86,8 +86,11 @@ describe('ConnectedSetRow — handleChangeValue/handleBlurValue defensive guards
     );
 
     expect(capturedProps).not.toBeNull();
-    expect(() => capturedProps!.onChangeValue('not-a-real-column', 'x')).not.toThrow();
-    expect(() => capturedProps!.onBlurValue('not-a-real-column')).not.toThrow();
+    // `SetRow`'s own callbacks are optional on the type (M2-14 added
+    // `readOnly` mode, where they're never supplied) — `ConnectedSetRow`
+    // always passes them for real, hence the non-null assertions here.
+    expect(() => capturedProps!.onChangeValue!('not-a-real-column', 'x')).not.toThrow();
+    expect(() => capturedProps!.onBlurValue!('not-a-real-column')).not.toThrow();
 
     const active = await workoutRepo.getActive();
     expect(active!.exercises[0]!.sets[0]!.weightKg).toBeNull();
