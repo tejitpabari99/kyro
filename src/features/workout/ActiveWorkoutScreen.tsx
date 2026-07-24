@@ -95,6 +95,7 @@ import { KeepAwakeGate } from './KeepAwakeGate';
 import { KEYBOARD_ACCESSORY_VIEW_ID, useKeyboardFocusStore } from './keyboardFocusStore';
 import { PlateCalculatorSheet } from './PlateCalculatorSheet';
 import { ReorderExercisesSheet } from './ReorderExercisesSheet';
+import { RestTimerPermissionNotice, TimerPill } from './TimerPill';
 import { selectActiveWorkout, useActiveWorkoutStore } from './activeWorkoutStore';
 import { useLoggerVisibilityStore } from './loggerVisibilityStore';
 import { useWorkoutStopwatch } from './useWorkoutStopwatch';
@@ -868,6 +869,12 @@ export function ActiveWorkoutScreen({
 
       {/* M2-13 (06 §6.3): conditionally mounted, not conditionally hooked — see `KeepAwakeGate.tsx`'s own header for why. Unmounting this screen (any minimize path) tears this down for free. */}
       {keepAwakeEnabled ? <KeepAwakeGate /> : null}
+
+      {/* M2-11 (02 §7 / 07 §5): the logger's own inline rest-timer chrome — renders `null` internally whenever no timer is running. Mounted unconditionally (like `KeepAwakeGate` above) so unmounting this whole screen (any minimize path) tears its ticking/completion effects down for free. */}
+      <TimerPill testID={`${testID}-timer-pill`} />
+
+      {/* M2-11 (02 §16.9): one-time notification-permission-denied inline warning — independent of whether a timer is running right now (see that component's own header for why it isn't nested inside `TimerPill`). */}
+      <RestTimerPermissionNotice testID={`${testID}-timer-permission-notice`} />
     </View>
   );
 }

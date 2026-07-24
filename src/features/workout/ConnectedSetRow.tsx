@@ -42,20 +42,20 @@
  *      `updateSet` runs synchronously before its first `await`, so by the
  *      time `setCompleted` reads `get()` the optimistic patch is already
  *      applied — ordering is safe without awaiting either call). Then:
- *      `impactLight` haptic; volume/checked-set counters update for free
- *      (`ActiveWorkoutScreen`'s meta row derives them live from
- *      `workout.exercises`, no separate counter action to call). Then
- *      (M2-10): `shouldStartRestTimer` decides whether to start this
- *      exercise's rest timer (`restTimerStore.start`) — Off setting or a
- *      next-row-same-exercise dropset suppress it. Then (M2-12): `onChecked?.()`
- *      — this row's own report, unconditional, that a set here was just
- *      successfully checked; `ActiveWorkoutScreen` (not this file) owns the
- *      "is this exercise grouped, is the setting on, which member's next"
- *      decision (`domain/supersets.ts`). The remaining two success-path
- *      items are still **hook points for a later milestone that doesn't
- *      exist yet** — clearly TODO-labeled no-op call sites: sound (M2-11's
- *      `src/lib/sound.ts`), live-PR check (M4-10's records provider, no-op
- *      until then per the M2 task notes).
+ *      `tickCheck()` haptic (M2-11, `impactLight`) + `playSetCheckChime`
+ *      (M2-11, Settings → Sounds' set-check volume); volume/checked-set
+ *      counters update for free (`ActiveWorkoutScreen`'s meta row derives
+ *      them live from `workout.exercises`, no separate counter action to
+ *      call). Then (M2-10): `shouldStartRestTimer` decides whether to start
+ *      this exercise's rest timer (`restTimerStore.start`) — Off setting or
+ *      a next-row-same-exercise dropset suppress it. Then (M2-12):
+ *      `onChecked?.()` — this row's own report, unconditional, that a set
+ *      here was just successfully checked; `ActiveWorkoutScreen` (not this
+ *      file) owns the "is this exercise grouped, is the setting on, which
+ *      member's next" decision (`domain/supersets.ts`). The live-PR check
+ *      is still a **hook point for a later milestone that doesn't exist
+ *      yet** — the records provider is a no-op until M4-10 per the M2 task
+ *      notes.
  *  - **Uncheck** (`set.isCompleted` already `true`): `restTimerStore
  *    .cancelForSet(setId)` (M2-10 — no-op unless the running timer, if
  *    any, was started by *this* set) then `setCompleted(false)` — counters
@@ -107,7 +107,8 @@ import type { SetColumnSpec } from '@/domain/set-table-columns';
 import type { PreviousValueResult } from '@/domain/previous-values';
 import { RPE_VALUES, type ExerciseType, type Rpe, type SetType } from '@/domain/enums';
 import { useSettingsStore } from '@/features/settings/settings-store';
-import { triggerImpact, triggerNotificationFeedback } from '@/lib/haptics';
+import { tickCheck, warnInvalid } from '@/lib/haptics';
+import { playSetCheckChime } from '@/lib/sound';
 import { ListRow } from '@/ui/ListRow';
 import { Sheet } from '@/ui/Sheet';
 import { SetRow, type SetBadgeKind } from '@/ui/SetRow';
@@ -526,7 +527,7 @@ function ConnectedSetRowImpl({
     if (!result.ok) {
       // 02 §4 / 07 §8: blocked check → row shake (300 ms) + notificationWarning haptic. No store write.
       setShakeSignal((n) => n + 1);
-      triggerNotificationFeedback('warning');
+      warnInvalid();
       return;
     }
 
@@ -544,14 +545,15 @@ function ConnectedSetRowImpl({
     // 02 §4 / 07 §8: successful check → impactLight haptic. Counters
     // (volume/checked-set count) update for free, same live-derivation as
     // uncheck above.
-    triggerImpact('light');
-    // TODO(M2-11): play the set-check chime once `src/lib/sound.ts` exists
-    // (Settings → Sounds' set-check volume) — no-op today, this is the hook
-    // point M2-11 wires up.
+    tickCheck();
+    // M2-11: set-check chime (Settings → Sounds' set-check volume, 02 §7's
+    // "sounds setting" names timer/set-check/notifications independently).
+    const { sounds } = useSettingsStore.getState().settings;
+    void playSetCheckChime(sounds.set_check_volume);
     // M2-10: start this exercise's rest timer unless the timer setting is
     // Off or the next row (same exercise, next index) is a drop set (02 §7).
     if (shouldStartRestTimer({ restSeconds, nextSetType })) {
-      const { rest_notifications_enabled: notificationsEnabled, sounds } =
+      const { rest_notifications_enabled: notificationsEnabled } =
         useSettingsStore.getState().settings;
       void useRestTimerStore.getState().start({
         exerciseId,

@@ -31,7 +31,7 @@ import { migrate } from '@/data/sqlite/migrator';
 import { WorkoutRepositoryImpl } from '@/data/workouts/workout-repository';
 import type { ExerciseType } from '@/domain/enums';
 import { columnsForExerciseType } from '@/domain/set-table-columns';
-import { triggerImpact, triggerNotificationFeedback } from '@/lib/haptics';
+import { tickCheck, warnInvalid } from '@/lib/haptics';
 import { cancelNotification, scheduleRestNotification } from '@/lib/notifications';
 import { ThemeProvider } from '@/ui/theme-provider';
 
@@ -47,6 +47,12 @@ jest.mock('@sentry/react-native', () => ({
 }));
 
 jest.mock('@/lib/haptics');
+// M2-11: checking a set also plays the set-check chime (`playSetCheckChime`)
+// — mocked per 08 §5 for the same reason `@/lib/haptics` is (a true native
+// seam; `sound.ts`'s own real implementation degrades gracefully without a
+// mock too, per its file header, but mocking keeps this suite from ever
+// touching the real `expo-audio` require path).
+jest.mock('@/lib/sound');
 // M2-10: checking a set can now start a rest timer (`restTimerStore.start`),
 // which calls through to `@/lib/notifications` — mocked per 08 §5 ("mock
 // only true natives ... via src/lib/ seams") so these RNTL tests never
@@ -318,8 +324,8 @@ describe('ExerciseSetTableSection — check flow (M2-07, 02 §4 / 00 P6)', () =>
     await fireEvent.press(screen.getByTestId('section-row-0-check'));
 
     expect(screen.getByTestId('section-row-0-check').props.accessibilityState.checked).toBe(false);
-    expect(triggerNotificationFeedback).toHaveBeenCalledWith('warning');
-    expect(triggerImpact).not.toHaveBeenCalled();
+    expect(warnInvalid).toHaveBeenCalledTimes(1);
+    expect(tickCheck).not.toHaveBeenCalled();
 
     const active = await workoutRepo.getActive();
     expect(active!.exercises[0]!.sets[0]!.isCompleted).toBe(false);
@@ -336,7 +342,7 @@ describe('ExerciseSetTableSection — check flow (M2-07, 02 §4 / 00 P6)', () =>
     await fireEvent.press(screen.getByTestId('section-row-0-check'));
 
     expect(screen.getByTestId('section-row-0-check').props.accessibilityState.checked).toBe(true);
-    expect(triggerImpact).toHaveBeenCalledWith('light');
+    expect(tickCheck).toHaveBeenCalledTimes(1);
 
     const active = await workoutRepo.getActive();
     const committed = active!.exercises[0]!.sets[0]!;
@@ -604,7 +610,7 @@ describe('ConnectedSetRow — rep-range targets never auto-commit on check (04 �
     await fireEvent.press(screen.getByTestId('range-row-check'));
 
     expect(screen.getByTestId('range-row-check').props.accessibilityState.checked).toBe(false);
-    expect(triggerNotificationFeedback).toHaveBeenCalledWith('warning');
+    expect(warnInvalid).toHaveBeenCalledTimes(1);
     const afterBlocked = await workoutRepo.getActive();
     expect(afterBlocked!.exercises[0]!.sets[0]!.isCompleted).toBe(false);
     expect(afterBlocked!.exercises[0]!.sets[0]!.reps).toBeNull();
