@@ -30,6 +30,7 @@ import { router } from 'expo-router';
 
 import type { WorkoutFull } from '@/data/workouts/types';
 import { useActiveWorkoutStore } from '@/features/workout/activeWorkoutStore';
+import { useRestTimerStore } from '@/features/workout/restTimerStore';
 import { ThemeProvider } from '@/ui/theme-provider';
 
 import WorkoutScreen from '../index';
@@ -44,6 +45,12 @@ jest.mock('expo-router', () => ({
   ...jest.requireActual('expo-router'),
   router: { push: jest.fn(), back: jest.fn(), replace: jest.fn() },
 }));
+
+// M2-19 exit-gate regression (see `../index.tsx`'s `confirmDiscardAndStartNew`
+// comment): "Discard & Start New" must cancel any pending rest-timer
+// notification, same seam `ActiveWorkoutScreen.test.tsx` (M2-14) already
+// mocks for the identical reason on the finish path.
+jest.mock('@/lib/notifications');
 
 function fixtureWorkout(overrides: Partial<WorkoutFull> = {}): WorkoutFull {
   return {
@@ -80,6 +87,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
   useActiveWorkoutStore.setState({ workout: null, loaded: true, error: null });
+  useRestTimerStore.setState({ timer: null });
 });
 
 async function renderScreen() {
@@ -180,5 +188,39 @@ describe('WorkoutScreen — one-active-workout gate (02 §1)', () => {
 
     expect(discard).not.toHaveBeenCalled();
     expect(router.push).not.toHaveBeenCalled();
+  });
+
+  // M2-19 exit-gate regression: found during the exit-gate's rest-timer
+  // notification-cancellation re-check that `confirmDiscardAndStartNew`
+  // discarded the abandoned workout but never cancelled its running rest
+  // timer — the notification would fire later for a workout that no longer
+  // exists. Uses the real `discard` (not a stub) so the real
+  // `restTimerStore.skip()` call this fix added is genuinely exercised, not
+  // just asserted against a mock.
+  it('Discard & Start New cancels any pending rest-timer notification on the abandoned workout', async () => {
+    useActiveWorkoutStore.setState({
+      workout: fixtureWorkout(),
+      discard: jest.fn().mockImplementation(() => {
+        useActiveWorkoutStore.setState({ workout: null });
+        return Promise.resolve();
+      }),
+    });
+    await useRestTimerStore.getState().start({
+      exerciseId: 'exercise-1',
+      setId: 'set-1',
+      durationSeconds: 90,
+      exerciseName: 'Bench Press',
+      setNumber: 1,
+      notificationsEnabled: true,
+    });
+    expect(useRestTimerStore.getState().timer).not.toBeNull();
+
+    await renderScreen();
+    await fireEvent.press(screen.getByTestId('start-empty-workout'));
+    await pressAlertButton('Discard & Start New');
+    await pressAlertButton('Discard');
+
+    expect(useRestTimerStore.getState().timer).toBeNull();
+    expect(router.push).toHaveBeenCalledWith('/workout/active');
   });
 });

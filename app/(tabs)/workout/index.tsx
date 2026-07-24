@@ -23,6 +23,7 @@ import { Alert, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 
 import { selectActiveWorkout, useActiveWorkoutStore } from '@/features/workout/activeWorkoutStore';
+import { useRestTimerStore } from '@/features/workout/restTimerStore';
 import { Button } from '@/ui/Button';
 import { EmptyState } from '@/ui/EmptyState';
 import { useTheme } from '@/ui/theme-provider';
@@ -42,10 +43,17 @@ export default function WorkoutScreen(): React.JSX.Element {
         text: 'Discard',
         style: 'destructive',
         onPress: () => {
+          // M2-19 exit-gate fix: same stray-notification gap as
+          // `ActiveWorkoutScreen.performDiscard` (see its own comment) — a
+          // rest timer running on the abandoned workout must not survive
+          // into the freshly-started one.
           void useActiveWorkoutStore
             .getState()
             .discard()
-            .then(() => navigateToLogger());
+            .then(async () => {
+              await useRestTimerStore.getState().skip();
+              navigateToLogger();
+            });
         },
       },
     ]);

@@ -638,11 +638,24 @@ export function ActiveWorkoutScreen({
   // empty-finish "Discard" alert (02 §14 step 5) — both are already their
   // own single confirm dialog, so neither needs a second confirmation on
   // top of this.
+  //
+  // M2-19 exit-gate fix: also cancels any pending rest-timer notification,
+  // mirroring `handleSaveWorkout`'s own "finish -> skip()" contract above.
+  // Found during this pass's re-check of the notification-cancellation path
+  // (08 §7's backgrounding drill / M2-14's own acceptance gate only ever
+  // named "post-finish", but the same stray-notification risk applies
+  // identically here): discarding a workout with a running rest timer
+  // previously left that timer's notification scheduled — it would fire
+  // later, referencing a set/exercise from a workout that no longer exists.
+  // `restTimerStore.skip()` is a safe no-op when no timer is running.
   const performDiscard = (): void => {
     void useActiveWorkoutStore
       .getState()
       .discard()
-      .then(() => router.back());
+      .then(async () => {
+        await useRestTimerStore.getState().skip();
+        router.back();
+      });
   };
 
   const handleDiscardPress = (): void => {

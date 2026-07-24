@@ -420,6 +420,40 @@ describe('ActiveWorkoutScreen — discard flow (02 §2, §10)', () => {
     expect(useActiveWorkoutStore.getState().workout).not.toBeNull();
     expect(router.back).not.toHaveBeenCalled();
   });
+
+  // M2-19 exit-gate regression (see `ActiveWorkoutScreen.tsx`'s
+  // `performDiscard` comment): confirming Discard Workout with a rest timer
+  // running previously left that timer's notification scheduled — it would
+  // fire later for a workout that no longer exists. `finish()`'s own
+  // "cancel pending timer notification" contract (tested below) had a
+  // regression test; `discard()`'s identical requirement never did.
+  it('Discard Workout cancels any pending rest-timer notification', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+    await useActiveWorkoutStore.getState().startEmpty({ title: 'Test Workout', startTime: Date.now() });
+    const { exerciseId, firstSetId } = await seedCheckedExercise(exerciseRepo, false);
+
+    await useRestTimerStore.getState().start({
+      exerciseId,
+      setId: firstSetId,
+      durationSeconds: 90,
+      exerciseName: 'Bench Press',
+      setNumber: 1,
+      notificationsEnabled: true,
+    });
+    expect(useRestTimerStore.getState().timer).not.toBeNull();
+    const pendingNotificationId = useRestTimerStore.getState().timer!.notificationId!;
+
+    await renderScreen(exerciseRepo);
+    await waitFor(() => expect(screen.getByTestId('screen-discard')).toBeTruthy());
+
+    await fireEvent.press(screen.getByTestId('screen-discard'));
+    await pressAlertButton('Discard');
+
+    await waitFor(() => expect(useActiveWorkoutStore.getState().workout).toBeNull());
+    expect(useRestTimerStore.getState().timer).toBeNull();
+    expect(cancelNotification).toHaveBeenCalledWith(pendingNotificationId);
+  });
 });
 
 describe('ActiveWorkoutScreen — header/footer stub affordances', () => {
