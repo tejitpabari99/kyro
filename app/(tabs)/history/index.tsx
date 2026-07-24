@@ -1,32 +1,26 @@
 /**
- * History tab placeholder (M0-08) — workout history list/calendar (06 §3).
- * Real screen lands in later milestones.
+ * History tab (M2-14) — 09 M2 scope: minimal saved-workout list to verify
+ * saves (the real History tab — search/calendar/filters/CSV — is M4).
+ * Replaces the M0-08 placeholder. Wires the real, on-device
+ * `WorkoutRepositoryImpl`/`ExerciseRepositoryImpl` (both backed by the
+ * single app-wide `SqliteDriver`, `src/data/sqlite/boot.ts`) into
+ * `src/features/history/HistoryListScreen.tsx`, which holds all of this
+ * screen's actual logic/layout — the established "feature component owns
+ * data + layout, route file only wires real deps" split
+ * (`ExerciseBrowseScreen`/M1-07, `ActiveWorkoutScreen`/M2-05).
  */
-import React from 'react';
-import { History } from 'lucide-react-native';
-import { StyleSheet, View } from 'react-native';
+import React, { useMemo } from 'react';
 
-import { EmptyState } from '@/ui/EmptyState';
-import { useTheme } from '@/ui/theme-provider';
+import { ExerciseRepositoryImpl } from '@/data/exercises/exercise-repository';
+import { getAppDriver } from '@/data/sqlite/boot';
+import { WorkoutRepositoryImpl } from '@/data/workouts/workout-repository';
+import { HistoryListScreen } from '@/features/history/HistoryListScreen';
 
 export default function HistoryScreen(): React.JSX.Element {
-  const { colors } = useTheme();
+  const workoutRepository = useMemo(() => new WorkoutRepositoryImpl(getAppDriver()), []);
+  const exerciseRepository = useMemo(() => new ExerciseRepositoryImpl(getAppDriver()), []);
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.bg.base }]}>
-      <EmptyState
-        icon={<History size={40} strokeWidth={1.75} color={colors.text.tertiary} />}
-        title="No workouts logged yet"
-        caption="Finished workouts will show up here."
-      />
-    </View>
+    <HistoryListScreen workoutRepository={workoutRepository} exerciseRepository={exerciseRepository} />
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
