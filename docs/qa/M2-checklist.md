@@ -484,3 +484,136 @@ same posture M0's and M1's own checklists carried forward — not new gaps intro
 **M2 exit criteria are met** to the extent verifiable in this headless environment, with
 zero P0/P1 open and a clear, itemized handoff list for the owner's device-dependent
 verification pass before/during dogfooding (O-12).
+
+## 8. Independent milestone-wide review (post-close, per the current one-review-per-milestone process)
+
+A separate reviewing agent independently re-verified all 19 M2 tasks' actual source against
+their acceptance gates in `docs/plan/tasks/M2-tasks.md`, prioritizing the seven tasks this
+checklist's own intro (§0/lines 15–22) flagged as never having received an individual
+`reviewed` row — M2-01, M2-02, M2-04, M2-05, M2-06, M2-07, M2-17 — while also sanity-checking
+the rest (M2-03/M2-14's finish-flow and crash-safety paths had already been re-traced by this
+checklist's own §3 targeted sweep; M2-08/09/10/11/12/13/15/16/18 already carry their own
+`reviewed` `EXECUTION-LOG.md` rows from prior passes). Mirrors M1-checklist's own §5 in
+scope/format — a from-scratch re-verification, not a re-litigation of §1–7 above.
+
+**Numbering note:** the task instructions asked for this section as "§5"; M2-checklist.md
+already uses §5/§6/§7 (with heavily cross-referenced subsections, §5.1–§5.7) for its own exit-
+criteria/manual-QA/verdict content, so — unlike M1-checklist.md, where §5 was genuinely free —
+renumbering here would mean rewriting every internal `§5.x`/`§3.1`-style cross-reference in this
+file for no benefit. Appended as §8 instead, immediately following the existing §7 Verdict.
+
+### 8.1 — What was re-verified
+
+- **`pnpm run ci` re-run fresh, independently, twice** (once as a clean baseline before any
+  edits, once again after this pass's own fixes below): both green end to end. Baseline: 123
+  suites / 1407 tests, all four coverage thresholds held, `expo-doctor` 21/21, `expo export
+  --platform ios` succeeded (`dist/` 46 MB) — confirms §1's numbers were not just self-reported.
+  Final (with this pass's own fixes + regression tests): **123 suites / 1413 tests** (6 new,
+  all passing), same coverage thresholds held with real margin (`src/domain/**` 100/98.71,
+  `src/features/workout/**` 97.5-ish/89-ish per the same subdir breakdown §1 already
+  documented), `expo-doctor` 21/21, `expo export` succeeded (`dist/` 46 MB, unchanged).
+- **Full independent code read** of `src/data/workouts/workout-repository.ts` (M2-01/M2-02,
+  936 lines) and `src/features/workout/activeWorkoutStore.ts` (M2-03, for context) against 05
+  §3.2/§6 and 02 §1/§3/§6/§14/§16.6 — every mutator, the one-active invariant, auto-heal,
+  `finish()`'s five-step transaction, and `previousSets`' occurrence-aware query all read
+  correct and match their own doc comments; every mutator is a single `driver.transaction()`
+  (05 §5.2's "one transaction per user action").
+- **Full independent code read** of `src/domain/volume.ts` and `src/domain/previous-values.ts`
+  (M2-04) against 04 §4.2/P7 and 02 §6/§16.6 — every per-type formula, the warm-up/unchecked
+  gating, and the bucket-matching/routine-target-fallback/rep-range logic match the spec
+  verbatim, including the exact worked examples 08 §4.2 names.
+- **Full independent code read** of `ActiveWorkoutScreen.tsx` (M2-05, 1000+ lines — the
+  auto-title mount effect, retro-log start-time resolution, finish-flow alerts, exercise-
+  removal/Snackbar-undo flow, superset-add confirm, and the discard/finish handlers) against
+  02 §1–§2/§3/§8/§14 and 06 §3/§5.4/§6.3.
+- **Full independent code read** of `src/domain/set-table-columns.ts`, `src/ui/SetRow.tsx`, and
+  `ExerciseSetTableSection.tsx` (M2-06) against 02 §4's column table and 06 §8's memoization
+  contract — the 8-type column matrix, CUSTOM/RPE appending rules, assisted-weight display
+  convention, and the "recompute only on structural signature change, not per keystroke"
+  memoization pattern all match.
+- **Full independent code read** of `src/domain/set-check.ts` and `ConnectedSetRow.tsx`
+  (M2-07) against 02 §4's check-commit rules / 04 §2.3's rep-range exception / 00 P6 — the
+  three-way per-column resolution (typed → placeholder → required-block, with weight's
+  "0 is valid" special case) matches verbatim.
+- **Full independent code read** of `app/(tabs)/profile/settings/index.tsx` and its `sounds
+  .tsx` sub-screen (M2-17) against 02 §13's 12-item list — every setting reads/writes through
+  a reactive `useSettingsStore` selector (live mid-workout apply, per the file's own header
+  claim, cross-checked against real call sites in `ActiveWorkoutScreen.tsx`/`ConnectedSetRow
+  .tsx` that already select the same keys).
+- **Unhandled-promise-rejection sweep** (the exact bug shape M1's own §5 review found twice —
+  `ExerciseDetailScreen`/`ArchivedExercisesScreen` calling a repository method directly with no
+  `try/catch`): grepped every direct `Repository.` call site under `src/features/workout/**`
+  and the `app/workout/**`/`app/(tabs)/history/**` routes. Finding: **this class of bug is
+  structurally prevented in M2's architecture**, not just absent by luck — UI components never
+  call `WorkoutRepository`/`ExerciseRepository` methods directly outside of (a) a React Query
+  `queryFn` (whose rejection becomes query `error` state, never an unhandled rejection) or (b)
+  an `activeWorkoutStore` action (every one of which already wraps its own repo call in
+  `try/catch`, rolls back the optimistic draft, and surfaces a typed `DataError` — confirmed by
+  reading all 20 store actions in `activeWorkoutStore.ts`). The one direct repository call
+  outside a store action (`ActiveWorkoutScreen.tsx`'s `exercisesQuery` `queryFn`, line ~216) is
+  itself inside a `useQuery` call. No sibling of the M1 bug shape exists in M2.
+- **Crash-safety suite re-trace**: confirmed (by reading `runRandomAction`'s current candidate
+  list in `activeWorkoutStore.crash-safety.test.ts`) that this pass's predecessor's own
+  broadening (`52f9ec8`) is real — `supersetId`, `removeFromSuperset`, `addWarmUpSets`, and
+  `rpe` are genuinely present in the generator, not just claimed in a commit message.
+
+### 8.2 — Found and fixed
+
+Both P2 items this checklist's own §3.1/§3.3 flagged-but-deliberately-left-unfixed (for pass-
+scope discipline, not difficulty, per their own text) were fixed here, plus one further sibling
+gap of the same shape found during this pass:
+
+1. **Superset auto-dissolve missing from `finish()` (§3.1's flagged item).**
+   `WorkoutRepositoryImpl.finish()` drops any exercise left with zero checked sets but never
+   re-checked whether that left a superset group with exactly one surviving member — 02 §8's
+   "group of 1 dissolves automatically" rule only fired from the explicit "Remove from
+   Superset" action. Fixed (`4f7f96d`): `finish()` now clears `superset_id` for any group its
+   own step-3 exercise-drop leaves with exactly one member, mirroring `domain/supersets.ts`'s
+   `computeDissolution`. Two new integration tests in `workout-repository.lifecycle.test.ts`
+   (the dissolve case, and a control case confirming a still-2+-member group is untouched).
+2. **`removeSet` (swipe-delete / "Remove Set" menu item) not cancelling its own running rest
+   timer (§3.3's flagged item).** `ConnectedSetRow.tsx`'s `handleDelete`/`handleRemove` called
+   `removeSet` directly with no `restTimerStore.cancelForSet` call, unlike the uncheck path
+   immediately above it in the same file, which already does. Fixed (`8265b8a`):
+   `cancelForSet(setId)` now precedes `removeSet` in both handlers (a no-op if the running timer,
+   if any, belongs to a different set — same contract every other cancellation call site uses).
+   Three new tests in `ExerciseSetTableSection.test.tsx`: swipe-delete cancels, the menu's
+   "Remove Set" cancels, and a sibling-row delete leaves an unrelated running timer untouched.
+3. **`removeExercise` (⋯ menu → Remove Exercise, finalized after the Snackbar's 5 s timeout)
+   not cancelling a running timer owned by any of its own sets — found during this pass, not
+   previously flagged.** Same class of bug as #2, one layer up: `ActiveWorkoutScreen.tsx`'s
+   `handleFinalizeRemoval` never checked whether the exercise being removed currently owned the
+   one running rest timer. Fixed (`8265b8a`): before calling `removeExercise`, the handler now
+   calls `cancelForSet` for every set id belonging to the exercise being removed (safe/no-op
+   for every id except the one that might actually be running). New regression test in
+   `ExerciseCard.operations.test.tsx` (seeds a real running timer via the real `restTimerStore`,
+   mocked only at the `@/lib/notifications` native seam, matching the existing convention;
+   removes the exercise via the real ⋯ menu + Snackbar-timeout flow; asserts the timer clears
+   and `cancelNotification` was called with the pending notification id).
+
+All three are P2 per 08 §8's bug bar (a stray local notification with a trivial dismiss — no
+data loss, no wrong number, no core-flow break) but fixed anyway, matching this project's
+established convention (both M1's own §5 review and this checklist's own §3.3 fixed same-
+severity items when they were cheap and directly in scope) and the task's own instruction to
+resolve both named P2s "unless a concrete reason not to" is found — none was.
+
+### 8.3 — Reviewed, no further issues found
+
+Every other area read in §8.1 above — the full `WorkoutRepository`/`activeWorkoutStore`
+mutator set, `domain/volume.ts`/`domain/previous-values.ts`'s formulas, `ActiveWorkoutScreen
+.tsx`'s screen logic, the M2-06 column/memoization engine, `domain/set-check.ts`'s check-commit
+rules, and the M2-17 settings screens — matches its own spec section verbatim with no
+data-integrity, crash-safety, incorrect-calculation, race-condition, unhandled-rejection, or
+re-render-discipline bug found beyond the three items in §8.2. The one already-known,
+deliberately-unfixed re-render gap (`ExerciseCard.tsx` non-memoization, §4 above) was re-read
+and its own reasoning (adding `React.memo` today would be a no-op without a companion
+`useCallback` pass) still holds — not re-litigated further here.
+
+### 8.4 — Verdict
+
+**Unchanged: M2 milestone exit criteria met, zero P0/P1 open**, now confirmed by a second,
+independent reviewing pass rather than resting on §1–7's own self-report. Both P2 items §3.1
+and §3.3 named as flagged-but-unfixed are now fixed, each with regression tests. One further
+sibling gap of the same shape (§8.2 item 3) was found and fixed alongside them. `pnpm run ci`
+is green end to end after this pass's changes (123 suites / 1413 tests, 21/21 `expo-doctor`,
+clean `expo export`). M2 remains ready for M3 to build on top of.
