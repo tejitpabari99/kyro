@@ -90,7 +90,7 @@ Task count: **19**
 **Acceptance / test gate:** 08 §4.10 suite (fake timers + mocked expo-notifications): endsAt math across background gaps, clamps, skip clears notification id, next-set-dropset suppression, uncheck cancels only its own timer, scheduling calls match endsAt after each adjustment. Kill/relaunch within window restores remaining; after endsAt → no timer, no duplicate notification (integration).
 **Est:** 2 d
 
-### M2-11 — Timer UI (pill + full-screen sheet) + sounds/haptics libs
+### M2-11 — Timer UI (pill + full-screen sheet) + sounds/haptics libs [done]
 **Description:** The rest-timer surfaces and the audio/haptic seams.
 **How:** `TimerPill` (07 §5): floating pill above tab bar/keyboard — progress ring, statLarge countdown, −15s/+15s/Skip; tap → full-screen sheet with big `ProgressRing` countdown + same controls (build ProgressRing primitive). `src/lib/sound.ts`: expo-audio, preload timer/check chimes, `playsInSilentMode: false`, volumes from `sounds` settings (timer sound default/bell/beep/none; volumes off/low/normal/high for timer, set-check, notifications independently). `src/lib/haptics.ts`: semantic wrappers `tickCheck`, `warnInvalid`, `successPR`, `selection`, etc. per 07 §8 table.
 **References:** 02 §7 (UI, sounds setting); 06 §6.4; 07 §5, §8.
