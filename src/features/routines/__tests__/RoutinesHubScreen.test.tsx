@@ -238,8 +238,14 @@ describe('RoutinesHubScreen — routine ⋯ menu', () => {
     await fireEvent.press(await screen.findByTestId('routine-card-r1-menu'));
     await fireEvent.press(await screen.findByTestId('routine-actions-sheet-duplicate'));
 
-    await waitFor(() => expect(repo.routines).toHaveLength(2));
-    expect(screen.getByText('Push Day copy')).toBeTruthy();
+    // Wait on the rendered DOM, not just the fake repo's internal array —
+    // `duplicate()` mutates `repo.routines` synchronously on resolution,
+    // but the screen only reflects it once the post-mutation
+    // `invalidateQueries` refetch actually lands and re-renders. Asserting
+    // on `repo.routines` alone raced the render and made this test flaky
+    // (found in M3-02 review).
+    expect(await screen.findByText('Push Day copy')).toBeTruthy();
+    expect(repo.routines).toHaveLength(2);
   });
 
   it('⋯ → Move to Folder opens the folder-picker sheet and moves the routine on selection', async () => {
