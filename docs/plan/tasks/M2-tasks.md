@@ -114,7 +114,7 @@ Task count: **19**
 **Acceptance / test gate:** 02 §10 acceptance: mini-bar on all 4 tabs mirroring timer; force-quit mid-typing loses at most one uncommitted field; relaunch resumes with correct duration + checked sets (manual ×3 here; the formal 10/10 drill is M2-19).
 **Est:** 1 d
 
-### M2-14 — Finish flow + minimal history
+### M2-14 — Finish flow + minimal history [done]
 **Description:** Finish/save path and a plain saved-workout list to verify saves (real History tab is M4).
 **How:** Finish per 02 §14: unchecked-sets alert (count, Cancel/Finish anyway); save sheet — editable title, description, start date/time + duration fields, computed stats row, `Save Workout` primary; **Records earned section renders only when the records provider returns data — wire to a no-op provider now, M4-10 fills it**. On save: repo `finish` (M2-01), cancel pending timer notification, invalidate queries, navigate to detail. Empty finish (0 checked) → offer Discard. Update-routine prompt hook = no-op until M3-06. Minimal history: simple list on History tab (title/date/volume) + read-only detail reusing SetTable in read-only mode.
 **References:** 02 §14; 09 M2 scope (minimal history); 07 §5 (SetTable read-only).
