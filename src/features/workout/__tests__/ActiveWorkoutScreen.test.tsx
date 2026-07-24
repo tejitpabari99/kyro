@@ -502,6 +502,7 @@ describe('ActiveWorkoutScreen — smoke render (both themes)', () => {
       reorderExercises: () => Promise.reject(new Error('not used')),
       replaceExercise: () => Promise.reject(new Error('not used')),
       addSet: () => Promise.reject(new Error('not used')),
+      insertWarmupSets: () => Promise.reject(new Error('not used')),
       updateSet: () => Promise.reject(new Error('not used')),
       removeSet: () => Promise.reject(new Error('not used')),
       setSetType: () => Promise.reject(new Error('not used')),

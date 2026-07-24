@@ -588,6 +588,57 @@ export class WorkoutRepositoryImpl implements WorkoutRepository {
     return mapSetRow(this.requireSetRow(id));
   }
 
+  async insertWarmupSets(
+    workoutExerciseId: string,
+    rows: NewSetInput[],
+  ): Promise<WorkoutExerciseFull> {
+    this.requireWorkoutExerciseRow(workoutExerciseId);
+    if (rows.length === 0) {
+      return this.requireWorkoutExerciseFull(workoutExerciseId);
+    }
+
+    // Ids first, same "generate before entering the sync transaction"
+    // ordering every multi-id mutator here uses (file header's `addExercises`
+    // note) — `driver.transaction`'s callback is synchronous.
+    const ids = await Promise.all(rows.map(() => generateUuid()));
+
+    this.driver.transaction(() => {
+      // Make room at the front: every existing set shifts down by
+      // `rows.length`. No UNIQUE constraint on (workout_exercise_id,
+      // position) (`idx_sets_we` is a plain lookup index, `schema.ts`), so
+      // this single UPDATE is safe regardless of row order/overlap with the
+      // new rows' target positions (0..rows.length-1), which are inserted
+      // next, after the shift.
+      this.driver.execute(
+        `UPDATE sets SET position = position + ? WHERE workout_exercise_id = ?`,
+        [rows.length, workoutExerciseId],
+      );
+
+      rows.forEach((input, index) => {
+        this.driver.execute(
+          `INSERT INTO sets
+             (id, workout_exercise_id, position, set_type, weight_kg, reps, distance_meters,
+              duration_seconds, rpe, custom_metric, is_completed)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+          [
+            ids[index],
+            workoutExerciseId,
+            index,
+            input.setType ?? 'warmup',
+            input.weightKg ?? null,
+            input.reps ?? null,
+            input.distanceMeters ?? null,
+            input.durationSeconds ?? null,
+            input.rpe ?? null,
+            input.customMetric ?? null,
+          ],
+        );
+      });
+    });
+
+    return this.requireWorkoutExerciseFull(workoutExerciseId);
+  }
+
   async updateSet(setId: string, patch: UpdateSetInput): Promise<WorkoutSet> {
     const existing = this.requireSetRow(setId);
     const weightKg = patch.weightKg !== undefined ? patch.weightKg : existing.weight_kg;

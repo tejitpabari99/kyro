@@ -14,13 +14,15 @@
  * null})` on this card's own row (M2-12 owns the follow-up dissolution
  * bookkeeping for the group's remaining member, out of this task's scope).
  *
- * Add Warm-Up Sets is a stub per this task's own scoping note (M2-16 lands
- * the real calculator) — the menu item is present and wired to a no-op
- * placeholder alert rather than crashing or being silently omitted.
+ * Add Warm-Up Sets (M2-16, 02 §12) is the other card-local ⋯ item: it opens
+ * `AddWarmUpSetsSheet`, which owns its own working-weight pre-fill/
+ * calculation/insert — this component only wires the sheet's `visible`
+ * state and hands it this card's own `workoutExerciseId`/`exercise
+ * .equipment`/unit + previous-values context.
  */
 import React, { useState } from 'react';
 import { Clock, Ellipsis } from 'lucide-react-native';
-import { Alert, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import type { Exercise, ExerciseRepository } from '@/data/exercises/types';
 import type { DistanceUnit, PreviousValuesMode, WeightUnit } from '@/domain/enums';
@@ -29,6 +31,7 @@ import { Card } from '@/ui/Card';
 import { Thumb } from '@/ui/Avatar';
 import { useTheme } from '@/ui/theme-provider';
 
+import { AddWarmUpSetsSheet } from './AddWarmUpSetsSheet';
 import { ExerciseCardMenuSheet } from './ExerciseCardMenuSheet';
 import { ExerciseDetailSheet } from './ExerciseDetailSheet';
 import { ExerciseSetTableSection } from './ExerciseSetTableSection';
@@ -84,6 +87,7 @@ export function ExerciseCard({
   const [detailVisible, setDetailVisible] = useState(false);
   const [noteSheetVisible, setNoteSheetVisible] = useState(false);
   const [restTimerSheetVisible, setRestTimerSheetVisible] = useState(false);
+  const [warmUpSheetVisible, setWarmUpSheetVisible] = useState(false);
 
   const handleAddSet = (): void => {
     void useActiveWorkoutStore.getState().addSet(workoutExerciseId);
@@ -104,11 +108,7 @@ export function ExerciseCard({
   };
 
   const handleAddWarmUpSets = (): void => {
-    // Stub — the real formula engine + insert flow is M2-16 (02 §12); this
-    // task only has to leave a clean, non-crashing call site (task brief:
-    // "coordinate by making the menu item a no-op TODO if the store action
-    // doesn't exist yet").
-    Alert.alert('Add Warm-Up Sets', 'The warm-up calculator arrives in M2-16.');
+    setWarmUpSheetVisible(true);
   };
 
   return (
@@ -236,6 +236,18 @@ export function ExerciseCard({
         onDismiss={() => setRestTimerSheetVisible(false)}
         value={restSeconds}
         onChange={handleSaveRestSeconds}
+      />
+
+      <AddWarmUpSetsSheet
+        testID={`${testID}-warmup-sheet`}
+        visible={warmUpSheetVisible}
+        onDismiss={() => setWarmUpSheetVisible(false)}
+        workoutExerciseId={workoutExerciseId}
+        exerciseId={exercise.id}
+        equipment={exercise.equipment}
+        weightUnit={weightUnit}
+        previousValuesMode={previousValuesMode}
+        routineId={routineId}
       />
     </Card>
   );

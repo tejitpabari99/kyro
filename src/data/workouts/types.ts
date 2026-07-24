@@ -225,6 +225,24 @@ export interface WorkoutRepositoryMutators {
   reorderExercises(workoutId: string, orderedWorkoutExerciseIds: string[]): Promise<void>;
   replaceExercise(workoutExerciseId: string, newExerciseId: string): Promise<WorkoutExerciseFull>;
   addSet(workoutExerciseId: string, input?: NewSetInput): Promise<WorkoutSet>;
+  /**
+   * `WorkoutRepository.insertWarmupSets` (M2-16, 02 §12) — inserts `rows`
+   * (typically `setType: 'warmup'`, but not enforced — any `NewSetInput[]`
+   * works) **above** every existing set of `workoutExerciseId`: the new
+   * rows land at positions `0..rows.length-1` and every pre-existing set
+   * shifts down by `rows.length`, ids/relative order otherwise untouched.
+   * Unlike `addSet` (always appends at the end), this is the one mutator
+   * that inserts at the *front* — "Add Warm-Up Sets ... generated `W` rows
+   * inserted above existing sets" (02 §12) needs exactly that, and nothing
+   * else in the M2 feature set does. Returns the exercise's full,
+   * re-hydrated `WorkoutExerciseFull` (every set, new positions included)
+   * rather than just the new rows, since the caller's draft needs to
+   * reflect every shifted sibling's new `position` too — same "canonical
+   * response becomes the new draft slice" shape `addExercises` already
+   * uses (`activeWorkoutStore`'s file header, "write, then reflect").
+   * `rows.length === 0` is a no-op read (returns the exercise unchanged).
+   */
+  insertWarmupSets(workoutExerciseId: string, rows: NewSetInput[]): Promise<WorkoutExerciseFull>;
   updateSet(setId: string, patch: UpdateSetInput): Promise<WorkoutSet>;
   removeSet(setId: string): Promise<void>;
   setSetType(setId: string, setType: SetType): Promise<WorkoutSet>;

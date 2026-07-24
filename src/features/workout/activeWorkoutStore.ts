@@ -224,6 +224,11 @@ export interface ActiveWorkoutState {
 
   // --- Sets ------------------------------------------------------------
   addSet: (workoutExerciseId: string, input?: NewSetInput) => Promise<WorkoutSet | null>;
+  /** M2-16 (02 §12): inserts `rows` above the exercise's existing sets — see `WorkoutRepository.insertWarmupSets`'s doc comment for the exact positioning contract. */
+  addWarmUpSets: (
+    workoutExerciseId: string,
+    rows: NewSetInput[],
+  ) => Promise<WorkoutExerciseFull | null>;
   updateSet: (setId: string, patch: UpdateSetInput) => Promise<void>;
   removeSet: (setId: string) => Promise<void>;
   setSetType: (setId: string, setType: SetType) => Promise<void>;
@@ -485,6 +490,32 @@ export function createActiveWorkoutStore(): UseBoundStore<StoreApi<ActiveWorkout
           return added;
         } catch (error) {
           const dataError = toDataError(error, 'addSet');
+          set({ error: dataError });
+          captureError(error);
+          return null;
+        }
+      },
+
+      async addWarmUpSets(workoutExerciseId, rows) {
+        const repo = requireRepository();
+        requireWorkout('addWarmUpSets');
+        recordBreadcrumb('workout.addWarmUpSets');
+        set({ error: null });
+        try {
+          // "Write, then reflect" (file header) — `insertWarmupSets` mints
+          // new row ids itself and also renumbers every existing sibling
+          // set's `position`, so its canonical `WorkoutExerciseFull`
+          // response (not just the new rows) becomes the new draft slice,
+          // exactly like `replaceExercise`/`updateExercise` already do.
+          const canonical = await repo.insertWarmupSets(workoutExerciseId, rows);
+          set((state) =>
+            state.workout
+              ? { workout: withExercise(state.workout, workoutExerciseId, () => canonical) }
+              : state,
+          );
+          return canonical;
+        } catch (error) {
+          const dataError = toDataError(error, 'addWarmUpSets');
           set({ error: dataError });
           captureError(error);
           return null;

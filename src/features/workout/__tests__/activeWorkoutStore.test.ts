@@ -311,6 +311,53 @@ describe('activeWorkoutStore (M2-03)', () => {
     });
   });
 
+  describe('addWarmUpSets (M2-16)', () => {
+    it('inserts new rows above the existing set(s) in both draft and DB, shifting positions', async () => {
+      await store.getState().rehydrate(repository);
+      await store.getState().startEmpty({ title: 'W', startTime: 1 });
+      const [a] = await store.getState().addExercises([{ exerciseId: benchId }]);
+      const originalSetId = a!.sets[0]!.id;
+
+      const updated = await store.getState().addWarmUpSets(a!.id, [
+        { setType: 'warmup', weightKg: 20, reps: 10 },
+        { setType: 'warmup', weightKg: 40, reps: 8 },
+      ]);
+
+      expect(updated).not.toBeNull();
+      const draftSets = store.getState().workout!.exercises[0]!.sets;
+      expect(draftSets.map((s) => ({ id: s.id, setType: s.setType, position: s.position }))).toEqual([
+        expect.objectContaining({ setType: 'warmup', position: 0 }),
+        expect.objectContaining({ setType: 'warmup', position: 1 }),
+        expect.objectContaining({ id: originalSetId, setType: 'normal', position: 2 }),
+      ]);
+      const persisted = driver.queryAll(
+        `SELECT id, set_type, position FROM sets WHERE workout_exercise_id = ? ORDER BY position ASC`,
+        [a!.id],
+      );
+      expect(persisted).toEqual([
+        expect.objectContaining({ set_type: 'warmup', position: 0 }),
+        expect.objectContaining({ set_type: 'warmup', position: 1 }),
+        expect.objectContaining({ id: originalSetId, set_type: 'normal', position: 2 }),
+      ]);
+    });
+
+    it('rolls back to the exact prior draft and surfaces a DataError on repo failure', async () => {
+      const failingDriver = driverThrowingOnCall(driver, 'UPDATE sets SET position', 1, 'boom');
+      const failingRepo = new WorkoutRepositoryImpl(failingDriver, {});
+      await store.getState().rehydrate(failingRepo);
+      await store.getState().startEmpty({ title: 'W', startTime: 1 });
+      const [a] = await store.getState().addExercises([{ exerciseId: benchId }]);
+      const before = store.getState().workout;
+
+      const result = await store.getState().addWarmUpSets(a!.id, [{ setType: 'warmup', weightKg: 20, reps: 10 }]);
+
+      expect(result).toBeNull();
+      expect(store.getState().workout).toEqual(before);
+      expect(store.getState().error).toBeInstanceOf(DataError);
+      expect(store.getState().error?.action).toBe('addWarmUpSets');
+    });
+  });
+
   describe('updateSet ("check set" value-entry path)', () => {
     it('writes weight/reps through to draft + DB, leaving sibling set object identities untouched', async () => {
       await store.getState().rehydrate(repository);

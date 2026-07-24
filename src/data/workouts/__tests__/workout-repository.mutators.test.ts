@@ -350,6 +350,70 @@ describe('WorkoutRepositoryImpl — mutators + previousSets (M2-02 integration, 
     });
   });
 
+  describe('insertWarmupSets (M2-16, 02 §12)', () => {
+    it('inserts the new rows above existing sets, shifting the originals down by rows.length', async () => {
+      const [we] = await repo.addExercises(activeWorkoutId, [{ exerciseId: benchId }]);
+      const originalFirstId = we!.sets[0]!.id;
+      const second = await repo.addSet(we!.id, { weightKg: 100, reps: 5 });
+
+      const updated = await repo.insertWarmupSets(we!.id, [
+        { setType: 'warmup', weightKg: 20, reps: 10 },
+        { setType: 'warmup', weightKg: 40, reps: 8 },
+      ]);
+
+      expect(updated.sets.map((s) => ({ id: s.id, position: s.position, setType: s.setType }))).toEqual([
+        expect.objectContaining({ position: 0, setType: 'warmup' }),
+        expect.objectContaining({ position: 1, setType: 'warmup' }),
+        expect.objectContaining({ id: originalFirstId, position: 2, setType: 'normal' }),
+        expect.objectContaining({ id: second.id, position: 3, setType: 'normal' }),
+      ]);
+      expect(updated.sets[0]!.weightKg).toBe(20);
+      expect(updated.sets[0]!.reps).toBe(10);
+      expect(updated.sets[1]!.weightKg).toBe(40);
+      // Persisted, not just the in-memory return value.
+      const persisted = await repo.getFull(activeWorkoutId);
+      expect(persisted!.exercises[0]!.sets.map((s) => s.position)).toEqual([0, 1, 2, 3]);
+    });
+
+    it('defaults an omitted setType to warmup (the flow always inserts warm-up rows)', async () => {
+      const [we] = await repo.addExercises(activeWorkoutId, [{ exerciseId: benchId }]);
+      const updated = await repo.insertWarmupSets(we!.id, [{ weightKg: 20, reps: 10 }]);
+      expect(updated.sets[0]!.setType).toBe('warmup');
+    });
+
+    it('every inserted row starts unchecked, regardless of input', async () => {
+      const [we] = await repo.addExercises(activeWorkoutId, [{ exerciseId: benchId }]);
+      const updated = await repo.insertWarmupSets(we!.id, [{ weightKg: 20, reps: 10 }]);
+      expect(updated.sets[0]!.isCompleted).toBe(false);
+    });
+
+    it('rows.length === 0 is a no-op read — returns the exercise unchanged', async () => {
+      const [we] = await repo.addExercises(activeWorkoutId, [{ exerciseId: benchId }]);
+      const before = await repo.getFull(activeWorkoutId);
+      const updated = await repo.insertWarmupSets(we!.id, []);
+      expect(updated.sets).toHaveLength(1);
+      expect(updated.sets[0]!.id).toBe(before!.exercises[0]!.sets[0]!.id);
+    });
+
+    it('inserting into an exercise with zero existing sets just seeds the new rows at 0..n-1', async () => {
+      const [we] = await repo.addExercises(activeWorkoutId, [{ exerciseId: benchId }]);
+      // addExercises seeds one bare set; remove it to exercise the empty case.
+      await repo.removeSet(we!.sets[0]!.id);
+
+      const updated = await repo.insertWarmupSets(we!.id, [
+        { weightKg: 20, reps: 10 },
+        { weightKg: 40, reps: 8 },
+      ]);
+      expect(updated.sets.map((s) => s.position)).toEqual([0, 1]);
+    });
+
+    it('throws WorkoutExerciseNotFoundError for an unknown workoutExerciseId', async () => {
+      await expect(
+        repo.insertWarmupSets('does-not-exist', [{ weightKg: 20, reps: 10 }]),
+      ).rejects.toBeInstanceOf(WorkoutExerciseNotFoundError);
+    });
+  });
+
   describe('updateSet', () => {
     it('patches only the given fields, leaving others unchanged', async () => {
       const [we] = await repo.addExercises(activeWorkoutId, [{ exerciseId: benchId }]);
