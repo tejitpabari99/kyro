@@ -20,6 +20,9 @@ import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import type { Exercise, ExerciseRepository } from '@/data/exercises/types';
+import type { ExerciseHistorySet, WorkoutRepository } from '@/data/workouts/types';
+import type { HistoricalSet } from '@/domain/records';
+import { configureRecordsService } from '@/features/stats/records-service';
 import { ThemeProvider } from '@/ui/theme-provider';
 
 // The real, already-mapped dataset (03 §6.4 output shape — snake_case,
@@ -103,6 +106,20 @@ function renderWithProviders(
 async function renderScreen(repository: ExerciseRepository, exerciseId: string, theme: 'dark' | 'light' = 'dark') {
   return renderWithProviders(repository, exerciseId, theme);
 }
+
+// M4-09: every test needs a configured `RecordsService` singleton — the
+// Records tab's `useRecordsSnapshot` calls the throwing `getRecordsService()`
+// getter internally (same convention `HistoryDetailScreen.test.tsx`
+// established for its own trophy queries). Empty history by default (no
+// records anywhere, matching the pre-M4-09 "No records yet" expectation
+// every existing test in this file already asserts) — the M4-09-specific
+// `describe` blocks below override this per-test with a real fixture.
+beforeEach(() => {
+  configureRecordsService({
+    setsForExercise: async () => [],
+    exerciseHistoryWatermark: async () => 0,
+  });
+});
 
 describe('ExerciseDetailScreen — About tab matches real exercise data', () => {
   it("renders Barbell Bench Press - Medium Grip's real type/equipment/muscles/instructions", async () => {
@@ -203,5 +220,272 @@ describe('ExerciseDetailScreen — showBackButton', () => {
     const repository = new FakeExerciseRepository([REAL_EXERCISE]);
     await renderWithProviders(repository, REAL_ID, 'dark', { showBackButton: false });
     expect(screen.queryByTestId('detail-back')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M4-09 — real History/Charts/Records tab content
+// ---------------------------------------------------------------------------
+
+// Recent-relative-to-`Date.now()`, not a fixed historical date — the
+// Charts tab defaults to the 3M range, which would otherwise filter out a
+// hardcoded far-past fixture date depending on when this suite runs.
+const DAY1 = Date.now() - 5 * 24 * 60 * 60 * 1000;
+const DAY2 = Date.now() - 1 * 24 * 60 * 60 * 1000;
+
+/** Two performances for `REAL_ID` (weight_reps): an earlier "Push Day" with a warm-up + a working set, and a later "Push Day 2" with a heavier single working set. */
+const EXERCISE_HISTORY_FIXTURE: ExerciseHistorySet[] = [
+  {
+    setId: 'set-1a',
+    workoutId: 'w1',
+    workoutTitle: 'Push Day',
+    workoutStartTime: DAY1,
+    setOrder: 0,
+    setType: 'warmup',
+    isCompleted: true,
+    weightKg: 40,
+    reps: 10,
+    distanceMeters: null,
+    durationSeconds: null,
+    rpe: null,
+    customMetric: null,
+  },
+  {
+    setId: 'set-1b',
+    workoutId: 'w1',
+    workoutTitle: 'Push Day',
+    workoutStartTime: DAY1,
+    setOrder: 1,
+    setType: 'normal',
+    isCompleted: true,
+    weightKg: 80,
+    reps: 8,
+    distanceMeters: null,
+    durationSeconds: null,
+    rpe: 9,
+    customMetric: null,
+  },
+  {
+    setId: 'set-2a',
+    workoutId: 'w2',
+    workoutTitle: 'Push Day 2',
+    workoutStartTime: DAY2,
+    setOrder: 2,
+    setType: 'normal',
+    isCompleted: true,
+    weightKg: 90,
+    reps: 5,
+    distanceMeters: null,
+    durationSeconds: null,
+    rpe: null,
+    customMetric: null,
+  },
+];
+
+function fakeWorkoutRepository(
+  sets: ExerciseHistorySet[],
+): Pick<WorkoutRepository, 'exerciseHistory'> {
+  return { exerciseHistory: async () => sets };
+}
+
+describe('ExerciseDetailScreen — History tab (real content)', () => {
+  it('renders performances reverse-chron, with numbered set lines and a W badge on the warm-up', async () => {
+    const repository = new FakeExerciseRepository([REAL_EXERCISE]);
+    render(
+      <QueryClientProvider client={newTestQueryClient()}>
+        <ThemeProvider preference="dark">
+          <ExerciseDetailScreen
+            repository={repository}
+            workoutRepository={fakeWorkoutRepository(EXERCISE_HISTORY_FIXTURE)}
+            exerciseId={REAL_ID}
+            testID="detail"
+          />
+        </ThemeProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('detail-about')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('detail-tabs-history'));
+
+    await waitFor(() => expect(screen.getByTestId('detail-history-card-w2')).toBeTruthy());
+    // Reverse-chron: "Push Day 2" (later) renders before "Push Day".
+    expect(screen.getByTestId('detail-history-card-w2')).toBeTruthy();
+    expect(screen.getByTestId('detail-history-card-w1')).toBeTruthy();
+
+    const w1Card = screen.getByTestId('detail-history-card-w1');
+    expect(within(w1Card).getByText('Push Day')).toBeTruthy();
+    // Warm-up set shows the "W" badge glyph, not a working number.
+    expect(within(w1Card).getByTestId('detail-history-card-w1-set-set-1a-badge-circle')).toBeTruthy();
+    expect(within(w1Card).getByText('W')).toBeTruthy();
+    // The working set is numbered "1" (warm-ups don't consume a number) and
+    // shows the full "80kg × 8 @9" line — RPE only shown when the store's
+    // `rpe_enabled` default (`false`) is overridden; default is off, so no "@9" here.
+    expect(within(w1Card).getByText('80kg × 8')).toBeTruthy();
+
+    const w2Card = screen.getByTestId('detail-history-card-w2');
+    expect(within(w2Card).getByText('90kg × 5')).toBeTruthy();
+  });
+});
+
+describe('ExerciseDetailScreen — Charts tab (real content)', () => {
+  it('renders the metric selector + a populated chart, and switching metrics updates the active chip', async () => {
+    const repository = new FakeExerciseRepository([REAL_EXERCISE]);
+    render(
+      <QueryClientProvider client={newTestQueryClient()}>
+        <ThemeProvider preference="dark">
+          <ExerciseDetailScreen
+            repository={repository}
+            workoutRepository={fakeWorkoutRepository(EXERCISE_HISTORY_FIXTURE)}
+            exerciseId={REAL_ID}
+            testID="detail"
+          />
+        </ThemeProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('detail-about')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('detail-tabs-charts'));
+
+    // weight_reps -> 5 metrics (04 §4.3); Heaviest Weight is first/default.
+    await waitFor(() => expect(screen.getByTestId('detail-charts-metric-heaviest_weight')).toBeTruthy());
+    expect(screen.getByTestId('detail-charts-metric-best_1rm')).toBeTruthy();
+    expect(screen.getByTestId('detail-charts-metric-best_set_volume')).toBeTruthy();
+    expect(screen.getByTestId('detail-charts-metric-session_volume')).toBeTruthy();
+    expect(screen.getByTestId('detail-charts-metric-total_reps')).toBeTruthy();
+
+    // Real data present -> the chart plot renders, not the empty state.
+    expect(screen.getByTestId('detail-charts-chart-plot')).toBeTruthy();
+    expect(screen.queryByTestId('detail-charts-chart-empty')).toBeNull();
+
+    await fireEvent.press(screen.getByTestId('detail-charts-metric-total_reps'));
+    expect(screen.getByTestId('detail-charts-metric-total_reps').props.accessibilityState.selected).toBe(
+      true,
+    );
+    expect(
+      screen.getByTestId('detail-charts-metric-heaviest_weight').props.accessibilityState.selected,
+    ).toBe(false);
+  });
+
+  it('reps_only exercises show a single Total Reps metric', async () => {
+    const repsOnly: Exercise = { ...REAL_EXERCISE, id: 'reps-only-fixture', exerciseType: 'reps_only' };
+    const repository = new FakeExerciseRepository([repsOnly]);
+    render(
+      <QueryClientProvider client={newTestQueryClient()}>
+        <ThemeProvider preference="dark">
+          <ExerciseDetailScreen
+            repository={repository}
+            workoutRepository={fakeWorkoutRepository(
+              EXERCISE_HISTORY_FIXTURE.map((s) => ({ ...s })),
+            )}
+            exerciseId={repsOnly.id}
+            testID="detail"
+          />
+        </ThemeProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('detail-about')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('detail-tabs-charts'));
+
+    await waitFor(() => expect(screen.getByTestId('detail-charts-metric-total_reps')).toBeTruthy());
+    expect(screen.queryByTestId('detail-charts-metric-heaviest_weight')).toBeNull();
+  });
+});
+
+describe('ExerciseDetailScreen — Records tab (real content)', () => {
+  it('renders PR cards with value + date, and the Set Records table', async () => {
+    const repository = new FakeExerciseRepository([REAL_EXERCISE]);
+
+    const recordsFixtureSets: HistoricalSet[] = [
+      {
+        setId: 'set-1b',
+        workoutId: 'w1',
+        workoutStartTime: DAY1,
+        setOrder: 0,
+        exerciseType: 'weight_reps',
+        setType: 'normal',
+        isCompleted: true,
+        weightKg: 80,
+        reps: 8,
+        durationSeconds: null,
+      },
+    ];
+    configureRecordsService({
+      setsForExercise: async () => recordsFixtureSets,
+      exerciseHistoryWatermark: async () => 1,
+    });
+
+    render(
+      <QueryClientProvider client={newTestQueryClient()}>
+        <ThemeProvider preference="dark">
+          <ExerciseDetailScreen
+            repository={repository}
+            workoutRepository={fakeWorkoutRepository(EXERCISE_HISTORY_FIXTURE)}
+            exerciseId={REAL_ID}
+            testID="detail"
+          />
+        </ThemeProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('detail-about')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('detail-tabs-records'));
+
+    await waitFor(() => expect(screen.getByTestId('detail-records-pr-heaviest_weight')).toBeTruthy());
+    expect(within(screen.getByTestId('detail-records-pr-heaviest_weight')).getByText('80 kg')).toBeTruthy();
+    expect(screen.getByTestId('detail-records-pr-best_1rm')).toBeTruthy();
+    expect(screen.getByTestId('detail-records-pr-best_set_volume')).toBeTruthy();
+    expect(screen.getByTestId('detail-records-pr-most_reps')).toBeTruthy();
+
+    // Set Records table: bucket "8" (this set's own rep count) holds 80 kg;
+    // every other bucket (1-10 minus 8, plus "10+") is empty ("—").
+    const table = screen.getByTestId('detail-records-set-records-table');
+    expect(within(table).getByText('80 kg')).toBeTruthy();
+    expect(within(screen.getByTestId('detail-records-set-record-1')).getByText('—')).toBeTruthy();
+    expect(within(screen.getByTestId('detail-records-set-record-10+')).getByText('—')).toBeTruthy();
+  });
+
+  it('assisted exercises show a least-assistance line instead of Heaviest/volume trophies', async () => {
+    const assisted: Exercise = {
+      ...REAL_EXERCISE,
+      id: 'assisted-fixture',
+      exerciseType: 'bodyweight_assisted_reps',
+    };
+    const repository = new FakeExerciseRepository([assisted]);
+
+    const recordsFixtureSets: HistoricalSet[] = [
+      {
+        setId: 'set-a1',
+        workoutId: 'w1',
+        workoutStartTime: DAY1,
+        setOrder: 0,
+        exerciseType: 'bodyweight_assisted_reps',
+        setType: 'normal',
+        isCompleted: true,
+        weightKg: 20,
+        reps: 6,
+        durationSeconds: null,
+      },
+    ];
+    configureRecordsService({
+      setsForExercise: async () => recordsFixtureSets,
+      exerciseHistoryWatermark: async () => 1,
+    });
+
+    render(
+      <QueryClientProvider client={newTestQueryClient()}>
+        <ThemeProvider preference="dark">
+          <ExerciseDetailScreen repository={repository} exerciseId={assisted.id} testID="detail" />
+        </ThemeProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('detail-about')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('detail-tabs-records'));
+
+    await waitFor(() => expect(screen.getByTestId('detail-records-pr-most_reps')).toBeTruthy());
+    expect(screen.queryByTestId('detail-records-pr-heaviest_weight')).toBeNull();
+    expect(screen.queryByTestId('detail-records-set-records-table')).toBeNull();
+    expect(screen.getByTestId('detail-records-least-assistance')).toHaveTextContent('20 kg');
   });
 });

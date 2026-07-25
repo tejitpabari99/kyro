@@ -295,6 +295,7 @@ import {
 import type {
   AddExerciseItem,
   AutoHealEvent,
+  ExerciseHistorySet,
   FinishMeta,
   ListCompletedPage,
   NewSetInput,
@@ -490,6 +491,40 @@ function mapStatsFeedRow(row: StatsFeedSetRow): StatsFeedRow {
     weightKg: row.weight_kg,
     reps: row.reps,
     isCompleted: row.is_completed === 1,
+  };
+}
+
+/** One joined `sets`/`workout_exercises`/`workouts` row for {@link WorkoutRepositoryImpl.exerciseHistory} (M4-09) — {@link HistoricalSetRow}'s superset, adding `workout_title`/`distance_meters`/`rpe`/`custom_metric` (see that method's own doc comment for why these live in a separate query rather than widening `setsForExercise`'s own). */
+interface ExerciseHistoryRow {
+  set_id: string;
+  set_type: string;
+  weight_kg: number | null;
+  reps: number | null;
+  distance_meters: number | null;
+  duration_seconds: number | null;
+  rpe: number | null;
+  custom_metric: number | null;
+  is_completed: number;
+  workout_id: string;
+  workout_title: string;
+  workout_start_time: number;
+}
+
+function mapExerciseHistoryRow(row: ExerciseHistoryRow, setOrder: number): ExerciseHistorySet {
+  return {
+    setId: row.set_id,
+    workoutId: row.workout_id,
+    workoutTitle: row.workout_title,
+    workoutStartTime: row.workout_start_time,
+    setOrder,
+    setType: row.set_type as SetType,
+    isCompleted: row.is_completed === 1,
+    weightKg: row.weight_kg,
+    reps: row.reps,
+    distanceMeters: row.distance_meters,
+    durationSeconds: row.duration_seconds,
+    rpe: row.rpe as Rpe | null,
+    customMetric: row.custom_metric,
   };
 }
 
@@ -1429,6 +1464,33 @@ export class WorkoutRepositoryImpl implements WorkoutRepository {
     );
 
     return rows.map(mapStatsFeedRow);
+  }
+
+  /**
+   * M4-09 (`./types.ts`'s own doc comment): {@link setsForExercise}'s
+   * superset for the exercise-detail History/Charts tabs. Same
+   * `WHERE`/`ORDER BY` shape (completed, non-deleted workouts only;
+   * `(workout_start_time, workout_exercises.position, sets.position)`),
+   * plus `workouts.title` and the three extra `sets` columns those tabs need.
+   * No `exercise_type` existence check up front (unlike `setsForExercise`,
+   * which needs it to stamp every row) — an unknown/never-logged
+   * `exerciseId` naturally yields zero joined rows either way, so the guard
+   * would be pure overhead here.
+   */
+  async exerciseHistory(exerciseId: string): Promise<ExerciseHistorySet[]> {
+    const rows = this.driver.queryAll<ExerciseHistoryRow>(
+      `SELECT s.id AS set_id, s.set_type, s.weight_kg, s.reps, s.distance_meters, s.duration_seconds,
+              s.rpe, s.custom_metric, s.is_completed,
+              we.workout_id AS workout_id, w.title AS workout_title, w.start_time AS workout_start_time
+       FROM sets s
+       JOIN workout_exercises we ON we.id = s.workout_exercise_id
+       JOIN workouts w ON w.id = we.workout_id
+       WHERE we.exercise_id = ? AND w.state = 'completed' AND w.deleted_at IS NULL
+       ORDER BY w.start_time ASC, we.position ASC, s.position ASC`,
+      [exerciseId],
+    );
+
+    return rows.map((row, index) => mapExerciseHistoryRow(row, index));
   }
 
   /**

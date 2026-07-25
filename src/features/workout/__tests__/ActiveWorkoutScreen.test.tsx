@@ -1159,6 +1159,7 @@ describe('ActiveWorkoutScreen — smoke render (both themes)', () => {
       statsFeed: () => Promise.resolve([]),
       getExercisesForWorkouts: () => Promise.resolve(new Map()),
       exerciseHistoryWatermark: () => Promise.resolve(0),
+      exerciseHistory: () => Promise.resolve([]),
       update: () => Promise.reject(new Error('not used')),
     };
     await useActiveWorkoutStore.getState().rehydrate(hangingRepo);

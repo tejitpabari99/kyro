@@ -32,6 +32,7 @@ import {
   type MuscleGroup,
 } from '@/domain/enums';
 import type { Exercise, ExerciseRepository } from '@/data/exercises/types';
+import type { WorkoutRepository } from '@/data/workouts/types';
 import { AzRail } from '@/features/exercises/AzRail';
 import {
   buildExerciseRows,
@@ -61,6 +62,8 @@ export interface ExercisePickerSheetProps {
   visible: boolean;
   onDismiss: () => void;
   repository: ExerciseRepository;
+  /** M4-09: threaded straight through to the ⓘ info button's `ExerciseDetailSheet` — see that component's own `workoutRepository` doc comment. Optional; omitted call sites (e.g. the routine editor's picker, which has no natural `WorkoutRepository` in scope) just fall back to the sheet's pre-M4-09 empty states. */
+  workoutRepository?: Pick<WorkoutRepository, 'exerciseHistory'>;
   mode: ExercisePickerMode;
   /** `mode: "add"` — selected exercise ids in tap (selection) order, plus whether the Superset toggle was on. */
   onAdd?: (exerciseIds: string[], superset: boolean) => void;
@@ -73,6 +76,7 @@ export function ExercisePickerSheet({
   visible,
   onDismiss,
   repository,
+  workoutRepository,
   mode,
   onAdd,
   onReplace,
@@ -363,6 +367,7 @@ export function ExercisePickerSheet({
         visible={detailExerciseId != null}
         onDismiss={() => setDetailExerciseId(null)}
         repository={repository}
+        workoutRepository={workoutRepository}
         exerciseId={detailExerciseId}
       />
     </Sheet>

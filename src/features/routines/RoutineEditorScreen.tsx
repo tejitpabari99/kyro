@@ -79,6 +79,16 @@
  *    warranted — removal here is immediate (the outer Cancel/dirty-confirm
  *    is still the safety net for an accidental removal, same as any other
  *    edit).
+ *  - **The `ExercisePickerSheet`'s own ⓘ info-icon `ExerciseDetailSheet`
+ *    doesn't get a `workoutRepository` (M4-09).** That prop is optional
+ *    specifically for this reason — the History/Charts tabs just fall back
+ *    to their empty states here rather than this screen threading a new
+ *    `WorkoutRepositoryImpl` dependency in purely to serve a picker's info
+ *    button. Consistent with the "no exercise-name-tap-to-detail sheet"
+ *    decision above (this editor already scopes exercise-detail access down
+ *    on purpose), and the acceptance text this feature exists for
+ *    ("detail-as-sheet mid-workout doesn't disturb active workout") doesn't
+ *    apply here at all — a routine editor has no active workout to disturb.
  *  - **On successful save, this screen always calls `router.back()`** —
  *    for both create and edit — rather than navigating to a routine-detail
  *    screen, because no such screen exists yet in this milestone (the same

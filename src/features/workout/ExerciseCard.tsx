@@ -39,6 +39,7 @@ import { Pressable, Text, View } from 'react-native';
 
 import type { Exercise, ExerciseRepository } from '@/data/exercises/types';
 import type { RoutineFull } from '@/data/routines/types';
+import type { WorkoutRepository } from '@/data/workouts/types';
 import type { DistanceUnit, PreviousValuesMode, WeightUnit } from '@/domain/enums';
 import type { SupersetVisual } from '@/domain/supersets';
 import { Button } from '@/ui/Button';
@@ -62,6 +63,8 @@ export interface ExerciseCardProps {
   exercisePosition: number;
   exercise: Exercise;
   exerciseRepository: ExerciseRepository;
+  /** M4-09: threaded straight through to the name-tap `ExerciseDetailSheet` — see that component's own `workoutRepository` doc comment. Optional (a missing repository just means the sheet's History/Charts tabs fall back to their empty states, never a crash). */
+  workoutRepository?: Pick<WorkoutRepository, 'exerciseHistory'>;
   notes: string | null;
   restSeconds: RestSeconds;
   /** `null` when ungrouped; this card's own group label/color when it is (M2-12, see file header). */
@@ -89,6 +92,7 @@ export function ExerciseCard({
   exercisePosition,
   exercise,
   exerciseRepository,
+  workoutRepository,
   notes,
   restSeconds,
   supersetVisual,
@@ -248,6 +252,7 @@ export function ExerciseCard({
         visible={detailVisible}
         onDismiss={() => setDetailVisible(false)}
         repository={exerciseRepository}
+        workoutRepository={workoutRepository}
         exerciseId={exercise.id}
       />
 
