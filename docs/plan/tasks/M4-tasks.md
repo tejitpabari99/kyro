@@ -8,7 +8,7 @@ Task count: **12**
 
 ---
 
-### M4-01 — domain/records.ts + epley.ts: PR computation engine
+### M4-01 — domain/records.ts + epley.ts: PR computation engine [done]
 **Description:** The highest-risk pure logic: all record types, set records, trophy attribution, live-check evaluator.
 **How:** `domain/epley.ts`: `1RM = w × (1 + reps/30)`, only 1 ≤ reps ≤ 10, reps=1 → w (P5). `domain/records.ts` over `HistoricalSet[]`: record types per 04 §5.1 (Heaviest Weight, Best Est. 1RM, Best Set Volume, Most Reps, Longest Duration, Set Records per rep count 1–10 + "10+" bucket); eligibility — checked non-warm-up only, failure/dropset eligible, weight 0 excluded from weight records, reps/duration 0 excluded everywhere; bodyweight uses **added** weight, assisted excluded from Heaviest/volume records (least-assistance informational min); strictly-greater beats, kg comparisons with 0.001 tolerance. Trophy attribution: set holds trophy for type R iff it strictly beats best of R among all **earlier** sets (workout start_time, then set order) — 04 §5.2. Live-check evaluator: baseline = completed history + current session's already-checked sets (04 §5.5); uncheck removes contribution.
 **References:** 04 §5.1–5.3, §5.5; 00 P5/P10; 05 §1 (derived, never stored).
