@@ -54,7 +54,7 @@ import { NoteEditSheet } from './NoteEditSheet';
 import { NoteText } from './NoteText';
 import { formatRestSeconds, type RestSeconds } from './rest-timer-format';
 import { RestTimerSheet } from './RestTimerSheet';
-import { useActiveWorkoutStore } from './activeWorkoutStore';
+import { useWorkoutStore } from './workoutStoreContext';
 
 export interface ExerciseCardProps {
   workoutExerciseId: string;
@@ -73,6 +73,8 @@ export interface ExerciseCardProps {
   routineId: string | null;
   /** M3-05: threaded straight through to `ExerciseSetTableSection` — see that file's own doc comment. */
   getRoutineFull?: (routineId: string) => Promise<RoutineFull | null>;
+  /** M4-05: threaded straight through to `ExerciseSetTableSection` — see that file's own doc comment. */
+  previousSetsExcludeWorkoutId?: string;
   onReorderPress: () => void;
   onReplacePress: (workoutExerciseId: string) => void;
   onAddToSupersetPress: (workoutExerciseId: string) => void;
@@ -96,6 +98,7 @@ export function ExerciseCard({
   previousValuesMode,
   routineId,
   getRoutineFull,
+  previousSetsExcludeWorkoutId,
   onReorderPress,
   onReplacePress,
   onAddToSupersetPress,
@@ -105,6 +108,7 @@ export function ExerciseCard({
 }: ExerciseCardProps): React.JSX.Element {
   const isGrouped = supersetVisual != null;
   const { colors, typography, spacing } = useTheme();
+  const workoutStore = useWorkoutStore();
 
   const [menuVisible, setMenuVisible] = useState(false);
   const [detailVisible, setDetailVisible] = useState(false);
@@ -113,21 +117,19 @@ export function ExerciseCard({
   const [warmUpSheetVisible, setWarmUpSheetVisible] = useState(false);
 
   const handleAddSet = (): void => {
-    void useActiveWorkoutStore.getState().addSet(workoutExerciseId);
+    void workoutStore.getState().addSet(workoutExerciseId);
   };
 
   const handleSaveNote = (nextNote: string | null): void => {
-    void useActiveWorkoutStore.getState().updateExercise(workoutExerciseId, { notes: nextNote });
+    void workoutStore.getState().updateExercise(workoutExerciseId, { notes: nextNote });
   };
 
   const handleSaveRestSeconds = (nextRestSeconds: RestSeconds): void => {
-    void useActiveWorkoutStore
-      .getState()
-      .updateExercise(workoutExerciseId, { restSeconds: nextRestSeconds });
+    void workoutStore.getState().updateExercise(workoutExerciseId, { restSeconds: nextRestSeconds });
   };
 
   const handleRemoveFromSuperset = (): void => {
-    void useActiveWorkoutStore.getState().removeFromSuperset(workoutExerciseId);
+    void workoutStore.getState().removeFromSuperset(workoutExerciseId);
   };
 
   const handleAddWarmUpSets = (): void => {
@@ -213,6 +215,7 @@ export function ExerciseCard({
         previousValuesMode={previousValuesMode}
         routineId={routineId}
         getRoutineFull={getRoutineFull}
+        previousSetsExcludeWorkoutId={previousSetsExcludeWorkoutId}
         onSetChecked={onSetChecked}
       />
 
@@ -274,6 +277,7 @@ export function ExerciseCard({
         weightUnit={weightUnit}
         previousValuesMode={previousValuesMode}
         routineId={routineId}
+        previousSetsExcludeWorkoutId={previousSetsExcludeWorkoutId}
       />
     </Card>
   );

@@ -181,6 +181,54 @@ export type UpdateMetaInput = Partial<{
 }>;
 
 /**
+ * `WorkoutRepository.update`'s full-content-replace input (M4-05, 02 §15 /
+ * 08 §4.9's "edit past workout: replace-content update"; 05 §6's own listing:
+ * `update(id: string, full: WorkoutFull): Promise<void>` — this shape is that
+ * signature's "verbatim, simplified" reading (05 §6's own header licenses
+ * this): every exercise/set here is a *complete* target row, not a sparse
+ * patch like {@link UpdateSetInput}/{@link UpdateExerciseInput} (no
+ * undefined-means-unchanged convention — the whole `exercises` array
+ * replaces the workout's current `workout_exercises`/`sets` content
+ * wholesale, in one transaction). `title`/`description`/`startTime`/
+ * `endTime`/`durationPauseOffsetMs` mirror {@link UpdateMetaInput}'s fields
+ * but, unlike that patch type, are all required here too — same "full
+ * snapshot, not a sparse patch" reasoning. Deliberately excludes `state` and
+ * `routineId`: `update` never flips a workout's `state` (it stays whatever
+ * it already was — always `'completed'` in practice, since this is the
+ * past-workout editor's own save path) and never reassigns which routine (if
+ * any) it was started from.
+ */
+export interface WorkoutUpdateInput {
+  title: string;
+  description: string | null;
+  startTime: number;
+  endTime: number | null;
+  durationPauseOffsetMs: number;
+  exercises: WorkoutUpdateExerciseInput[];
+}
+
+/** One target exercise row within {@link WorkoutUpdateInput} — see that type's own doc comment. `routineOccurrenceIndex` is deliberately not a field here: `WorkoutRepositoryImpl.update` always resets it (and every set's `routineSetPosition`) to `NULL` on the rows it (re)inserts — a wholesale content edit severs the fine-grained "which routine occurrence" tracking those two columns exist for (M3-05/M3-06's own review-fix write-ups), which only matters for resolving a *target* placeholder during live routine-started logging, never for an edit session where every value is already a real, entered number, not a target. */
+export interface WorkoutUpdateExerciseInput {
+  exerciseId: string;
+  supersetId: number | null;
+  notes: string | null;
+  restSeconds: number | null;
+  sets: WorkoutUpdateSetInput[];
+}
+
+/** One target set row within {@link WorkoutUpdateExerciseInput}. */
+export interface WorkoutUpdateSetInput {
+  setType: SetType;
+  weightKg: number | null;
+  reps: number | null;
+  distanceMeters: number | null;
+  durationSeconds: number | null;
+  rpe: Rpe | null;
+  customMetric: number | null;
+  isCompleted: boolean;
+}
+
+/**
  * `WorkoutRepository.previousSets`'s query options. 05 §6 lists this as
  * `{routineId?; beforeWorkoutId?}` ("verbatim signatures, simplified" per
  * that section's own header) — `occurrenceIndex` is an intentional addition
@@ -287,6 +335,29 @@ export interface WorkoutRepositoryLifecycle {
   getFull(id: string): Promise<WorkoutFull | null>;
   listCompleted(page?: ListCompletedPage): Promise<WorkoutSummary[]>;
   softDelete(id: string): Promise<void>;
+  /**
+   * `WorkoutRepository.update` (M4-05, 02 §15 / 08 §4.9) — the past-workout
+   * editor's own Save action: a full-content, one-transaction replace of
+   * `id`'s `workout_exercises`/`sets` rows from {@link WorkoutUpdateInput
+   * .exercises} (every existing row for this workout is deleted — cascading
+   * to `sets` per the `ON DELETE CASCADE` FK, `schema.ts` — then fresh rows
+   * are inserted in the given order, fresh ids, `routine_occurrence_index`/
+   * `routine_set_position` both `NULL` on every one, see that type's own doc
+   * comment), plus the meta fields (`title`/`description`/`startTime`/
+   * `endTime`/`durationPauseOffsetMs`) applied verbatim. Always bumps
+   * `updated_at` to "now" — the one non-negotiable side effect callers rely
+   * on for cache-invalidation watermarking (`exerciseHistoryWatermark`'s own
+   * doc comment names this exact method as one of the mutations that must
+   * always move it). Never touches `state`/`routine_id`/`created_at`.
+   * Throws `WorkoutNotFoundError` when `id` doesn't resolve to a
+   * (non-soft-deleted) `workouts` row — mirrors every other id-keyed
+   * mutator's own guard (`updateMeta`, `finish`, …). Deliberately **not**
+   * gated to `state === 'completed'` (same permissive posture `updateMeta`
+   * already has) — the only real caller (`EditWorkoutScreen`, M4-05) only
+   * ever invokes this against a completed workout in practice, but nothing
+   * about the SQL itself needs a state check to be correct.
+   */
+  update(id: string, input: WorkoutUpdateInput): Promise<WorkoutFull>;
 }
 
 /** M2-02's slice of the workout repository interface — granular mutators + `previousSets`. See {@link WorkoutRepositoryLifecycle}'s header for why this is split out. */

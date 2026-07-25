@@ -141,6 +141,148 @@ describe('activeWorkoutStore (M2-03)', () => {
   });
 
   // -----------------------------------------------------------------------
+  // loadForEdit (M4-05, 02 §15) — the past-workout editor's own load path.
+  // -----------------------------------------------------------------------
+
+  describe('loadForEdit (M4-05)', () => {
+    it('loads an arbitrary already-completed workout by id, without going through getActive()', async () => {
+      const [we] = await repository.addExercises((await repository.startEmpty({ title: 'W', startTime: 1 })).id, [
+        { exerciseId: benchId },
+      ]);
+      await repository.updateSet(we!.sets[0]!.id, { weightKg: 100, reps: 5 });
+      await repository.setCompleted(we!.sets[0]!.id, true);
+      const finished = await repository.finish((await repository.getActive())!.id);
+      expect(finished.state).toBe('completed');
+
+      const loaded = await store.getState().loadForEdit(repository, finished.id);
+
+      expect(loaded?.id).toBe(finished.id);
+      expect(store.getState().workout?.id).toBe(finished.id);
+      expect(store.getState().workout?.state).toBe('completed');
+      expect(store.getState().loaded).toBe(true);
+    });
+
+    it('resolves null and leaves workout null for an unknown workout id', async () => {
+      const loaded = await store.getState().loadForEdit(repository, 'does-not-exist');
+      expect(loaded).toBeNull();
+      expect(store.getState().workout).toBeNull();
+      expect(store.getState().loaded).toBe(true);
+    });
+
+    it('resolves null for a soft-deleted workout id', async () => {
+      const created = await repository.startEmpty({ title: 'W', startTime: 1 });
+      const finished = await repository.finish(created.id);
+      await repository.softDelete(finished.id);
+
+      const loaded = await store.getState().loadForEdit(repository, finished.id);
+      expect(loaded).toBeNull();
+    });
+
+    it("granular mutators (updateSet, setCompleted, addSet, removeExercise) all work against the loaded completed workout", async () => {
+      const active = await repository.startEmpty({ title: 'W', startTime: 1 });
+      const [we] = await repository.addExercises(active.id, [{ exerciseId: benchId }]);
+      const setId = we!.sets[0]!.id;
+      await repository.updateSet(setId, { weightKg: 60, reps: 8 });
+      await repository.setCompleted(setId, true);
+      const finished = await repository.finish(active.id);
+
+      await store.getState().loadForEdit(repository, finished.id);
+      const editedSetId = store.getState().workout!.exercises[0]!.sets[0]!.id;
+
+      await store.getState().updateSet(editedSetId, { weightKg: 65 });
+      expect(store.getState().workout!.exercises[0]!.sets[0]!.weightKg).toBe(65);
+      expect(rawSet(driver, editedSetId)).toMatchObject({ weight_kg: 65 });
+
+      const addedSet = await store.getState().addSet(store.getState().workout!.exercises[0]!.id);
+      expect(addedSet).not.toBeNull();
+      expect(store.getState().workout!.exercises[0]!.sets).toHaveLength(2);
+
+      // The workout's own `state` never flips away from 'completed' as a
+      // side effect of any of these mutators (none of them touch `state` at
+      // all — this just proves it end-to-end for the edit path specifically).
+      expect(rawWorkout(driver, finished.id)).toMatchObject({ state: 'completed' });
+    });
+
+    it("editing a past workout via loadForEdit's own store instance never disturbs a separately-active workout (one-active invariant preserved)", async () => {
+      // Build the already-completed past workout FIRST, while nothing is
+      // active yet (the one-active-workout invariant would otherwise reject
+      // a second `startEmpty` below).
+      const pastActive = await repository.startEmpty({ title: 'Past', startTime: 1_000 });
+      const [pastWe] = await repository.addExercises(pastActive.id, [{ exerciseId: benchId }]);
+      await repository.updateSet(pastWe!.sets[0]!.id, { weightKg: 50, reps: 10 });
+      await repository.setCompleted(pastWe!.sets[0]!.id, true);
+      const pastFinished = await repository.finish(pastActive.id);
+
+      // NOW a genuinely active workout, driven through a *second*,
+      // independent store instance — mirrors the real app shape: the live
+      // logger's own singleton vs. `EditWorkoutScreen`'s own instance.
+      const liveStore = createActiveWorkoutStore();
+      await liveStore.getState().rehydrate(repository);
+      const active = await liveStore.getState().startEmpty({ title: 'Live session', startTime: 5_000 });
+      expect(active).not.toBeNull();
+
+      // Edited through `store` (this describe block's own instance) via
+      // `loadForEdit`, concurrently with `active` still being live.
+      await store.getState().loadForEdit(repository, pastFinished.id);
+      await store.getState().updateMeta({ title: 'Edited past workout' });
+      await store.getState().updateSet(store.getState().workout!.exercises[0]!.sets[0]!.id, { weightKg: 55 });
+
+      // The live logger's own store/DB state is completely unaffected.
+      expect(liveStore.getState().workout?.id).toBe(active!.id);
+      expect(liveStore.getState().workout?.state).toBe('active');
+      const stillActive = await repository.getActive();
+      expect(stillActive?.id).toBe(active!.id);
+
+      // The edited workout stays 'completed' throughout — it was never
+      // flipped to 'active' by any of the edit-session mutators.
+      expect(rawWorkout(driver, pastFinished.id)).toMatchObject({
+        state: 'completed',
+        title: 'Edited past workout',
+      });
+
+      // The real invariant enforcement (the unique index / pre-check) is
+      // still intact — a genuine second startEmpty still correctly rejects.
+      await expect(
+        repository.startEmpty({ title: 'Should fail', startTime: 9_000 }),
+      ).rejects.toThrow(/already exists/);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Retro-log mode lands on the chosen day (M4-05, 02 §1/§15)
+  // -----------------------------------------------------------------------
+
+  describe('retro-mode logging lands on the chosen day', () => {
+    it('startEmpty with a chosen retro start time, then finish(), produces a workout dated on that chosen day', async () => {
+      await store.getState().rehydrate(repository);
+
+      // "Chosen date 12:00" (02 §1) for a day distinct from "now" — 15 Mar
+      // 2024, local noon.
+      const chosenDate = new Date(2024, 2, 15, 12, 0, 0, 0);
+      const retroStartTime = chosenDate.getTime();
+
+      const started = await store.getState().startEmpty({ title: 'Retro workout', startTime: retroStartTime });
+      expect(started!.startTime).toBe(retroStartTime);
+
+      const finished = await store.getState().finish();
+      expect(finished).not.toBeNull();
+      expect(finished!.startTime).toBe(retroStartTime);
+
+      const landedDate = new Date(finished!.startTime);
+      expect(landedDate.getFullYear()).toBe(2024);
+      expect(landedDate.getMonth()).toBe(2);
+      expect(landedDate.getDate()).toBe(15);
+      expect(landedDate.getHours()).toBe(12);
+
+      // Persisted, not just in the in-memory draft.
+      expect(rawWorkout(driver, finished!.id)).toMatchObject({
+        start_time: retroStartTime,
+        state: 'completed',
+      });
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // Lifecycle
   // -----------------------------------------------------------------------
 

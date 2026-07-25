@@ -51,7 +51,7 @@
  *      a next-row-same-exercise dropset suppress it. Then (M4-10, 04 §5.5):
  *      the live-PR check — `RecordsService.evaluateLive`, fed this exercise's
  *      cached history baseline plus this session's own already-checked sets
- *      (in `useActiveWorkoutStore.getState()` order, which needs no separate
+ *      (in `workoutStore.getState()` order, which needs no separate
  *      "check order" bookkeeping — see that call site's own comment); any
  *      newly-earned award fires `successPR()` and shows `PRBanner` via
  *      `prBannerStore`, gated on the `live_pr_banner` setting. Then (M2-12):
@@ -118,12 +118,13 @@ import { ListRow } from '@/ui/ListRow';
 import { Sheet } from '@/ui/Sheet';
 import { SetRow, type SetBadgeKind } from '@/ui/SetRow';
 
-import { selectWorkoutSet, useActiveWorkoutStore } from './activeWorkoutStore';
+import { selectWorkoutSet } from './activeWorkoutStore';
 import { DurationTimerSheet } from './DurationTimerSheet';
 import { KEYBOARD_ACCESSORY_VIEW_ID, useKeyboardFocusStore } from './keyboardFocusStore';
 import { usePRBannerStore } from './prBannerStore';
 import { formatPRBannerMessage } from './records-provider';
 import { shouldStartRestTimer, useRestTimerStore } from './restTimerStore';
+import { useIsEditWorkoutMode, useWorkoutStore } from './workoutStoreContext';
 
 export interface ConnectedSetRowProps {
   setId: string;
@@ -260,7 +261,9 @@ function ConnectedSetRowImpl({
   onChecked,
   testID,
 }: ConnectedSetRowProps): React.JSX.Element | null {
-  const set = useActiveWorkoutStore(selectWorkoutSet(setId));
+  const workoutStore = useWorkoutStore();
+  const isEditMode = useIsEditWorkoutMode();
+  const set = workoutStore(selectWorkoutSet(setId));
   const inlineTimerEnabled = useSettingsStore((state) => state.settings.inline_timer);
   const [menuVisible, setMenuVisible] = useState(false);
   const [rpeSheetVisible, setRpeSheetVisible] = useState(false);
@@ -370,7 +373,7 @@ function ConnectedSetRowImpl({
                     }));
                     const patch: UpdateSetInput = {};
                     writeCanonical(patch, column.key, value);
-                    void useActiveWorkoutStore.getState().updateSet(setId, patch);
+                    void workoutStore.getState().updateSet(setId, patch);
                   },
                 }
               : {}),
@@ -381,7 +384,7 @@ function ConnectedSetRowImpl({
       };
     });
     return map;
-  }, [inputColumns, setId, exercisePosition, setNumber]);
+  }, [inputColumns, setId, exercisePosition, setNumber, workoutStore]);
 
   if (!set) {
     return null;
@@ -411,7 +414,7 @@ function ConnectedSetRowImpl({
     const canonical = parseCellValue(column.kind, values[columnKey] ?? '', units);
     const patch: UpdateSetInput = {};
     writeCanonical(patch, columnKey, canonical);
-    void useActiveWorkoutStore.getState().updateSet(setId, patch);
+    void workoutStore.getState().updateSet(setId, patch);
     // M2-08: a real blur (as opposed to `focusNext` calling the *next*
     // field's `.focus()`, whose resulting blur on this one arrives after
     // the store already recorded the new field as focused) clears this
@@ -454,7 +457,7 @@ function ConnectedSetRowImpl({
     setValues((prev) => ({ ...prev, [columnKey]: formatCellValue(column.kind, seconds, units) }));
     const patch: UpdateSetInput = {};
     writeCanonical(patch, columnKey, seconds);
-    void useActiveWorkoutStore.getState().updateSet(setId, patch);
+    void workoutStore.getState().updateSet(setId, patch);
   };
 
   const handlePreviousPress = (): void => {
@@ -483,7 +486,7 @@ function ConnectedSetRowImpl({
       writeCanonical(patch, column.key, canonical);
     }
     setValues(nextValues);
-    void useActiveWorkoutStore.getState().updateSet(setId, patch);
+    void workoutStore.getState().updateSet(setId, patch);
   };
 
   const handleToggleCompleted = (): void => {
@@ -497,7 +500,7 @@ function ConnectedSetRowImpl({
       // a no-op if the currently running timer (if any) belongs to a
       // different set, matching "cancels its own timer only."
       void useRestTimerStore.getState().cancelForSet(setId);
-      void useActiveWorkoutStore.getState().setCompleted(setId, false);
+      void workoutStore.getState().setCompleted(setId, false);
       return;
     }
 
@@ -546,8 +549,8 @@ function ConnectedSetRowImpl({
     // `updateSet`'s own optimistic `set()` call runs synchronously before
     // its first `await`, so `setCompleted` below reads the already-patched
     // draft via `get()` even without awaiting `updateSet` first.
-    void useActiveWorkoutStore.getState().updateSet(setId, patch);
-    void useActiveWorkoutStore.getState().setCompleted(setId, true);
+    void workoutStore.getState().updateSet(setId, patch);
+    void workoutStore.getState().setCompleted(setId, true);
 
     // 02 §4 / 07 §8: successful check → impactLight haptic. Counters
     // (volume/checked-set count) update for free, same live-derivation as
@@ -559,7 +562,15 @@ function ConnectedSetRowImpl({
     void playSetCheckChime(sounds.set_check_volume);
     // M2-10: start this exercise's rest timer unless the timer setting is
     // Off or the next row (same exercise, next index) is a drop set (02 §7).
-    if (shouldStartRestTimer({ restSeconds, nextSetType })) {
+    // M4-05 (02 §15: "no rest timers"): the past-workout editor never starts
+    // one at all, regardless of the setting/next-row shape — `isEditMode`
+    // short-circuits before `shouldStartRestTimer` is even evaluated. This
+    // also protects the *real* active workout's own rest timer from ever
+    // being hijacked by an edit session running concurrently: `restTimerStore`
+    // is a single app-wide singleton (unlike `workoutStore`, which the editor
+    // gets its own instance of via context), so it must never be started
+    // from here while editing a different, past workout.
+    if (!isEditMode && shouldStartRestTimer({ restSeconds, nextSetType })) {
       const { rest_notifications_enabled: notificationsEnabled } =
         useSettingsStore.getState().settings;
       void useRestTimerStore.getState().start({
@@ -581,7 +592,7 @@ function ConnectedSetRowImpl({
     // plus this session's own already-checked sets for this exercise —
     // across every workout-exercise row sharing this same library
     // `exerciseId` (a duplicated exercise within one workout), not just this
-    // row's own exercise instance. Reads `useActiveWorkoutStore.getState()`
+    // row's own exercise instance. Reads `workoutStore.getState()`
     // (not a closed-over `set`) for the same reason `setCompleted` above
     // does: `updateSet`'s optimistic `set()` call already applied
     // synchronously, so the store's current state already reflects this
@@ -592,7 +603,7 @@ function ConnectedSetRowImpl({
     // (most of this file's own test suite doesn't configure it).
     if (useSettingsStore.getState().settings.live_pr_banner) {
       const service = tryGetRecordsService();
-      const currentWorkout = service ? useActiveWorkoutStore.getState().workout : null;
+      const currentWorkout = service ? workoutStore.getState().workout : null;
       if (service && currentWorkout) {
         const toHistoricalSet = (s: WorkoutSet): HistoricalSet => ({
           setId: s.id,
@@ -636,7 +647,7 @@ function ConnectedSetRowImpl({
 
   const handleSelectSetType = (type: SetType): void => {
     setMenuVisible(false);
-    void useActiveWorkoutStore.getState().setSetType(setId, type);
+    void workoutStore.getState().setSetType(setId, type);
   };
 
   const handleRpePress = (): void => {
@@ -647,14 +658,14 @@ function ConnectedSetRowImpl({
     setRpeSheetVisible(false);
     const patch: UpdateSetInput = {};
     writeCanonical(patch, 'rpe', value);
-    void useActiveWorkoutStore.getState().updateSet(setId, patch);
+    void workoutStore.getState().updateSet(setId, patch);
   };
 
   const handleClearRpe = (): void => {
     setRpeSheetVisible(false);
     const patch: UpdateSetInput = {};
     writeCanonical(patch, 'rpe', null);
-    void useActiveWorkoutStore.getState().updateSet(setId, patch);
+    void workoutStore.getState().updateSet(setId, patch);
   };
 
   const handleRemove = (): void => {
@@ -665,14 +676,14 @@ function ConnectedSetRowImpl({
     // discard/finish paths already honor. No-op if the running timer (if
     // any) belongs to a different set.
     void useRestTimerStore.getState().cancelForSet(setId);
-    void useActiveWorkoutStore.getState().removeSet(setId);
+    void workoutStore.getState().removeSet(setId);
   };
 
   const handleDelete = (): void => {
     // Swipe-delete — same rest-timer-cancellation contract as `handleRemove`
     // above (M2-19 §3.3 follow-up).
     void useRestTimerStore.getState().cancelForSet(setId);
-    void useActiveWorkoutStore.getState().removeSet(setId);
+    void workoutStore.getState().removeSet(setId);
   };
 
   return (
