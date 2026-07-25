@@ -254,6 +254,31 @@ export interface WorkoutRepositoryLifecycle {
    * doesn't resolve to a `routines` row.
    */
   startFromRoutine(routineId: string): Promise<WorkoutFull>;
+  /**
+   * M3-07 (02 §1: "Repeat Workout — same as routine start but sourced from
+   * a past workout"): creates an active workout pre-populated from
+   * `sourceWorkoutId`'s own current structure — exercises in position
+   * order (`exerciseId`/`supersetId`/`notes`/`restSeconds` copied
+   * verbatim), each exercise's surviving `sets` copied as bare
+   * **unchecked** rows (`setType`/`position` only — every value field
+   * `NULL`, the identical "targets are a live-render concern, never baked
+   * onto `sets`" convention {@link startFromRoutine} already established).
+   * `title`/`description` copied from the source workout's own
+   * `title`/`description`. **`routine_id` is always `NULL`** on the new
+   * workout — a repeat is sourced from a workout, not a routine, so there
+   * is no routine to record (a deliberate scope choice, documented in
+   * `workout-repository.ts`'s header). Placeholders showing the source
+   * workout's own achieved values need no special wiring here: with
+   * `routineId` null, `ExerciseSetTableSection`'s PREVIOUS lookup always
+   * runs in any_workout mode, which naturally resolves to the source
+   * workout (the most recent completed workout containing each exercise)
+   * — see that file's own `previousSets` query condition. Same one-active-
+   * workout invariant as `startEmpty`/`startFromRoutine` (throws
+   * {@link ActiveWorkoutExistsError}); throws `WorkoutNotFoundError`
+   * (`./errors.ts`) when `sourceWorkoutId` doesn't resolve to a
+   * (non-soft-deleted) `workouts` row.
+   */
+  startFromWorkout(sourceWorkoutId: string): Promise<WorkoutFull>;
   discard(id: string): Promise<void>;
   finish(id: string, meta?: FinishMeta): Promise<WorkoutFull>;
   getFull(id: string): Promise<WorkoutFull | null>;

@@ -101,6 +101,24 @@ describe('/workout/active route', () => {
     expect(props.routineId).toBe('some-routine-id');
   });
 
+  it('parses a repeatWorkoutId query param through to the screen (M3-07)', async () => {
+    await renderRouter('app', { initialUrl: '/workout/active?repeatWorkoutId=some-workout-id' });
+
+    expect(mockActiveWorkoutScreen).toHaveBeenCalled();
+    const lastCall = mockActiveWorkoutScreen.mock.calls[mockActiveWorkoutScreen.mock.calls.length - 1]!;
+    const props = lastCall[0] as { repeatWorkoutId: string | undefined };
+    expect(props.repeatWorkoutId).toBe('some-workout-id');
+  });
+
+  it('leaves repeatWorkoutId undefined when no query param is given', async () => {
+    await renderRouter('app', { initialUrl: '/workout/active' });
+
+    expect(mockActiveWorkoutScreen).toHaveBeenCalled();
+    const lastCall = mockActiveWorkoutScreen.mock.calls[mockActiveWorkoutScreen.mock.calls.length - 1]!;
+    const props = lastCall[0] as { repeatWorkoutId: string | undefined };
+    expect(props.repeatWorkoutId).toBeUndefined();
+  });
+
   it('parses retro=1 and a numeric startTime query param through to the screen', async () => {
     await renderRouter('app', { initialUrl: '/workout/active?retro=1&startTime=1700000000000' });
 

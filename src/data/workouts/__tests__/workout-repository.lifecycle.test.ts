@@ -13,6 +13,7 @@
  * used for `workouts`/`workout_exercises` before `WorkoutRepository` existed
  * at all.
  */
+import { ExerciseRepositoryImpl } from '../../exercises/exercise-repository';
 import { RoutineRepositoryImpl } from '../../routines/routine-repository';
 import { openBetterSqlite3Driver } from '../../sqlite/driver.better-sqlite3';
 import { migrate } from '../../sqlite/migrator';
@@ -240,6 +241,206 @@ describe('WorkoutRepositoryImpl — lifecycle (M2-01 integration, better-sqlite3
         ActiveWorkoutExistsError,
       );
       expect((await repo.getActive())!.id).toBe(first.id);
+    });
+
+    // M3-07 (03 §5): archived custom exercises stay startable/loggable — they
+    // only disappear from the *picker* for new adds, per that section's own
+    // text. `startFromRoutine` copies `routine_exercises.exercise_id`
+    // verbatim with no join/validation against `exercises.archived_at` at
+    // all (confirmed by reading the method's own SQL above), so this is a
+    // pure regression-proof test, not a code change.
+    it('a routine containing an archived custom exercise still starts successfully (03 §5)', async () => {
+      const exerciseRepo = new ExerciseRepositoryImpl(driver);
+      const customExercise = await exerciseRepo.create({
+        name: 'Cable Crunch',
+        exerciseType: 'weight_reps',
+        primaryMuscleGroup: 'abdominals',
+      });
+      await exerciseRepo.archive(customExercise.id);
+
+      const routine = await routineRepo.create({
+        title: 'Core Day',
+        exercises: [
+          {
+            exerciseId: customExercise.id,
+            sets: [{ setType: 'normal', weightKg: 20, reps: 15 }],
+          },
+        ],
+      });
+
+      const workout = await repo.startFromRoutine(routine.id);
+
+      expect(workout.state).toBe('active');
+      expect(workout.exercises).toHaveLength(1);
+      expect(workout.exercises[0]!.exerciseId).toBe(customExercise.id);
+      expect(workout.exercises[0]!.sets).toHaveLength(1);
+      expect(workout.exercises[0]!.sets[0]!.isCompleted).toBe(false);
+
+      // The exercise itself is confirmed still archived (the routine-start
+      // didn't accidentally un-archive it, and archiving didn't block the
+      // start) — belt-and-suspenders against a silent join filtering it.
+      // `get` is a plain id-keyed lookup with no archived-exclusion filter
+      // (that only applies to `list`'s default), so it resolves regardless.
+      const stillArchived = await exerciseRepo.get(customExercise.id);
+      expect(stillArchived?.archivedAt).not.toBeNull();
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // startFromWorkout (M3-07, 02 §1: "Repeat Workout")
+  // -------------------------------------------------------------------
+  describe('startFromWorkout', () => {
+    /** Raw-SQL fixture for a completed source workout, mirroring `startFromRoutine`'s own repo-built fixtures — there is no public repository method to insert an already-completed workout directly (`finish()` requires an active one first). */
+    function insertCompletedSourceWorkout(
+      id: string,
+      opts: { title?: string; description?: string | null; routineId?: string | null } = {},
+    ): void {
+      const now = Date.now();
+      driver.execute(
+        `INSERT INTO workouts (id, title, description, routine_id, state, start_time, end_time, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'completed', ?, ?, ?, ?)`,
+        [
+          id,
+          opts.title ?? 'Fixture Workout',
+          opts.description ?? null,
+          opts.routineId ?? null,
+          now - 10_000,
+          now - 5_000,
+          now - 10_000,
+          now - 5_000,
+        ],
+      );
+    }
+
+    function insertSourceExercise(
+      workoutId: string,
+      id: string,
+      exerciseId: string,
+      position: number,
+      opts: { supersetId?: number | null; notes?: string | null; restSeconds?: number | null } = {},
+    ): void {
+      driver.execute(
+        `INSERT INTO workout_exercises (id, workout_id, exercise_id, position, superset_id, notes, rest_seconds)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [id, workoutId, exerciseId, position, opts.supersetId ?? null, opts.notes ?? null, opts.restSeconds ?? null],
+      );
+    }
+
+    function insertSourceSet(
+      workoutExerciseId: string,
+      id: string,
+      position: number,
+      opts: { setType?: string; weightKg?: number | null; reps?: number | null } = {},
+    ): void {
+      driver.execute(
+        `INSERT INTO sets (id, workout_exercise_id, position, set_type, weight_kg, reps, is_completed)
+         VALUES (?, ?, ?, ?, ?, ?, 1)`,
+        [id, workoutExerciseId, position, opts.setType ?? 'normal', opts.weightKg ?? null, opts.reps ?? null],
+      );
+    }
+
+    it('reproduces structure incl. supersets, rest timers, and notes; sets unchecked with no baked values; routine_id null; title/description copied', async () => {
+      insertCompletedSourceWorkout('source-1', { title: 'Push Day', description: 'Warm up shoulders first.' });
+      insertSourceExercise('source-1', 'src-we-1', benchId, 0, {
+        supersetId: 5,
+        notes: 'Slow eccentric',
+        restSeconds: 120,
+      });
+      insertSourceSet('src-we-1', 'src-set-1', 0, { setType: 'warmup', weightKg: 20, reps: 10 });
+      insertSourceSet('src-we-1', 'src-set-2', 1, { weightKg: 60, reps: 8 });
+      insertSourceExercise('source-1', 'src-we-2', squatId, 1, { supersetId: 5, restSeconds: 90 });
+      insertSourceSet('src-we-2', 'src-set-3', 0, { weightKg: 100, reps: 5 });
+
+      const workout = await repo.startFromWorkout('source-1');
+
+      expect(workout.state).toBe('active');
+      expect(workout.routineId).toBeNull();
+      expect(workout.title).toBe('Push Day');
+      expect(workout.description).toBe('Warm up shoulders first.');
+      expect(workout.exercises).toHaveLength(2);
+
+      const [bench, squat] = workout.exercises;
+      expect(bench!.exerciseId).toBe(benchId);
+      expect(bench!.position).toBe(0);
+      expect(bench!.supersetId).toBe(5);
+      expect(bench!.notes).toBe('Slow eccentric');
+      expect(bench!.restSeconds).toBe(120);
+      expect(bench!.sets).toHaveLength(2);
+      expect(bench!.sets.map((s) => s.setType)).toEqual(['warmup', 'normal']);
+      expect(bench!.sets.map((s) => s.position)).toEqual([0, 1]);
+      for (const s of bench!.sets) {
+        expect(s.isCompleted).toBe(false);
+        expect(s.weightKg).toBeNull();
+        expect(s.reps).toBeNull();
+      }
+
+      expect(squat!.exerciseId).toBe(squatId);
+      expect(squat!.position).toBe(1);
+      expect(squat!.supersetId).toBe(5);
+      expect(squat!.restSeconds).toBe(90);
+      expect(squat!.sets).toHaveLength(1);
+    });
+
+    it('description is null when the source workout has none', async () => {
+      insertCompletedSourceWorkout('source-2', { title: 'No Notes' });
+      const workout = await repo.startFromWorkout('source-2');
+      expect(workout.description).toBeNull();
+    });
+
+    it('supports a source workout with no exercises', async () => {
+      insertCompletedSourceWorkout('source-3', { title: 'Empty Workout' });
+      const workout = await repo.startFromWorkout('source-3');
+      expect(workout.exercises).toEqual([]);
+      expect(workout.routineId).toBeNull();
+    });
+
+    it('does not carry over the source workout\'s own routineId — a repeat is always routineless (deliberate scope choice, see workout-repository.ts header)', async () => {
+      const routineRepo = new RoutineRepositoryImpl(driver);
+      const routine = await routineRepo.create({ title: 'Push Day' });
+      insertCompletedSourceWorkout('source-4', { title: 'Push Day', routineId: routine.id });
+
+      const workout = await repo.startFromWorkout('source-4');
+      expect(workout.routineId).toBeNull();
+    });
+
+    it('throws WorkoutNotFoundError for an unknown source workout id', async () => {
+      await expect(repo.startFromWorkout('does-not-exist')).rejects.toBeInstanceOf(WorkoutNotFoundError);
+      expect(await repo.getActive()).toBeNull();
+    });
+
+    it('throws WorkoutNotFoundError for a soft-deleted source workout', async () => {
+      insertCompletedSourceWorkout('source-5', { title: 'Deleted' });
+      await repo.softDelete('source-5');
+      await expect(repo.startFromWorkout('source-5')).rejects.toBeInstanceOf(WorkoutNotFoundError);
+    });
+
+    it('throws ActiveWorkoutExistsError when a workout is already active — does not bypass the one-active invariant', async () => {
+      insertCompletedSourceWorkout('source-6', { title: 'Push Day' });
+      const first = await repo.startFromWorkout('source-6');
+
+      await expect(repo.startFromWorkout('source-6')).rejects.toBeInstanceOf(ActiveWorkoutExistsError);
+      expect((await repo.getActive())!.id).toBe(first.id);
+    });
+
+    // 02 §1/§6 acceptance ("Repeat Workout pre-populates placeholders exactly
+    // like starting a routine does"): the new workout's `routineId` is null,
+    // so `previousSets` (any_workout mode — the exact mode
+    // `ExerciseSetTableSection`'s own PREVIOUS query falls back to whenever
+    // `routineId` is null, see `workout-repository.ts`'s M3-07 header)
+    // resolves the source workout's own achieved values with zero new
+    // plumbing — proving the "placeholder" acceptance criterion at the
+    // repository layer, the same layer M3-05's own routine-target tests
+    // already prove their half at.
+    it('placeholders: previousSets (any_workout mode) resolves the source workout\'s own achieved values for the new unchecked sets', async () => {
+      insertCompletedSourceWorkout('source-7', { title: 'Push Day' });
+      insertSourceExercise('source-7', 'src-we-7', benchId, 0);
+      insertSourceSet('src-we-7', 'src-set-7', 0, { weightKg: 60, reps: 8 });
+
+      await repo.startFromWorkout('source-7');
+
+      const previous = await repo.previousSets(benchId);
+      expect(previous).toHaveLength(1);
+      expect(previous[0]).toMatchObject({ weightKg: 60, reps: 8, isWarmup: false, bucketIndex: 0 });
     });
   });
 

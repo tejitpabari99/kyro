@@ -218,6 +218,47 @@
  * only have narrowed this bug, not closed it: that scheme is still
  * recomputed live from current row order, so a same-bucket skip reproduces
  * the identical shift.
+ *
+ * ## M3-07 addition -- startFromWorkout ("Repeat Workout", 02 par.1)
+ *
+ * Deliberately the leaner sibling of startFromRoutine above, not a
+ * verbatim copy padded with routine-only fields: reads
+ * workouts/workout_exercises/sets directly (raw SQL, same "don't take a
+ * sibling repository as a constructor dependency for three read-only
+ * SELECTs" reasoning startFromRoutine's own header already gives), copies
+ * exercise order/superset grouping/notes/rest timers verbatim, and every
+ * set as a bare unchecked row (setType/position only) -- identical shape
+ * to startFromRoutine's own set-copy. Three deliberate differences from
+ * startFromRoutine, each a judgment call documented here rather than
+ * silently decided:
+ *
+ * - **routine_id is always NULL** on the new workout, never copied from
+ *   the source workout's own routine_id even when it has one -- a repeat
+ *   is explicitly "sourced from a past workout" (02 par.1's own wording),
+ *   a different entry point from "Start Routine," and inheriting the
+ *   source's routine_id would silently make the M3-06 update-routine
+ *   prompt fire on finish for a workout the user never chose to start
+ *   from that routine.
+ * - **routine_occurrence_index/routine_set_position stay NULL** on every
+ *   new row (both columns' default) for the identical reason -- nothing
+ *   here came from a routine occurrence, so nothing should ever resolve a
+ *   routine target against these rows.
+ * - **No live "placeholder" plumbing needed at all** -- unlike
+ *   startFromRoutine, whose targets are resolved live via
+ *   workout.routineId + getRoutineFull (this file's own M3-05 note
+ *   above), a repeated workout has no persistent link back to its source
+ *   workout to resolve against later, and none is added (no schema
+ *   change, no new column) -- because none is needed: with routineId
+ *   null, ExerciseSetTableSection's own PREVIOUS query
+ *   (`previousValuesMode === 'same_routine' && routineId ? {routineId} :
+ *   undefined`) always falls through to `undefined` (any_workout mode)
+ *   for a repeated workout, and any_workout mode's own definition -- "the
+ *   single most recent completed workout containing this exerciseId" --
+ *   is *already* the source workout at the moment the repeat starts
+ *   (nothing more recent has finished yet). So the source workout's
+ *   achieved values surface as PREVIOUS placeholders through the exact
+ *   same, already-tested previousSets mechanism every non-routine workout
+ *   already uses, with zero new display-layer code.
  */
 import type { Rpe, SetType } from '@/domain/enums';
 
@@ -550,6 +591,89 @@ export class WorkoutRepositoryImpl implements WorkoutRepository {
               `INSERT INTO sets (id, workout_exercise_id, position, set_type, is_completed, routine_set_position)
                VALUES (?, ?, ?, ?, 0, ?)`,
               [setId, weId, setPosition, setTypes[setPosition], setPosition],
+            );
+          });
+        });
+      });
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new ActiveWorkoutExistsError(workoutId);
+      }
+      throw error;
+    }
+
+    return (await this.getFull(workoutId))!;
+  }
+
+  async startFromWorkout(sourceWorkoutId: string): Promise<WorkoutFull> {
+    const active = await this.getActive();
+    if (active) {
+      throw new ActiveWorkoutExistsError(active.id);
+    }
+
+    // Reuses the same `requireWorkoutRow` guard every other id-keyed lookup
+    // in this class uses (excludes soft-deleted rows, throws the shared
+    // `WorkoutNotFoundError` — see this file's header, "M3-07 addition").
+    const sourceRow = this.requireWorkoutRow(sourceWorkoutId);
+
+    const sourceExerciseRows = this.driver.queryAll<{
+      id: string;
+      exercise_id: string;
+      superset_id: number | null;
+      notes: string | null;
+      rest_seconds: number | null;
+    }>(
+      `SELECT id, exercise_id, superset_id, notes, rest_seconds
+       FROM workout_exercises WHERE workout_id = ? ORDER BY position ASC`,
+      [sourceWorkoutId],
+    );
+
+    const sourceSetRowsByExercise = sourceExerciseRows.map((we) =>
+      this.driver.queryAll<{ set_type: string }>(
+        `SELECT set_type FROM sets WHERE workout_exercise_id = ? ORDER BY position ASC`,
+        [we.id],
+      ),
+    );
+
+    // Ids first, before the sync transaction (file header's "Id generation"
+    // note) — `driver.transaction`'s callback is synchronous.
+    const workoutId = await generateUuid();
+    const prepared = await Promise.all(
+      sourceExerciseRows.map(async (we, index) => ({
+        weId: await generateUuid(),
+        we,
+        setTypes: sourceSetRowsByExercise[index]!.map((row) => row.set_type),
+        setIds: await Promise.all(sourceSetRowsByExercise[index]!.map(() => generateUuid())),
+      })),
+    );
+
+    const now = Date.now();
+    try {
+      this.driver.transaction(() => {
+        this.driver.execute(
+          `INSERT INTO workouts
+             (id, title, description, state, start_time, duration_pause_offset_ms, created_at, updated_at)
+           VALUES (?, ?, ?, 'active', ?, 0, ?, ?)`,
+          [workoutId, sourceRow.title, sourceRow.description, now, now, now],
+        );
+
+        // No `routine_occurrence_index`/`routine_set_position` pinned here
+        // (both stay `NULL`, their default) — this workout wasn't started
+        // from a routine, so nothing should ever resolve a routine target
+        // against these rows (mirrors `addExercises`'s own plain-add rows).
+        prepared.forEach(({ weId, we, setTypes, setIds }, position) => {
+          this.driver.execute(
+            `INSERT INTO workout_exercises
+               (id, workout_id, exercise_id, position, superset_id, notes, rest_seconds)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [weId, workoutId, we.exercise_id, position, we.superset_id, we.notes, we.rest_seconds],
+          );
+
+          setIds.forEach((setId, setPosition) => {
+            this.driver.execute(
+              `INSERT INTO sets (id, workout_exercise_id, position, set_type, is_completed)
+               VALUES (?, ?, ?, ?, 0)`,
+              [setId, weId, setPosition, setTypes[setPosition]],
             );
           });
         });

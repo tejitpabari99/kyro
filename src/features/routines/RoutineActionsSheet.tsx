@@ -12,6 +12,12 @@
  * doesn't call for icons on these six items, so a minimal bespoke row
  * (still built from `Sheet` + theme tokens, no new `src/ui/` primitive
  * needed for six lines of layout) is the simpler fit here.
+ *
+ * **M3-07 reuse:** `src/features/history/HistoryDetailScreen.tsx`'s new ⋯
+ * menu (Save as Routine / Repeat Workout) also renders through this same
+ * component — a third, cross-feature use of the identical generic
+ * `items`/`visible`/`onDismiss` shape, exactly the reuse this header's
+ * "generic list-of-actions component" framing already invited.
  */
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';

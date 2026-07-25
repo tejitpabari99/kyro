@@ -39,6 +39,15 @@
  * `updateRoutineFromWorkout` (M3-06, 02 §14.4 / 04 §2.4): the same
  * `routineRepository` instance's `updateFromWorkout` method, bound here —
  * the finish-flow's "Update routine" write-back.
+ *
+ * `repeatWorkoutId` query param (M3-07, 02 §1): `HistoryDetailScreen`'s
+ * "Repeat Workout" navigates here with
+ * `router.push('/workout/active?repeatWorkoutId=...')` — the same
+ * query-param convention as `routineId` above. No new repository
+ * construction needed for it: `ActiveWorkoutScreen`'s mount effect resolves
+ * `startFromWorkout` through `activeWorkoutStore`, which already holds a
+ * `WorkoutRepository` bound at boot (`app/_layout.tsx`'s `rehydrate` call),
+ * exactly how `startFromRoutine`/`startEmpty` are reached today.
  */
 import React, { useMemo } from 'react';
 import { useLocalSearchParams } from 'expo-router';
@@ -49,10 +58,11 @@ import { getAppDriver } from '@/data/sqlite/boot';
 import { ActiveWorkoutScreen } from '@/features/workout/ActiveWorkoutScreen';
 
 export default function ActiveWorkoutRoute(): React.JSX.Element {
-  const { retro, startTime, routineId } = useLocalSearchParams<{
+  const { retro, startTime, routineId, repeatWorkoutId } = useLocalSearchParams<{
     retro?: string;
     startTime?: string;
     routineId?: string;
+    repeatWorkoutId?: string;
   }>();
   const repository = useMemo(() => new ExerciseRepositoryImpl(getAppDriver()), []);
   const routineRepository = useMemo(() => new RoutineRepositoryImpl(getAppDriver()), []);
@@ -69,6 +79,7 @@ export default function ActiveWorkoutRoute(): React.JSX.Element {
           : undefined
       }
       routineId={routineId}
+      repeatWorkoutId={repeatWorkoutId}
       getRoutineFull={(id) => routineRepository.getFull(id)}
       updateRoutineFromWorkout={(id, workoutId) => routineRepository.updateFromWorkout(id, workoutId)}
     />

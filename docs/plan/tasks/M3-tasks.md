@@ -56,7 +56,7 @@ Task count: **8**
 **Acceptance / test gate:** Fixture-matrix unit tests: unchanged → no prompt; value change; structural change; in-range reps preserve range; decline leaves routine untouched (deep-equal). Integration through finish flow.
 **Est:** 1.5 d
 
-### M3-07 — Save as Routine, Repeat Workout, duplicate/delete flows
+### M3-07 — Save as Routine, Repeat Workout, duplicate/delete flows [done]
 **Description:** History-side routine entry points and remaining lifecycle glue.
 **How:** Workout detail ⋯ (minimal history from M2-14): `Save as Routine` (repo createFromWorkout → opens editor for confirm/rename), `Repeat Workout` (start active workout sourced from past workout, same semantics as routine start, 02 §1). Routine Duplicate from hub ⋯ (M3-02 wiring → repo). Delete routine confirm; verify historical workouts render "(deleted routine)" where the title is referenced. Starting a routine that contains an archived custom exercise still works (03 §5).
 **References:** 02 §1, §15 (menu); 04 §2.2; 03 §5.

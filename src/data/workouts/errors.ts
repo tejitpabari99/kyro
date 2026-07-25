@@ -10,7 +10,7 @@
  * meaningful: an unused error class is uncovered by construction).
  */
 
-/** Thrown by any id-keyed lookup/mutator (`discard`, `finish`, `updateMeta`, …) when no `workouts` row matches `id`. */
+/** Thrown by any id-keyed lookup/mutator (`discard`, `finish`, `updateMeta`, `startFromWorkout` (M3-07, "Repeat Workout" — see `workout-repository.ts`'s header), …) when no `workouts` row matches `id`. */
 export class WorkoutNotFoundError extends Error {
   constructor(public readonly id: string) {
     super(`Workout "${id}" was not found.`);

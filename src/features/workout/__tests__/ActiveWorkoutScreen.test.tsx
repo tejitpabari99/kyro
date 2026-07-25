@@ -343,6 +343,76 @@ describe('ActiveWorkoutScreen — routine-start (M3-05, 02 §1)', () => {
   });
 });
 
+describe('ActiveWorkoutScreen — repeat-workout (M3-07, 02 §1)', () => {
+  it('auto-starts a workout from a past workout on mount: title/exercises pre-populated, nothing pre-checked, no routineId', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+    const exercise = await exerciseRepo.create({
+      name: 'Bench Press',
+      exerciseType: 'weight_reps',
+      primaryMuscleGroup: 'chest',
+    });
+
+    // Raw-SQL fixture for a completed source workout — same reasoning
+    // `workout-repository.lifecycle.test.ts`'s own fixture helpers give:
+    // there is no public repository method to insert an already-completed
+    // workout directly.
+    const sourceWorkoutId = 'source-workout-1';
+    const now = Date.now();
+    driver.execute(
+      `INSERT INTO workouts (id, title, description, state, start_time, end_time, created_at, updated_at)
+       VALUES (?, 'Push Day', 'Felt strong', 'completed', ?, ?, ?, ?)`,
+      [sourceWorkoutId, now - 100_000, now - 50_000, now - 100_000, now - 50_000],
+    );
+    driver.execute(
+      `INSERT INTO workout_exercises (id, workout_id, exercise_id, position, superset_id, notes, rest_seconds)
+       VALUES ('src-we-1', ?, ?, 0, NULL, NULL, NULL)`,
+      [sourceWorkoutId, exercise.id],
+    );
+    driver.execute(
+      `INSERT INTO sets (id, workout_exercise_id, position, set_type, weight_kg, reps, is_completed)
+       VALUES ('src-set-1', 'src-we-1', 0, 'normal', 60, 8, 1)`,
+    );
+
+    await renderScreen(exerciseRepo, { repeatWorkoutId: sourceWorkoutId });
+
+    await waitFor(() => expect(screen.getByTestId('screen-title')).toBeTruthy());
+    expect(screen.getByText('Push Day')).toBeTruthy();
+
+    const active = await workoutRepo.getActive();
+    expect(active?.routineId).toBeNull();
+    expect(active?.title).toBe('Push Day');
+    expect(active?.description).toBe('Felt strong');
+    expect(active?.exercises).toHaveLength(1);
+    expect(active?.exercises[0]!.sets[0]!.isCompleted).toBe(false);
+    expect(active?.exercises[0]!.sets[0]!.weightKg).toBeNull();
+    expect(active?.exercises[0]!.sets[0]!.reps).toBeNull();
+
+    // "Placeholders" proof (02 §1/§6 acceptance): PREVIOUS surfaces the
+    // source workout's own achieved values with zero new plumbing — any
+    // workout mode, since the new workout has no `routineId` — see
+    // `workout-repository.ts`'s M3-07 header for the full "why" writeup.
+    const previous = await workoutRepo.previousSets(exercise.id);
+    expect(previous[0]).toMatchObject({ weightKg: 60, reps: 8, isWarmup: false, bucketIndex: 0 });
+  });
+
+  it('resuming an already-active workout ignores repeatWorkoutId — no second workout is started', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+    const existing = await workoutRepo.startEmpty({ title: 'Already Active', startTime: Date.now() });
+    await useActiveWorkoutStore.getState().rehydrate(workoutRepo);
+
+    await renderScreen(exerciseRepo, { repeatWorkoutId: 'does-not-matter' });
+
+    await waitFor(() => expect(screen.getByTestId('screen-title')).toBeTruthy());
+    expect(screen.getByText('Already Active')).toBeTruthy();
+
+    const rows = driver.queryAll<{ id: string }>("SELECT id FROM workouts WHERE state = 'active'");
+    expect(rows.length).toBe(1);
+    expect(rows[0]!.id).toBe(existing.id);
+  });
+});
+
 describe('ActiveWorkoutScreen — stopwatch (02 §2, §6.1)', () => {
   it('ticks upward for a normal (non-retro) start', async () => {
     const { driver, workoutRepo, exerciseRepo } = setup();
@@ -983,6 +1053,7 @@ describe('ActiveWorkoutScreen — smoke render (both themes)', () => {
       getActive: () => Promise.resolve(null),
       startEmpty: () => new Promise<WorkoutFull>(() => {}),
       startFromRoutine: () => Promise.reject(new Error('not used')),
+      startFromWorkout: () => Promise.reject(new Error('not used')),
       discard: () => Promise.reject(new Error('not used')),
       finish: () => Promise.reject(new Error('not used')),
       getFull: () => Promise.resolve(null),

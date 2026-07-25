@@ -101,6 +101,22 @@
  * file's header and `workout-repository.ts`'s `startFromRoutine` header for
  * the full writeup.
  *
+ * ## Repeat-workout mode (M3-07, 02 §1)
+ *
+ * `repeatWorkoutId` is a fourth mount-effect branch, checked right after
+ * `routineId` (routine-start always wins if a caller somehow set both —
+ * never happens in practice, `HistoryDetailScreen`'s "Repeat Workout" only
+ * ever sets `repeatWorkoutId`): when set and no active workout exists on
+ * mount, calls `startFromWorkout(repeatWorkoutId)` instead of `startEmpty`/
+ * `startFromRoutine`. Unlike the routine-start branch, this one needs no
+ * `getRoutineFull`-style live-resolution prop — `WorkoutRepositoryImpl
+ * .startFromWorkout` sets the new workout's `routineId` to `null`, which
+ * makes `ExerciseSetTableSection`'s existing PREVIOUS lookup (any_workout
+ * mode, since there's no routine to restrict to) resolve the source
+ * workout's own achieved values automatically — see that repository
+ * method's own header for the full "why no new plumbing" writeup. Same
+ * `startRequested` single-latch discipline as every other branch.
+ *
  * ## Update-routine prompt (M3-06, 02 §14 step 4 / §14.4, 04 §2.4)
  *
  * `handleSaveWorkout`'s own inline comment (below) has the full writeup —
@@ -165,6 +181,8 @@ export interface ActiveWorkoutScreenProps {
   retroStartTime?: number;
   /** M3-05 (02 §1): when set and no active workout exists on mount, starts a workout from this routine instead of an empty one — see file header, "Routine-start mode". */
   routineId?: string;
+  /** M3-07 ("Repeat Workout", 02 §1): when set and no active workout exists on mount, starts a workout from this past workout instead of an empty one — see file header, "Repeat-workout mode". Mutually exclusive with `routineId` in practice (`HistoryDetailScreen`'s "Repeat Workout" never sets both); the mount effect checks `routineId` first, so a theoretical combination would just behave as a routine-start. */
+  repeatWorkoutId?: string;
   /** M3-05: `RoutineRepository.getFull`, unbound — threaded down to every `ExerciseCard`/`ExerciseSetTableSection` for routine-target resolution (see file header). Not only for the routine-start path — also needed to resolve targets on a *resumed* routine-started workout. */
   getRoutineFull?: (routineId: string) => Promise<RoutineFull | null>;
   /** M3-06 (02 §14 step 4 / 04 §2.4): `RoutineRepository.updateFromWorkout`, unbound — called from `handleSaveWorkout`'s finish flow when the user picks "Update routine" on the material-change prompt (see file header, "Update-routine prompt (M3-06)"). */
@@ -190,6 +208,7 @@ export function ActiveWorkoutScreen({
   retro = false,
   retroStartTime,
   routineId,
+  repeatWorkoutId,
   getRoutineFull,
   updateRoutineFromWorkout,
   testID = 'active-workout',
@@ -266,12 +285,21 @@ export function ActiveWorkoutScreen({
       void useActiveWorkoutStore.getState().startFromRoutine(routineId);
       return;
     }
+    if (repeatWorkoutId) {
+      // Repeat-workout path (M3-07, 02 §1) — see file header,
+      // "Repeat-workout mode." Live stopwatch from now, same as a plain
+      // empty/routine start — not the retro-paused-at-0 shape (02 §1 draws
+      // "Repeat Workout" and "Log past workout" as two distinct entry
+      // points; only the latter is retro).
+      void useActiveWorkoutStore.getState().startFromWorkout(repeatWorkoutId);
+      return;
+    }
     const startTime = retro ? retroStartTimeResolved! : Date.now();
     void useActiveWorkoutStore.getState().startEmpty({
       title: autoTitleForDate(new Date(startTime)),
       startTime,
     });
-  }, [loaded, workout, retro, retroStartTimeResolved, routineId]);
+  }, [loaded, workout, retro, retroStartTimeResolved, routineId, repeatWorkoutId]);
 
   const exerciseIds = useMemo(
     () => (workout ? Array.from(new Set(workout.exercises.map((e) => e.exerciseId))) : []),

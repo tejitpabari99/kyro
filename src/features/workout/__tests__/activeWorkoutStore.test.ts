@@ -204,6 +204,69 @@ describe('activeWorkoutStore (M2-03)', () => {
     });
   });
 
+  describe('startFromWorkout (M3-07, "Repeat Workout")', () => {
+    it('creates an active workout pre-populated from the source workout in the draft and in the DB, with no routineId', async () => {
+      const now = Date.now();
+      const sourceId = 'source-1';
+      driver.execute(
+        `INSERT INTO workouts (id, title, description, state, start_time, end_time, created_at, updated_at)
+         VALUES (?, 'Push Day', NULL, 'completed', ?, ?, ?, ?)`,
+        [sourceId, now - 10_000, now - 5_000, now - 10_000, now - 5_000],
+      );
+      driver.execute(
+        `INSERT INTO workout_exercises (id, workout_id, exercise_id, position)
+         VALUES ('src-we-1', ?, ?, 0)`,
+        [sourceId, benchId],
+      );
+      driver.execute(
+        `INSERT INTO sets (id, workout_exercise_id, position, set_type, weight_kg, reps, is_completed)
+         VALUES ('src-set-1', 'src-we-1', 0, 'normal', 60, 8, 1)`,
+      );
+
+      await store.getState().rehydrate(repository);
+      const workout = await store.getState().startFromWorkout(sourceId);
+
+      expect(workout).not.toBeNull();
+      expect(store.getState().workout?.routineId).toBeNull();
+      expect(store.getState().workout?.title).toBe('Push Day');
+      expect(store.getState().workout?.exercises).toHaveLength(1);
+      expect(store.getState().workout?.exercises[0]!.sets[0]!.isCompleted).toBe(false);
+      expect(store.getState().workout?.exercises[0]!.sets[0]!.weightKg).toBeNull();
+      const row = rawWorkout(driver, workout!.id);
+      expect(row).toMatchObject({ title: 'Push Day', state: 'active', routine_id: null });
+    });
+
+    it('a startFromWorkout while a workout is already active surfaces a DataError and leaves the draft alone', async () => {
+      const now = Date.now();
+      const sourceId = 'source-2';
+      driver.execute(
+        `INSERT INTO workouts (id, title, state, start_time, end_time, created_at, updated_at)
+         VALUES (?, 'Leg Day', 'completed', ?, ?, ?, ?)`,
+        [sourceId, now - 10_000, now - 5_000, now - 10_000, now - 5_000],
+      );
+
+      await store.getState().rehydrate(repository);
+      const first = await store.getState().startEmpty({ title: 'First', startTime: 1 });
+
+      const result = await store.getState().startFromWorkout(sourceId);
+
+      expect(result).toBeNull();
+      expect(store.getState().error).toBeInstanceOf(DataError);
+      expect(store.getState().workout?.id).toBe(first!.id);
+      expect(driver.queryAll(`SELECT id FROM workouts WHERE state = 'active'`)).toHaveLength(1);
+    });
+
+    it('an unknown source workout id surfaces a DataError (WorkoutNotFoundError) rather than throwing', async () => {
+      await store.getState().rehydrate(repository);
+
+      const result = await store.getState().startFromWorkout('does-not-exist');
+
+      expect(result).toBeNull();
+      expect(store.getState().error).toBeInstanceOf(DataError);
+      expect(store.getState().workout).toBeNull();
+    });
+  });
+
   describe('discard', () => {
     it('clears the draft and deletes the DB row', async () => {
       await store.getState().rehydrate(repository);
