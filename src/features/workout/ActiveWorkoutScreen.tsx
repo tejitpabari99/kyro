@@ -100,6 +100,18 @@
  * `ExerciseSetTableSection` reads it directly off the store — see that
  * file's header and `workout-repository.ts`'s `startFromRoutine` header for
  * the full writeup.
+ *
+ * ## Update-routine prompt (M3-06, 02 §14 step 4 / §14.4, 04 §2.4)
+ *
+ * `handleSaveWorkout`'s own inline comment (below) has the full writeup —
+ * summary here: once `finish()` succeeds, if the workout came from a
+ * routine that still exists, `computeRoutineDiff` (`@/domain/routine-diff`)
+ * decides whether anything material changed; if so, an `Alert.alert` offers
+ * "Keep original" (no-op) / "Update routine" (calls the new
+ * `updateRoutineFromWorkout` prop, `RoutineRepository.updateFromWorkout`
+ * unbound — the exact same "unbound function prop" convention
+ * `getRoutineFull` above already established) before either path continues
+ * into the existing skip-timer/invalidate/navigate tail.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -113,6 +125,7 @@ import type { Exercise, ExerciseRepository } from '@/data/exercises/types';
 import type { RoutineFull } from '@/data/routines/types';
 import type { FinishMeta } from '@/data/workouts/types';
 import { autoTitleForDate } from '@/domain/auto-title';
+import { computeRoutineDiff } from '@/domain/routine-diff';
 import { resolveSupersetScrollTarget, supersetVisualsByExerciseId } from '@/domain/supersets';
 import { formatDuration } from '@/domain/units';
 import {
@@ -154,6 +167,8 @@ export interface ActiveWorkoutScreenProps {
   routineId?: string;
   /** M3-05: `RoutineRepository.getFull`, unbound — threaded down to every `ExerciseCard`/`ExerciseSetTableSection` for routine-target resolution (see file header). Not only for the routine-start path — also needed to resolve targets on a *resumed* routine-started workout. */
   getRoutineFull?: (routineId: string) => Promise<RoutineFull | null>;
+  /** M3-06 (02 §14 step 4 / 04 §2.4): `RoutineRepository.updateFromWorkout`, unbound — called from `handleSaveWorkout`'s finish flow when the user picks "Update routine" on the material-change prompt (see file header, "Update-routine prompt (M3-06)"). */
+  updateRoutineFromWorkout?: (routineId: string, workoutId: string) => Promise<RoutineFull>;
   testID?: string;
 }
 
@@ -176,6 +191,7 @@ export function ActiveWorkoutScreen({
   retroStartTime,
   routineId,
   getRoutineFull,
+  updateRoutineFromWorkout,
   testID = 'active-workout',
 }: ActiveWorkoutScreenProps): React.JSX.Element {
   const { colors, typography, spacing } = useTheme();
@@ -517,11 +533,29 @@ export function ActiveWorkoutScreen({
   // M2-14 (02 §14 step 3): repo `finish` (already-tested M2-01/store action)
   // -> cancel any pending rest-timer notification (mirrors `skip()`'s own
   // "cancel + clear" contract, `restTimerStore.ts` — safe/no-op if no timer
-  // is running) -> invalidate the minimal-history list query (M2-14's own
-  // History tab) -> close the sheet -> navigate to the new detail route.
-  // Update-routine prompt (02 §14 step 4) is a no-op until M3-06 (routines
-  // don't exist as a start-source yet, per this task's own scoping note) —
-  // deliberately not called from here.
+  // is running) -> Update-routine prompt (M3-06, 02 §14 step 4, see below)
+  // -> invalidate the minimal-history list query (M2-14's own History tab)
+  // -> close the sheet -> navigate to the new detail route. Both the
+  // "Keep original" and "Update routine" prompt branches funnel back into
+  // this same close+navigate tail via `finishSave` below — nothing about
+  // that existing sequence is reordered or skipped by the prompt.
+  //
+  // M3-06 (02 §14.4 / 04 §2.4): only runs when the workout was started from
+  // a routine (`finished.routineId`) and that routine still exists
+  // (`getRoutineFull` resolves non-null — a deleted routine, 04 §2.2, is
+  // silently skipped, matching "not re-asked" reasoning below). The diff
+  // (`computeRoutineDiff`, `@/domain/routine-diff`) is pure and takes the
+  // finished `WorkoutFull`/fetched `RoutineFull` shapes directly — both are
+  // already structurally compatible with `FinishedWorkoutLike`/
+  // `SourceRoutineLike` (same "Like"-interface convention every other
+  // domain module here uses), no mapping needed. "Not re-asked for this
+  // workout": this whole block runs at most once per `handleSaveWorkout`
+  // call, itself only reachable once per finished workout — `finish()`
+  // already flipped the store's `workout` to `null` by the time this code
+  // runs (successfully or not), and a successful `finish()` immediately
+  // navigates away below, so there is no retry path that could re-trigger
+  // this prompt for the same workout id; no persisted "already asked" flag
+  // is needed.
   const handleSaveWorkout = async (meta: FinishMeta): Promise<void> => {
     const finished = await useActiveWorkoutStore.getState().finish(meta);
     if (!finished) {
@@ -531,9 +565,44 @@ export function ActiveWorkoutScreen({
       return;
     }
     await useRestTimerStore.getState().skip();
-    await queryClient.invalidateQueries({ queryKey: ['history'] });
-    setSaveSheetVisible(false);
-    router.replace(`/history/${finished.id}` as never);
+
+    const finishSave = async (): Promise<void> => {
+      await queryClient.invalidateQueries({ queryKey: ['history'] });
+      setSaveSheetVisible(false);
+      router.replace(`/history/${finished.id}` as never);
+    };
+
+    const routineId = finished.routineId;
+    if (routineId && getRoutineFull) {
+      const routine = await getRoutineFull(routineId);
+      if (routine) {
+        const diff = computeRoutineDiff({ exercises: finished.exercises }, { exercises: routine.exercises });
+        if (diff.material) {
+          Alert.alert(
+            'Update routine?',
+            `Your workout differs from ${routine.title}.`,
+            [
+              { text: 'Keep original', style: 'cancel', onPress: () => void finishSave() },
+              {
+                text: 'Update routine',
+                onPress: () => {
+                  void (async () => {
+                    if (updateRoutineFromWorkout) {
+                      await updateRoutineFromWorkout(routineId, finished.id);
+                      await queryClient.invalidateQueries({ queryKey: ['routines'] });
+                    }
+                    await finishSave();
+                  })();
+                },
+              },
+            ],
+          );
+          return;
+        }
+      }
+    }
+
+    await finishSave();
   };
 
   const handleAddExercisePress = (): void => {

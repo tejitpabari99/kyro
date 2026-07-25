@@ -195,6 +195,17 @@ export interface RoutineRepository {
     workoutId: string,
     opts?: CreateRoutineFromWorkoutOptions,
   ): Promise<RoutineFull>;
-  /** Stub — lands in M3-06 (02 §14.4's update-routine prompt write-back). Always rejects today, mirroring `WorkoutRepositoryLifecycle.startFromRoutine`'s M3-05 stub (M2-01). */
+  /**
+   * M3-06 (02 §14.4's update-routine prompt write-back, 04 §2.4): replaces
+   * `routineId`'s structure with `workoutId`'s own final structure —
+   * exercises (order/superset/rest/notes) and each set's achieved values as
+   * new targets, preserving an existing rep-range target only when the
+   * achieved reps still falls inside it (see `routine-repository.ts`'s own
+   * method doc comment for the full rule). `updated_at` bumped; `title`/
+   * routine-level `notes` untouched. Throws `WorkoutNotFoundForRoutineError`
+   * for an unknown/deleted `workoutId`, `RoutineNotFoundError` for an
+   * unknown `routineId`, `WorkoutRoutineMismatchError` (`./errors.ts`) if
+   * `workoutId`'s own `routine_id` isn't `routineId`.
+   */
   updateFromWorkout(routineId: string, workoutId: string): Promise<RoutineFull>;
 }

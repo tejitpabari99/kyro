@@ -34,7 +34,10 @@ jest.mock('@/data/exercises/exercise-repository', () => ({
 // repository above is, since `ActiveWorkoutScreen` itself is mocked out and
 // this test only needs to prove the route hands it *something* real.
 jest.mock('@/data/routines/routine-repository', () => ({
-  RoutineRepositoryImpl: jest.fn().mockImplementation(() => ({ getFull: jest.fn() })),
+  RoutineRepositoryImpl: jest.fn().mockImplementation(() => ({
+    getFull: jest.fn(),
+    updateFromWorkout: jest.fn(),
+  })),
 }));
 
 const mockActiveWorkoutScreen = jest.fn((_props: unknown) => null);
@@ -76,6 +79,17 @@ describe('/workout/active route', () => {
     };
     expect(props.routineId).toBeUndefined();
     expect(props.getRoutineFull).toBeInstanceOf(Function);
+  });
+
+  it('wires a real RoutineRepositoryImpl-backed updateRoutineFromWorkout (M3-06)', async () => {
+    await renderRouter('app', { initialUrl: '/workout/active' });
+
+    expect(mockActiveWorkoutScreen).toHaveBeenCalled();
+    const lastCall = mockActiveWorkoutScreen.mock.calls[mockActiveWorkoutScreen.mock.calls.length - 1]!;
+    const props = lastCall[0] as {
+      updateRoutineFromWorkout: ((routineId: string, workoutId: string) => Promise<unknown>) | undefined;
+    };
+    expect(props.updateRoutineFromWorkout).toBeInstanceOf(Function);
   });
 
   it('parses a routineId query param through to the screen', async () => {

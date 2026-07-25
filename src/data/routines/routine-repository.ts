@@ -79,12 +79,18 @@
  *   targets — never a rep range (only the routine editor, M3-04, ever
  *   writes ranges) — so `rep_range_start`/`rep_range_end` are always
  *   `NULL` here, trivially satisfying the XOR.
- * - **`updateFromWorkout` is a stub** — this task's own text says "used by
- *   M3-06 ... stub it now if not fully specified, matching how M2-01
- *   stubbed `startFromRoutine`": 02 §14.4's update-routine write-back rules
- *   (rep-range-preserved-if-achieved-in-range, etc.) are M3-06's diff
- *   logic to implement, not this repository's schema-CRUD scope.
+ * - **`updateFromWorkout`** (M3-06, 02 §14.4 / 04 §2.4): see its own method
+ *   doc comment below for the full write-back rules (structure/target
+ *   replacement, rep-range preservation) — it shares its exercise/set
+ *   correlation scheme with `@/domain/routine-diff`'s `computeRoutineDiff`
+ *   (the material-change detector that decides *whether* to offer this)
+ *   via that module's exported `matchWorkoutToRoutineExercises`/
+ *   `repsWithinRoutineRange` helpers, so the two can never disagree about
+ *   which achieved set maps to which target.
  */
+import type { SetType } from '@/domain/enums';
+import { matchWorkoutToRoutineExercises, repsWithinRoutineRange } from '@/domain/routine-diff';
+
 import { generateUuid } from '../shared/uuid';
 import type { SqliteDriver, SqliteRunResult } from '../sqlite/driver';
 import {
@@ -94,6 +100,7 @@ import {
   RoutineNotFoundError,
   RoutineReorderMismatchError,
   WorkoutNotFoundForRoutineError,
+  WorkoutRoutineMismatchError,
 } from './errors';
 import type {
   CreateRoutineFromWorkoutOptions,
@@ -183,6 +190,11 @@ interface SetSourceRow {
   custom_metric: number | null;
 }
 
+/** Raw `workout_exercises` shape `updateFromWorkout` (M3-06) needs — `WorkoutExerciseSourceRow` plus `routine_occurrence_index`, the exercise-correlation key `matchWorkoutToRoutineExercises` (`@/domain/routine-diff`) reads (see that file's header). `createFromWorkout` never needs this field (it has no prior routine structure to correlate against), so it stays off `WorkoutExerciseSourceRow` itself. */
+interface WorkoutExerciseWithOccurrenceRow extends WorkoutExerciseSourceRow {
+  routine_occurrence_index: number | null;
+}
+
 function mapFolderRow(row: RoutineFolderRow): RoutineFolder {
   return {
     id: row.id,
@@ -256,6 +268,38 @@ function assertRepsXorRange(input: NewRoutineSetInput): void {
   if (hasReps && hasRange) {
     throw new RepsXorRangeViolationError();
   }
+}
+
+/**
+ * `updateFromWorkout`'s (M3-06) rep-target write-back rule (04 §2.4): if
+ * `originalTarget` (the matched routine_set this achieved set correlates
+ * to — `undefined` when there was none, e.g. a mid-workout-added exercise
+ * or a newly-added set past the routine's own set count) was a rep range
+ * and `achievedReps` falls inside it (inclusive both ends,
+ * `repsWithinRoutineRange`, `@/domain/routine-diff`), the range is
+ * preserved verbatim; otherwise the target collapses to a fixed `reps`
+ * value — never a range — matching `createFromWorkout`'s own "achieved
+ * values become fixed targets, never a range" convention (this file's
+ * header) for every other case.
+ */
+function computeUpdatedRepTarget(
+  achievedReps: number | null,
+  originalTarget: RoutineSetRow | undefined,
+): { reps: number | null; repRangeStart: number | null; repRangeEnd: number | null } {
+  if (
+    originalTarget &&
+    repsWithinRoutineRange(achievedReps, {
+      repRangeStart: originalTarget.rep_range_start,
+      repRangeEnd: originalTarget.rep_range_end,
+    })
+  ) {
+    return {
+      reps: null,
+      repRangeStart: originalTarget.rep_range_start,
+      repRangeEnd: originalTarget.rep_range_end,
+    };
+  }
+  return { reps: achievedReps, repRangeStart: null, repRangeEnd: null };
 }
 
 /** One exercise-with-sets input, pre-generated ids attached — the shape `create`/`update`'s shared insert helper consumes (ids must be minted with `await generateUuid()` before entering the synchronous `driver.transaction` callback). */
@@ -712,12 +756,148 @@ export class RoutineRepositoryImpl implements RoutineRepository {
     return (await this.getFull(routineId))!;
   }
 
-  // `RoutineRepositoryLifecycle`-equivalent signature note: async (05 §6);
-  // this stub has no `await` since it always throws synchronously (still
-  // returns a rejected Promise, per normal `async function` semantics) —
-  // same shape `WorkoutRepositoryImpl.startFromRoutine`'s M3-05 stub uses.
-  async updateFromWorkout(_routineId: string, _workoutId: string): Promise<RoutineFull> {
-    throw new Error('updateFromWorkout is not implemented yet — lands in M3-06.');
+  /**
+   * M3-06 (02 §14.4 / 04 §2.4): writes a finished routine-started workout's
+   * final structure back onto `routineId` as its new targets — the
+   * "Update routine" half of the finish-flow prompt (`computeRoutineDiff`,
+   * `@/domain/routine-diff`, decides *whether* to offer this; this method
+   * unconditionally applies it once the caller decides "yes").
+   *
+   * **Data access:** raw SQL against `workouts`/`workout_exercises`/`sets`,
+   * no `WorkoutRepository` dependency — the identical choice
+   * `createFromWorkout` (this file's header) and `startFromRoutine`
+   * (`workout-repository.ts`'s header) already made in both directions, for
+   * the same reason (a few read-only `SELECT`s don't justify a cross-repo
+   * constructor dependency).
+   *
+   * **Structure — "checked exercises only" is already true by construction:**
+   * this method never applies its own `is_completed` filter to `sets` — by
+   * the time `finish()` (`workout-repository.ts`) has run, every unchecked
+   * `sets` row has already been deleted and every remaining exercise has at
+   * least one (checked) set, so the workout's own `workout_exercises` table,
+   * read in `position ASC` order, already **is** "checked exercises only,
+   * in final position order." Replicating a completedness filter here would
+   * be redundant at best and silently wrong if this method were ever called
+   * against a still-active workout (out of scope today — only
+   * `ActiveWorkoutScreen`'s post-`finish()` hook calls this).
+   *
+   * **Per-set targets:** weight/distance/duration/customMetric/type always
+   * become the achieved actual value (mirrors `createFromWorkout`'s own
+   * "achieved becomes target" convention) with one carve-out — reps: if the
+   * *original* target this set correlates to (via `matchWorkoutToRoutineExercises`
+   * exercise-matching + same-index set-position matching, `@/domain
+   * /routine-diff`'s own file header's "set correlation" section — the
+   * identical scheme the diff itself uses, so the two can never disagree
+   * about which target a set maps to) was a rep range and the achieved reps
+   * falls inside it (inclusive both ends, `repsWithinRoutineRange`), the
+   * range is preserved verbatim and only `weightKg` (already unconditional
+   * above) actually changed; otherwise (no original target, not a range, or
+   * out of range) the set collapses to a fixed `reps` target — never a
+   * range — same as every other "achieved value becomes a target" case in
+   * this file.
+   *
+   * **Routine-level fields:** only `updated_at` bumps; `title`/`notes`
+   * (the routine's own top-level fields) are untouched — 04 §2.4's
+   * write-back list ("exercise list/order/superset/rest/notes") names only
+   * per-*exercise* fields, and `notes` there is `routine_exercises.notes`
+   * (grouped alongside `supersetId`/`restSeconds`, exercise-level fields),
+   * not `routines.notes`.
+   */
+  async updateFromWorkout(routineId: string, workoutId: string): Promise<RoutineFull> {
+    this.requireRoutineRow(routineId);
+
+    const workoutRow = this.driver.queryAll<{
+      id: string;
+      routine_id: string | null;
+      deleted_at: number | null;
+    }>(`SELECT id, routine_id, deleted_at FROM workouts WHERE id = ?`, [workoutId])[0];
+    if (!workoutRow || workoutRow.deleted_at !== null) {
+      throw new WorkoutNotFoundForRoutineError(workoutId);
+    }
+    if (workoutRow.routine_id !== routineId) {
+      throw new WorkoutRoutineMismatchError(routineId, workoutId);
+    }
+
+    const workoutExerciseRows = this.driver.queryAll<WorkoutExerciseWithOccurrenceRow>(
+      `SELECT id, exercise_id, position, superset_id, notes, rest_seconds, routine_occurrence_index
+       FROM workout_exercises WHERE workout_id = ? ORDER BY position ASC`,
+      [workoutId],
+    );
+    const setRowsPerExercise = workoutExerciseRows.map((weRow) =>
+      this.driver.queryAll<SetSourceRow>(
+        `SELECT id, position, set_type, weight_kg, reps, distance_meters, duration_seconds, custom_metric
+         FROM sets WHERE workout_exercise_id = ? ORDER BY position ASC`,
+        [weRow.id],
+      ),
+    );
+
+    // The routine's *current* live structure — it may have been edited
+    // since the workout started (04 §2.2: "edits don't affect past
+    // workouts," so the workout's own routine_occurrence_index values were
+    // pinned against whatever the routine looked like at start time, not
+    // necessarily now); `matchWorkoutToRoutineExercises` re-derives
+    // occurrence indexes fresh from this live read, exactly like
+    // `computeRoutineDiff` does (`@/domain/routine-diff`'s file header).
+    const routineExerciseRows = this.driver.queryAll<RoutineExerciseRow>(
+      `SELECT * FROM routine_exercises WHERE routine_id = ? ORDER BY position ASC`,
+      [routineId],
+    );
+    const routineSetRowsPerExercise = routineExerciseRows.map((reRow) =>
+      this.driver.queryAll<RoutineSetRow>(
+        `SELECT * FROM routine_sets WHERE routine_exercise_id = ? ORDER BY position ASC`,
+        [reRow.id],
+      ),
+    );
+
+    const matches = matchWorkoutToRoutineExercises(
+      workoutExerciseRows.map((we) => ({
+        exerciseId: we.exercise_id,
+        routineOccurrenceIndex: we.routine_occurrence_index,
+      })),
+      routineExerciseRows.map((re) => ({ exerciseId: re.exercise_id })),
+    );
+    const routineExerciseIndexByWorkoutIndex = new Map(
+      matches.map((m) => [m.workoutExerciseIndex, m.routineExerciseIndex]),
+    );
+
+    const newExerciseInputs: NewRoutineExerciseInput[] = workoutExerciseRows.map((weRow, weIndex) => {
+      const matchedRoutineIndex = routineExerciseIndexByWorkoutIndex.get(weIndex);
+      const originalSets = matchedRoutineIndex !== undefined ? routineSetRowsPerExercise[matchedRoutineIndex]! : [];
+
+      const sets: NewRoutineSetInput[] = setRowsPerExercise[weIndex]!.map((setRow, setIndex) => {
+        const repTarget = computeUpdatedRepTarget(setRow.reps, originalSets[setIndex]);
+        return {
+          setType: setRow.set_type as SetType,
+          weightKg: setRow.weight_kg,
+          reps: repTarget.reps,
+          repRangeStart: repTarget.repRangeStart,
+          repRangeEnd: repTarget.repRangeEnd,
+          distanceMeters: setRow.distance_meters,
+          durationSeconds: setRow.duration_seconds,
+          customMetric: setRow.custom_metric,
+        };
+      });
+
+      return {
+        exerciseId: weRow.exercise_id,
+        supersetId: weRow.superset_id,
+        notes: weRow.notes,
+        restSeconds: weRow.rest_seconds,
+        sets,
+      };
+    });
+
+    const prepared = await this.prepareExercises(newExerciseInputs);
+    const now = Date.now();
+    this.driver.transaction(() => {
+      this.driver.execute(`UPDATE routines SET updated_at = ? WHERE id = ?`, [now, routineId]);
+      // ON DELETE CASCADE (schema.ts) removes routine_sets with them —
+      // identical replace-all shape `update`'s own `exercises` patch uses.
+      this.driver.execute(`DELETE FROM routine_exercises WHERE routine_id = ?`, [routineId]);
+      this.insertExercises(routineId, prepared);
+    });
+
+    return (await this.getFull(routineId))!;
   }
 
   // ---------------------------------------------------------------------

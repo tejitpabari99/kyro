@@ -35,6 +35,10 @@
  * construction) — needed both to *start* from a routine and, via
  * `getRoutineFull`, to resolve routine-target placeholders on every render
  * of a routine-started workout (including a resumed one).
+ *
+ * `updateRoutineFromWorkout` (M3-06, 02 §14.4 / 04 §2.4): the same
+ * `routineRepository` instance's `updateFromWorkout` method, bound here —
+ * the finish-flow's "Update routine" write-back.
  */
 import React, { useMemo } from 'react';
 import { useLocalSearchParams } from 'expo-router';
@@ -66,6 +70,7 @@ export default function ActiveWorkoutRoute(): React.JSX.Element {
       }
       routineId={routineId}
       getRoutineFull={(id) => routineRepository.getFull(id)}
+      updateRoutineFromWorkout={(id, workoutId) => routineRepository.updateFromWorkout(id, workoutId)}
     />
   );
 }

@@ -5,14 +5,24 @@
  * `workouts`/`workout_exercises`/`sets` fixtures are inserted directly via
  * raw SQL, same pattern `workout-repository.lifecycle.test.ts` (M2-01)
  * established for tables outside the repository under test's own domain.
- * Also covers the `updateFromWorkout` M3-06 stub.
+ *
+ * `updateFromWorkout` (M3-06, 04 §2.4's own acceptance criteria: "in-range
+ * reps preserve the range; declining leaves routine untouched") is covered
+ * below in its own `describe` block, same fixture-building helpers reused —
+ * a source routine is built via the real `repo.create(...)` (never inserted
+ * by raw SQL) so its ids are real, then a workout+workout_exercises+sets
+ * fixture is inserted with `routine_id`/`routine_occurrence_index` wired to
+ * correlate against it, mirroring exactly what `WorkoutRepositoryImpl
+ * .startFromRoutine`+`finish()` would have produced.
  */
 import { openBetterSqlite3Driver } from '../../sqlite/driver.better-sqlite3';
 import { migrate } from '../../sqlite/migrator';
 import type { SqliteDriver } from '../../sqlite/driver';
 import {
   RoutineFolderNotFoundError,
+  RoutineNotFoundError,
   WorkoutNotFoundForRoutineError,
+  WorkoutRoutineMismatchError,
 } from '../errors';
 import { RoutineRepositoryImpl } from '../routine-repository';
 
@@ -32,13 +42,22 @@ function insertExercise(driver: SqliteDriver, id: string): string {
 function insertWorkout(
   driver: SqliteDriver,
   id: string,
-  opts: { title?: string; deletedAt?: number | null } = {},
+  opts: { title?: string; deletedAt?: number | null; routineId?: string | null } = {},
 ): string {
   const now = Date.now();
   driver.execute(
-    `INSERT INTO workouts (id, title, state, start_time, end_time, created_at, updated_at, deleted_at)
-     VALUES (?, ?, 'completed', ?, ?, ?, ?, ?)`,
-    [id, opts.title ?? 'Push Day', now - 3_600_000, now, now, now, opts.deletedAt ?? null],
+    `INSERT INTO workouts (id, title, routine_id, state, start_time, end_time, created_at, updated_at, deleted_at)
+     VALUES (?, ?, ?, 'completed', ?, ?, ?, ?, ?)`,
+    [
+      id,
+      opts.title ?? 'Push Day',
+      opts.routineId ?? null,
+      now - 3_600_000,
+      now,
+      now,
+      now,
+      opts.deletedAt ?? null,
+    ],
   );
   return id;
 }
@@ -48,12 +67,18 @@ function insertWorkoutExercise(
   workoutId: string,
   exerciseId: string,
   position: number,
-  opts: { supersetId?: number | null; notes?: string | null; restSeconds?: number | null } = {},
+  opts: {
+    supersetId?: number | null;
+    notes?: string | null;
+    restSeconds?: number | null;
+    routineOccurrenceIndex?: number | null;
+  } = {},
 ): string {
   const id = `we-${workoutId}-${position}-${exerciseId}`;
   driver.execute(
-    `INSERT INTO workout_exercises (id, workout_id, exercise_id, position, superset_id, notes, rest_seconds)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO workout_exercises
+       (id, workout_id, exercise_id, position, superset_id, notes, rest_seconds, routine_occurrence_index)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       workoutId,
@@ -62,6 +87,7 @@ function insertWorkoutExercise(
       opts.supersetId ?? null,
       opts.notes ?? null,
       opts.restSeconds ?? null,
+      opts.routineOccurrenceIndex ?? null,
     ],
   );
   return id;
@@ -226,10 +252,244 @@ describe('RoutineRepositoryImpl — createFromWorkout / updateFromWorkout (M3-01
     );
   });
 
-  describe('updateFromWorkout', () => {
-    it('rejects — stub until M3-06', async () => {
-      await expect(repo.updateFromWorkout('some-routine-id', 'some-workout-id')).rejects.toThrow(
-        /M3-06/,
+  describe('updateFromWorkout (M3-06, 04 §2.4)', () => {
+    it('rewrites per-set targets from the workout\'s achieved values and bumps updated_at', async () => {
+      const routine = await repo.create({
+        title: 'Push Day',
+        exercises: [
+          { exerciseId: benchId, restSeconds: 90, sets: [{ reps: 8, weightKg: 60 }] },
+          { exerciseId: squatId, restSeconds: 120, sets: [{ reps: 5, weightKg: 100 }] },
+        ],
+      });
+      // Force an old, deterministic updated_at so the "bumped" assertion
+      // below can't coincidentally pass from two same-millisecond Date.now() calls.
+      driver.execute(`UPDATE routines SET updated_at = ? WHERE id = ?`, [1000, routine.id]);
+
+      const workoutId = insertWorkout(driver, 'w1', { routineId: routine.id });
+      const benchWe = insertWorkoutExercise(driver, workoutId, benchId, 0, {
+        restSeconds: 90,
+        routineOccurrenceIndex: 0,
+      });
+      insertSet(driver, benchWe, 0, { weightKg: 65, reps: 8 }); // weight changed
+      const squatWe = insertWorkoutExercise(driver, workoutId, squatId, 1, {
+        restSeconds: 120,
+        routineOccurrenceIndex: 0,
+      });
+      insertSet(driver, squatWe, 0, { weightKg: 100, reps: 6 }); // reps changed
+
+      const updated = await repo.updateFromWorkout(routine.id, workoutId);
+
+      expect(updated.exercises[0]!.exerciseId).toBe(benchId);
+      expect(updated.exercises[0]!.sets[0]).toMatchObject({ weightKg: 65, reps: 8 });
+      expect(updated.exercises[1]!.exerciseId).toBe(squatId);
+      expect(updated.exercises[1]!.sets[0]).toMatchObject({ weightKg: 100, reps: 6 });
+      expect(updated.updatedAt).toBeGreaterThan(1000);
+
+      // Persisted, not just returned — a fresh getFull agrees.
+      const reread = await repo.getFull(routine.id);
+      expect(reread).toEqual(updated);
+    });
+
+    it('achieved reps inside an existing rep-range target preserves the range; only weight updates', async () => {
+      const routine = await repo.create({
+        title: 'Push Day',
+        exercises: [
+          { exerciseId: benchId, sets: [{ repRangeStart: 6, repRangeEnd: 8, weightKg: 60 }] },
+        ],
+      });
+      const workoutId = insertWorkout(driver, 'w1', { routineId: routine.id });
+      const benchWe = insertWorkoutExercise(driver, workoutId, benchId, 0, {
+        routineOccurrenceIndex: 0,
+      });
+      insertSet(driver, benchWe, 0, { weightKg: 65, reps: 7 }); // in [6,8]
+
+      const updated = await repo.updateFromWorkout(routine.id, workoutId);
+
+      expect(updated.exercises[0]!.sets[0]).toMatchObject({
+        weightKg: 65,
+        reps: null,
+        repRangeStart: 6,
+        repRangeEnd: 8,
+      });
+    });
+
+    it('achieved reps at the inclusive range boundary (6 or 8) still preserves the range', async () => {
+      const routine = await repo.create({
+        title: 'Push Day',
+        exercises: [
+          { exerciseId: benchId, sets: [{ repRangeStart: 6, repRangeEnd: 8, weightKg: 60 }] },
+        ],
+      });
+      const workoutId = insertWorkout(driver, 'w1', { routineId: routine.id });
+      const benchWe = insertWorkoutExercise(driver, workoutId, benchId, 0, {
+        routineOccurrenceIndex: 0,
+      });
+      insertSet(driver, benchWe, 0, { weightKg: 60, reps: 6 });
+
+      const updated = await repo.updateFromWorkout(routine.id, workoutId);
+      expect(updated.exercises[0]!.sets[0]).toMatchObject({ reps: null, repRangeStart: 6, repRangeEnd: 8 });
+    });
+
+    it('achieved reps outside the existing range collapses the target to the achieved fixed value', async () => {
+      const routine = await repo.create({
+        title: 'Push Day',
+        exercises: [
+          { exerciseId: benchId, sets: [{ repRangeStart: 6, repRangeEnd: 8, weightKg: 60 }] },
+        ],
+      });
+      const workoutId = insertWorkout(driver, 'w1', { routineId: routine.id });
+      const benchWe = insertWorkoutExercise(driver, workoutId, benchId, 0, {
+        routineOccurrenceIndex: 0,
+      });
+      insertSet(driver, benchWe, 0, { weightKg: 65, reps: 10 }); // outside [6,8]
+
+      const updated = await repo.updateFromWorkout(routine.id, workoutId);
+      expect(updated.exercises[0]!.sets[0]).toMatchObject({
+        weightKg: 65,
+        reps: 10,
+        repRangeStart: null,
+        repRangeEnd: null,
+      });
+    });
+
+    it('a mid-workout-added exercise (routineOccurrenceIndex null) is included in the new structure with a fixed target', async () => {
+      const routine = await repo.create({
+        title: 'Push Day',
+        exercises: [{ exerciseId: benchId, sets: [{ reps: 8, weightKg: 60 }] }],
+      });
+      const workoutId = insertWorkout(driver, 'w1', { routineId: routine.id });
+      const benchWe = insertWorkoutExercise(driver, workoutId, benchId, 0, {
+        routineOccurrenceIndex: 0,
+      });
+      insertSet(driver, benchWe, 0, { weightKg: 60, reps: 8 });
+      const curlId = insertExercise(driver, 'curl');
+      const curlWe = insertWorkoutExercise(driver, workoutId, curlId, 1, {
+        routineOccurrenceIndex: null,
+      });
+      insertSet(driver, curlWe, 0, { weightKg: 12, reps: 12 });
+
+      const updated = await repo.updateFromWorkout(routine.id, workoutId);
+      expect(updated.exercises).toHaveLength(2);
+      expect(updated.exercises[1]!.exerciseId).toBe(curlId);
+      expect(updated.exercises[1]!.sets[0]).toMatchObject({
+        weightKg: 12,
+        reps: 12,
+        repRangeStart: null,
+        repRangeEnd: null,
+      });
+    });
+
+    it('an extra achieved set past the routine\'s own set count gets a fixed target (no original to correlate against)', async () => {
+      const routine = await repo.create({
+        title: 'Push Day',
+        exercises: [{ exerciseId: benchId, sets: [{ repRangeStart: 6, repRangeEnd: 8, weightKg: 60 }] }],
+      });
+      const workoutId = insertWorkout(driver, 'w1', { routineId: routine.id });
+      const benchWe = insertWorkoutExercise(driver, workoutId, benchId, 0, {
+        routineOccurrenceIndex: 0,
+      });
+      insertSet(driver, benchWe, 0, { weightKg: 65, reps: 7 });
+      insertSet(driver, benchWe, 1, { weightKg: 60, reps: 6 }); // no routine_sets[1] to correlate against
+
+      const updated = await repo.updateFromWorkout(routine.id, workoutId);
+      expect(updated.exercises[0]!.sets).toHaveLength(2);
+      expect(updated.exercises[0]!.sets[0]).toMatchObject({ reps: null, repRangeStart: 6, repRangeEnd: 8 });
+      expect(updated.exercises[0]!.sets[1]).toMatchObject({ reps: 6, repRangeStart: null, repRangeEnd: null });
+    });
+
+    it('copies superset grouping / rest / notes from the workout\'s final structure', async () => {
+      const routine = await repo.create({
+        title: 'Push Day',
+        exercises: [
+          { exerciseId: benchId, sets: [{ reps: 8, weightKg: 60 }] },
+          { exerciseId: squatId, sets: [{ reps: 5, weightKg: 100 }] },
+        ],
+      });
+      const workoutId = insertWorkout(driver, 'w1', { routineId: routine.id });
+      const benchWe = insertWorkoutExercise(driver, workoutId, benchId, 0, {
+        supersetId: 0,
+        notes: 'Elbows tucked',
+        restSeconds: 75,
+        routineOccurrenceIndex: 0,
+      });
+      insertSet(driver, benchWe, 0, { weightKg: 60, reps: 8 });
+      const squatWe = insertWorkoutExercise(driver, workoutId, squatId, 1, {
+        supersetId: 0,
+        restSeconds: 60,
+        routineOccurrenceIndex: 0,
+      });
+      insertSet(driver, squatWe, 0, { weightKg: 100, reps: 5 });
+
+      const updated = await repo.updateFromWorkout(routine.id, workoutId);
+      expect(updated.exercises[0]!.supersetId).toBe(0);
+      expect(updated.exercises[0]!.notes).toBe('Elbows tucked');
+      expect(updated.exercises[0]!.restSeconds).toBe(75);
+      expect(updated.exercises[1]!.supersetId).toBe(0);
+      expect(updated.exercises[1]!.restSeconds).toBe(60);
+    });
+
+    it('routine title/notes are untouched — only structure + updated_at change', async () => {
+      const routine = await repo.create({
+        title: 'Push Day',
+        notes: 'My favorite routine',
+        exercises: [{ exerciseId: benchId, sets: [{ reps: 8, weightKg: 60 }] }],
+      });
+      const workoutId = insertWorkout(driver, 'w1', { routineId: routine.id });
+      const benchWe = insertWorkoutExercise(driver, workoutId, benchId, 0, {
+        routineOccurrenceIndex: 0,
+      });
+      insertSet(driver, benchWe, 0, { weightKg: 70, reps: 8 });
+
+      const updated = await repo.updateFromWorkout(routine.id, workoutId);
+      expect(updated.title).toBe('Push Day');
+      expect(updated.notes).toBe('My favorite routine');
+    });
+
+    it('declining (never calling updateFromWorkout) leaves the routine byte-identical after the workout finishes', async () => {
+      const routine = await repo.create({
+        title: 'Push Day',
+        exercises: [{ exerciseId: benchId, sets: [{ reps: 8, weightKg: 60 }] }],
+      });
+      const before = await repo.getFull(routine.id);
+
+      const workoutId = insertWorkout(driver, 'w1', { routineId: routine.id });
+      const benchWe = insertWorkoutExercise(driver, workoutId, benchId, 0, {
+        routineOccurrenceIndex: 0,
+      });
+      insertSet(driver, benchWe, 0, { weightKg: 999, reps: 1 }); // materially different, but update never called
+
+      const after = await repo.getFull(routine.id);
+      expect(after).toEqual(before);
+    });
+
+    it('throws RoutineNotFoundError for an unknown routineId', async () => {
+      const workoutId = insertWorkout(driver, 'w1');
+      await expect(repo.updateFromWorkout('nope', workoutId)).rejects.toBeInstanceOf(
+        RoutineNotFoundError,
+      );
+    });
+
+    it('throws WorkoutNotFoundForRoutineError for an unknown workoutId', async () => {
+      const routine = await repo.create({ title: 'Push Day' });
+      await expect(repo.updateFromWorkout(routine.id, 'nope')).rejects.toBeInstanceOf(
+        WorkoutNotFoundForRoutineError,
+      );
+    });
+
+    it('throws WorkoutNotFoundForRoutineError for a soft-deleted workout', async () => {
+      const routine = await repo.create({ title: 'Push Day' });
+      const workoutId = insertWorkout(driver, 'w1', { routineId: routine.id, deletedAt: Date.now() });
+      await expect(repo.updateFromWorkout(routine.id, workoutId)).rejects.toBeInstanceOf(
+        WorkoutNotFoundForRoutineError,
+      );
+    });
+
+    it('throws WorkoutRoutineMismatchError when the workout belongs to a different routine', async () => {
+      const routineA = await repo.create({ title: 'Push Day' });
+      const routineB = await repo.create({ title: 'Pull Day' });
+      const workoutId = insertWorkout(driver, 'w1', { routineId: routineB.id });
+      await expect(repo.updateFromWorkout(routineA.id, workoutId)).rejects.toBeInstanceOf(
+        WorkoutRoutineMismatchError,
       );
     });
   });

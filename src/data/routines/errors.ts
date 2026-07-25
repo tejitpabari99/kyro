@@ -64,10 +64,30 @@ export class RepsXorRangeViolationError extends Error {
   }
 }
 
-/** Thrown by `createFromWorkout` when the source `workoutId` does not resolve to a (non-deleted) `workouts` row. */
+/** Thrown by `createFromWorkout`/`updateFromWorkout` when the source `workoutId` does not resolve to a (non-deleted) `workouts` row. */
 export class WorkoutNotFoundForRoutineError extends Error {
   constructor(public readonly workoutId: string) {
-    super(`Workout "${workoutId}" was not found (createFromWorkout).`);
+    super(`Workout "${workoutId}" was not found (createFromWorkout/updateFromWorkout).`);
     this.name = 'WorkoutNotFoundForRoutineError';
+  }
+}
+
+/**
+ * Thrown by `updateFromWorkout` (M3-06, 04 §2.4) when `workoutId`'s own
+ * `routine_id` doesn't match the `routineId` argument — a defensive
+ * scope-check against a caller writing one routine's workout structure back
+ * onto an unrelated routine (mirrors the "validate cross-entity references"
+ * convention `WorkoutNotFoundForRoutineError`/`RoutineNotFoundError` already
+ * establish here, rather than silently proceeding with mismatched ids).
+ */
+export class WorkoutRoutineMismatchError extends Error {
+  constructor(
+    public readonly routineId: string,
+    public readonly workoutId: string,
+  ) {
+    super(
+      `updateFromWorkout: workout "${workoutId}" was not started from routine "${routineId}".`,
+    );
+    this.name = 'WorkoutRoutineMismatchError';
   }
 }

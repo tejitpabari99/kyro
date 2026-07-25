@@ -36,6 +36,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ExerciseRepositoryImpl } from '@/data/exercises/exercise-repository';
 import type { ExerciseRepository } from '@/data/exercises/types';
 import { RoutineRepositoryImpl } from '@/data/routines/routine-repository';
+import type { RoutineFull } from '@/data/routines/types';
 import { openBetterSqlite3Driver } from '@/data/sqlite/driver.better-sqlite3';
 import type { SqliteDriver } from '@/data/sqlite/driver';
 import { migrate } from '@/data/sqlite/migrator';
@@ -770,6 +771,159 @@ describe('ActiveWorkoutScreen — finish flow (M2-14, 02 §14)', () => {
     expect(saved?.exercises[0]!.sets[0]!.isCompleted).toBe(true);
 
     await waitFor(() => expect(useActiveWorkoutStore.getState().workout).toBeNull());
+  });
+});
+
+/**
+ * Starts a workout from a one-exercise/one-set routine (target 60kg x 8,
+ * `restSeconds: 90`), checks that set with the achieved values the caller
+ * supplies, and finishes any other unchecked rows away — the fixture every
+ * M3-06 update-routine-prompt case below builds on.
+ */
+async function seedRoutineStartedAndChecked(
+  driver: SqliteDriver,
+  workoutRepo: WorkoutRepositoryImpl,
+  exerciseRepo: ExerciseRepository,
+  achieved: { weightKg: number; reps: number },
+): Promise<{ routineRepo: RoutineRepositoryImpl; routine: RoutineFull }> {
+  const routineRepo = new RoutineRepositoryImpl(driver);
+  const exercise = await exerciseRepo.create({
+    name: 'Bench Press',
+    exerciseType: 'weight_reps',
+    primaryMuscleGroup: 'chest',
+  });
+  const routine = await routineRepo.create({
+    title: 'Push Day',
+    exercises: [
+      { exerciseId: exercise.id, restSeconds: 90, sets: [{ setType: 'normal', weightKg: 60, reps: 8 }] },
+    ],
+  });
+  await useActiveWorkoutStore.getState().startFromRoutine(routine.id);
+  const active = await workoutRepo.getActive();
+  const setId = active!.exercises[0]!.sets[0]!.id;
+  await useActiveWorkoutStore.getState().updateSet(setId, achieved);
+  await useActiveWorkoutStore.getState().setCompleted(setId, true);
+  return { routineRepo, routine };
+}
+
+describe('ActiveWorkoutScreen — update-routine prompt (M3-06, 02 §14 step 4 / 04 §2.4)', () => {
+  it('a materially different finish shows the prompt; "Keep original" leaves the routine untouched and still navigates', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+    const { routineRepo, routine } = await seedRoutineStartedAndChecked(driver, workoutRepo, exerciseRepo, {
+      weightKg: 70, // differs from the 60kg target
+      reps: 8,
+    });
+    const updateRoutineFromWorkout = jest.fn((id: string, workoutId: string) =>
+      routineRepo.updateFromWorkout(id, workoutId),
+    );
+
+    await renderScreen(exerciseRepo, {
+      routineId: routine.id,
+      getRoutineFull: (id) => routineRepo.getFull(id),
+      updateRoutineFromWorkout,
+    });
+    await waitFor(() => expect(screen.getByTestId('screen-finish')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('screen-finish'));
+    await waitFor(() => expect(screen.getByTestId('screen-save-sheet-save')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('screen-save-sheet-save'));
+
+    await waitFor(() =>
+      expect(Alert.alert).toHaveBeenCalledWith(
+        'Update routine?',
+        'Your workout differs from Push Day.',
+        expect.any(Array),
+      ),
+    );
+
+    await pressAlertButton('Keep original');
+
+    expect(updateRoutineFromWorkout).not.toHaveBeenCalled();
+    await waitFor(() => expect(router.replace).toHaveBeenCalled());
+    const stillOriginal = await routineRepo.getFull(routine.id);
+    expect(stillOriginal!.exercises[0]!.sets[0]!.weightKg).toBe(60);
+  });
+
+  it('"Update routine" writes the achieved values back, invalidates the routines query cache, and still navigates', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+    const { routineRepo, routine } = await seedRoutineStartedAndChecked(driver, workoutRepo, exerciseRepo, {
+      weightKg: 70,
+      reps: 8,
+    });
+    const updateRoutineFromWorkout = jest.fn((id: string, workoutId: string) =>
+      routineRepo.updateFromWorkout(id, workoutId),
+    );
+
+    const { queryClient } = await renderScreen(exerciseRepo, {
+      routineId: routine.id,
+      getRoutineFull: (id) => routineRepo.getFull(id),
+      updateRoutineFromWorkout,
+    });
+    const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries');
+    await waitFor(() => expect(screen.getByTestId('screen-finish')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('screen-finish'));
+    await waitFor(() => expect(screen.getByTestId('screen-save-sheet-save')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('screen-save-sheet-save'));
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Update routine?', expect.any(String), expect.any(Array)));
+
+    await pressAlertButton('Update routine');
+
+    await waitFor(() => expect(updateRoutineFromWorkout).toHaveBeenCalled());
+    await waitFor(() => expect(router.replace).toHaveBeenCalled());
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['routines'] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['history'] });
+
+    const updated = await routineRepo.getFull(routine.id);
+    expect(updated!.exercises[0]!.sets[0]!.weightKg).toBe(70);
+  });
+
+  it('an unchanged finish never shows the prompt and navigates directly', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+    const { routineRepo, routine } = await seedRoutineStartedAndChecked(driver, workoutRepo, exerciseRepo, {
+      weightKg: 60, // matches the target exactly
+      reps: 8,
+    });
+    const updateRoutineFromWorkout = jest.fn((id: string, workoutId: string) =>
+      routineRepo.updateFromWorkout(id, workoutId),
+    );
+
+    await renderScreen(exerciseRepo, {
+      routineId: routine.id,
+      getRoutineFull: (id) => routineRepo.getFull(id),
+      updateRoutineFromWorkout,
+    });
+    await waitFor(() => expect(screen.getByTestId('screen-finish')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('screen-finish'));
+    await waitFor(() => expect(screen.getByTestId('screen-save-sheet-save')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('screen-save-sheet-save'));
+
+    await waitFor(() => expect(router.replace).toHaveBeenCalled());
+    expect(Alert.alert).not.toHaveBeenCalledWith('Update routine?', expect.any(String), expect.any(Array));
+    expect(updateRoutineFromWorkout).not.toHaveBeenCalled();
+  });
+
+  it('a deleted source routine (getRoutineFull resolves null) skips the prompt and navigates directly', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+    const { routineRepo, routine } = await seedRoutineStartedAndChecked(driver, workoutRepo, exerciseRepo, {
+      weightKg: 70,
+      reps: 8,
+    });
+    await routineRepo.delete(routine.id);
+
+    await renderScreen(exerciseRepo, {
+      routineId: routine.id,
+      getRoutineFull: (id) => routineRepo.getFull(id),
+    });
+    await waitFor(() => expect(screen.getByTestId('screen-finish')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('screen-finish'));
+    await waitFor(() => expect(screen.getByTestId('screen-save-sheet-save')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('screen-save-sheet-save'));
+
+    await waitFor(() => expect(router.replace).toHaveBeenCalled());
+    expect(Alert.alert).not.toHaveBeenCalledWith('Update routine?', expect.any(String), expect.any(Array));
   });
 });
 
