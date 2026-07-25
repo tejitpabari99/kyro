@@ -127,7 +127,32 @@ module.exports = {
       //     resolver with one more scoped rule, for `expo-router`'s
       //     internal toolbar native-view module — see that file's header.
       resolver: '<rootDir>/jest/resolver.js',
-      setupFiles: ['<rootDir>/node_modules/react-native-gesture-handler/jestSetup.js'],
+      // `@shopify/react-native-skia` (M4-07, `ui/charts/`) ships its own
+      // documented Jest wiring, verbatim per its README's testing section:
+      // a `jestSetup.js` that replaces the whole module with a JS-only mock
+      // (`lib/module/mock`, real Skia JS-API objects — `Path`/`Group`/
+      // `Circle`/etc. all work as genuine (if headless) Skia primitives, not
+      // stubs) driven by a real CanvasKit-wasm instance, plus a custom
+      // `jestEnv.js` `TestEnvironment` (extends `jest-environment-node`)
+      // that loads that CanvasKit-wasm instance once per worker and exposes
+      // it as `global.CanvasKit` before `jestSetup.js` reads it. Both are
+      // required for victory-native's chart primitives (`Line`/`Area`/`Bar`/
+      // `StackedBar`, all built on real `Skia.Path` construction via
+      // `useLinePath`/`useAreaPath`/`useBarPath`) to render under Jest at
+      // all — without a real CanvasKit-backed Skia object those hooks throw
+      // immediately (`Skia.Path.Make` is undefined), so this is not
+      // optional plumbing. `canvaskit-wasm` pinned as an explicit
+      // devDependency (`0.41.0`, matching the version
+      // `@shopify/react-native-skia@2.6.2` itself already resolves — see
+      // `pnpm-lock.yaml`) purely so it hoists to root `node_modules` (pnpm's
+      // nested `.pnpm/` layout doesn't otherwise expose a package's own
+      // dependencies to files outside it, and `jestEnv.js`'s
+      // `require("canvaskit-wasm/...")` resolves from `<rootDir>`).
+      testEnvironment: '<rootDir>/node_modules/@shopify/react-native-skia/jestEnv.js',
+      setupFiles: [
+        '<rootDir>/node_modules/react-native-gesture-handler/jestSetup.js',
+        '<rootDir>/node_modules/@shopify/react-native-skia/jestSetup.js',
+      ],
       // `@shopify/flash-list` v2 (M1-07) ships `dist/index.js` as plain ESM
       // (`import`/`export` syntax, no CJS build) — `jest-expo`'s own default
       // `transformIgnorePatterns` (see its `jest-preset.js`) already
@@ -142,9 +167,27 @@ module.exports = {
       // keeps working. `react-native-reanimated-dnd` (M3-03) is the same
       // story — its own `package.json` is `"type": "module"` with only an
       // ESM `lib/index.js` build, no CJS fallback — added to the same
-      // allow-list for the same reason.
+      // allow-list for the same reason. `@shopify/react-native-skia` (M4-07)
+      // is the same story again: its `"react-native"` field (which Jest's RN
+      // resolver prefers over `main`) points at `lib/module/index.js`, an
+      // ESM build with bare `import`/`export`. `victory-native` (M4-07) goes
+      // one step further — its own `"react-native"` field points at
+      // `src/index.ts`, raw TypeScript source (not even pre-compiled),
+      // relying on the *consumer's* Metro/Babel pipeline to transform it
+      // (that's how Metro resolves it on-device too) — needs the same
+      // un-ignoring so babel-jest's TS preset can run over it. Its
+      // transitive `d3-scale`/`d3-shape`/`d3-zoom` dependencies (plus
+      // *their* transitive `d3-*` deps — `d3-array`, `d3-color`,
+      // `d3-dispatch`, `d3-drag`, `d3-ease`, `d3-format`, `d3-interpolate`,
+      // `d3-path`, `d3-selection`, `d3-time`, `d3-time-format`, `d3-timer`,
+      // `d3-transition`, enumerated from `pnpm-lock.yaml`) are the same
+      // story again, one layer deeper: every d3 v3/v4 package publishes
+      // `"main"` pointing straight at its raw ESM `src/index.js` with no
+      // CJS build at all — `d3-[a-z-]+` un-ignores the whole family in one
+      // pattern rather than enumerating 15 exact names that will drift as
+      // victory-native's own dependency tree changes.
       transformIgnorePatterns: [
-        '/node_modules/(?!(.pnpm|react-native|@react-native|@react-native-community|expo|@expo|@expo-google-fonts|react-navigation|@react-navigation|@sentry/react-native|native-base|standard-navigation|@shopify/flash-list|react-native-reanimated-dnd))',
+        '/node_modules/(?!(.pnpm|react-native|@react-native|@react-native-community|expo|@expo|@expo-google-fonts|react-navigation|@react-navigation|@sentry/react-native|native-base|standard-navigation|@shopify/flash-list|react-native-reanimated-dnd|@shopify/react-native-skia|victory-native|d3-[a-z-]+|internmap))',
         '/node_modules/react-native-reanimated/plugin/',
         '/node_modules/@react-native/babel-preset/',
       ],
