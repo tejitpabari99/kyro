@@ -9,6 +9,14 @@
  * Workout" (the same one-active-workout gate `RoutinesHubScreen.test.tsx`
  * already exercises for "Start Routine," scoped here to `repeatWorkoutId`),
  * plus the routine-name/"(deleted routine)" subtitle (04 §2.2/05 §3.3).
+ *
+ * M4-04 additions (04 §3.1/§5.4; 02 §15; 07 §6): trophy badges verified
+ * against a real `configureRecordsService` fixture (this task's own
+ * acceptance line — "Trophy badges match domain attribution on a fixture
+ * history"), the tap-to-reveal record-type label, exercise notes, the ⋯
+ * menu's new "Edit Workout" nav and "Delete" confirm/soft-delete/recompute
+ * flow, and a light-theme smoke render (dark is already covered by every
+ * `renderScreen` call's default `ThemeProvider preference="dark"`).
  */
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import React from 'react';
@@ -21,7 +29,8 @@ import type { RoutineRepository, RoutineSummary } from '@/data/routines/types';
 import type { WorkoutFull, WorkoutRepository } from '@/data/workouts/types';
 import { useActiveWorkoutStore } from '@/features/workout/activeWorkoutStore';
 import { useSettingsStore } from '@/features/settings/settings-store';
-import { ThemeProvider } from '@/ui/theme-provider';
+import { configureRecordsService, invalidateAfterWorkoutMutation } from '@/features/stats/records-service';
+import { ThemeProvider, type ThemePreference } from '@/ui/theme-provider';
 
 import { HistoryDetailScreen } from '../HistoryDetailScreen';
 
@@ -40,6 +49,17 @@ jest.mock('expo-router', () => ({
 // notification (`useRestTimerStore.getState().skip()`) — same native seam
 // `RoutinesHubScreen.test.tsx` mocks for the identical reason.
 jest.mock('@/lib/notifications');
+
+// M4-04: `invalidateAfterWorkoutMutation` is spied (real implementation
+// otherwise, `getSnapshot`/`configureRecordsService`/etc. all stay real) so
+// the "⋯ Delete" tests below can assert the screen actually calls the
+// central M4-02 recompute helper with this workout's own exercise ids,
+// without needing to reach into the `QueryClient` `renderScreen` builds
+// internally.
+jest.mock('@/features/stats/records-service', () => ({
+  ...jest.requireActual('@/features/stats/records-service'),
+  invalidateAfterWorkoutMutation: jest.fn().mockResolvedValue(undefined),
+}));
 
 function fixtureRoutineSummary(overrides: Partial<RoutineSummary> = {}): RoutineSummary {
   return {
@@ -168,20 +188,32 @@ function defaultRoutineRepository(): Pick<RoutineRepository, 'createFromWorkout'
   };
 }
 
+/**
+ * M4-04: `softDelete` is optional here and defaulted to a no-op stub — every
+ * pre-M4-04 test constructs its own `workoutRepository` fixture as `Pick<...,
+ * 'getFull'>` only (M2-14/M3-07's own established shape), and none of them
+ * care about delete; only the new "⋯ Delete" `describe` block below
+ * overrides it to assert the real call.
+ */
 async function renderScreen(
-  workoutRepository: Pick<WorkoutRepository, 'getFull'>,
+  workoutRepository: Pick<WorkoutRepository, 'getFull'> & Partial<Pick<WorkoutRepository, 'softDelete'>>,
   exerciseRepository: Pick<ExerciseRepository, 'get'>,
   routineRepository: Pick<RoutineRepository, 'createFromWorkout' | 'get'> = defaultRoutineRepository(),
   workoutId = 'w-1',
+  theme: ThemePreference = 'dark',
 ) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { gcTime: 0, retry: false } } });
+  const fullWorkoutRepository: Pick<WorkoutRepository, 'getFull' | 'softDelete'> = {
+    softDelete: async () => undefined,
+    ...workoutRepository,
+  };
   return render(
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider preference="dark">
+      <ThemeProvider preference={theme}>
         <HistoryDetailScreen
           testID="detail"
           workoutId={workoutId}
-          workoutRepository={workoutRepository}
+          workoutRepository={fullWorkoutRepository}
           exerciseRepository={exerciseRepository}
           routineRepository={routineRepository}
         />
@@ -203,6 +235,15 @@ beforeEach(() => {
       warmup_in_stats: false,
     },
   }));
+  // M4-04: every test needs a configured `RecordsService` singleton —
+  // `getSnapshot` (inside the screen's `awardsQuery`) throws otherwise
+  // (`records-service.ts`'s own "throw until configured" guard). Empty
+  // history by default (no trophies anywhere) — the trophy-specific
+  // `describe` block below overrides this per-test with a real fixture.
+  configureRecordsService({
+    setsForExercise: async () => [],
+    exerciseHistoryWatermark: async () => 0,
+  });
 });
 
 describe('HistoryDetailScreen — not found', () => {
@@ -460,5 +501,328 @@ describe('HistoryDetailScreen — routine name / "(deleted routine)" (M3-07, 04 
     // never touches/cascades into past workouts.
     expect(screen.getByText('Morning Workout')).toBeTruthy();
     expect(screen.getByText('Bench Press')).toBeTruthy();
+  });
+});
+
+// -- M4-04 -------------------------------------------------------------
+
+/**
+ * A workout whose two sets, taken as `ex-1`'s *entire* history (the fixture
+ * `configureRecordsService` below feeds back as `setsForExercise`), produces
+ * one clear-trophy set and one clear-no-trophy set — the same
+ * `domain/records.ts` fold every other trophy surface uses, worked by hand
+ * here so the assertions below are checked against real domain attribution,
+ * not a stubbed boolean:
+ *
+ *  - `set-1` (100 kg × 5, first-ever eligible set for a `weight_reps`
+ *    exercise): unconditionally wins every applicable slot — Heaviest
+ *    Weight, Best Est. 1RM, Best Set Volume, Most Reps, Set Record (bucket
+ *    5). 5 awards.
+ *  - `set-2` (80 kg × 5): beats nothing — 80 < 100 (Heaviest Weight), Epley
+ *    93.33 < 116.67 (Best Est. 1RM), 400 < 500 (Best Set Volume), 5 is not
+ *    `>` 5 (Most Reps), and the bucket-5 Set Record already holds 100 kg
+ *    (80 < 100, no re-award). 0 awards — no trophy.
+ */
+function makeTrophyWorkoutFull(overrides: Partial<WorkoutFull> = {}): WorkoutFull {
+  return makeWorkoutFull({
+    exercises: [
+      {
+        id: 'we-1',
+        workoutId: 'w-1',
+        exerciseId: 'ex-1',
+        position: 0,
+        supersetId: null,
+        notes: null,
+        restSeconds: null,
+        sets: [
+          {
+            id: 'set-1',
+            position: 0,
+            setType: 'normal',
+            weightKg: 100,
+            reps: 5,
+            distanceMeters: null,
+            durationSeconds: null,
+            rpe: null,
+            customMetric: null,
+            isCompleted: true,
+          },
+          {
+            id: 'set-2',
+            position: 1,
+            setType: 'normal',
+            weightKg: 80,
+            reps: 5,
+            distanceMeters: null,
+            durationSeconds: null,
+            rpe: null,
+            customMetric: null,
+            isCompleted: true,
+          },
+        ],
+      },
+    ],
+    ...overrides,
+  } as Partial<WorkoutFull>);
+}
+
+/** Feeds `RecordsService` exactly `full`'s own two sets as `ex-1`'s complete history — the trophy fold then runs for real against them (see `makeTrophyWorkoutFull`'s own doc comment for the worked-out expected awards). */
+function configureTrophyHistory(full: WorkoutFull): void {
+  const sets = full.exercises[0]!.sets;
+  configureRecordsService({
+    setsForExercise: async () => [
+      {
+        setId: sets[0]!.id,
+        workoutId: full.id,
+        workoutStartTime: full.startTime,
+        setOrder: 0,
+        exerciseType: 'weight_reps',
+        setType: sets[0]!.setType,
+        isCompleted: sets[0]!.isCompleted,
+        weightKg: sets[0]!.weightKg,
+        reps: sets[0]!.reps,
+        durationSeconds: sets[0]!.durationSeconds,
+      },
+      {
+        setId: sets[1]!.id,
+        workoutId: full.id,
+        workoutStartTime: full.startTime,
+        setOrder: 1,
+        exerciseType: 'weight_reps',
+        setType: sets[1]!.setType,
+        isCompleted: sets[1]!.isCompleted,
+        weightKg: sets[1]!.weightKg,
+        reps: sets[1]!.reps,
+        durationSeconds: sets[1]!.durationSeconds,
+      },
+    ],
+    exerciseHistoryWatermark: async () => 1,
+  });
+}
+
+describe('HistoryDetailScreen — trophy badges (M4-04, 04 §5.4/§5.2, 07 §6)', () => {
+  it('shows a trophy on the record-defining set and none on the set that earns nothing, matching real domain attribution', async () => {
+    const full = makeTrophyWorkoutFull();
+    configureTrophyHistory(full);
+    const workoutRepository: Pick<WorkoutRepository, 'getFull'> = { getFull: async () => full };
+    const exerciseRepository: Pick<ExerciseRepository, 'get'> = {
+      get: async (id) => (id === 'ex-1' ? makeExercise() : null),
+    };
+
+    await renderScreen(workoutRepository, exerciseRepository);
+    await waitFor(() => expect(screen.getByTestId('detail-set-set-1-trophy')).toBeTruthy());
+
+    expect(screen.queryByTestId('detail-set-set-2-trophy')).toBeNull();
+  });
+
+  it('reveals the combined record-type label via Alert on trophy tap (04 §5.4 "record-type label on tap")', async () => {
+    const full = makeTrophyWorkoutFull();
+    configureTrophyHistory(full);
+    const workoutRepository: Pick<WorkoutRepository, 'getFull'> = { getFull: async () => full };
+    const exerciseRepository: Pick<ExerciseRepository, 'get'> = {
+      get: async (id) => (id === 'ex-1' ? makeExercise() : null),
+    };
+
+    await renderScreen(workoutRepository, exerciseRepository);
+    await waitFor(() => expect(screen.getByTestId('detail-set-set-1-trophy')).toBeTruthy());
+
+    fireEvent.press(screen.getByTestId('detail-set-set-1-trophy'));
+
+    expect(Alert.alert).toHaveBeenCalledWith(
+      'Personal Record',
+      expect.stringContaining('Heaviest Weight — 100 kg'),
+    );
+    // `set-1` wins every applicable slot for `weight_reps` — Best Set
+    // Volume and Most Reps are both in the same combined label.
+    const message = (Alert.alert as jest.Mock).mock.calls[0][1] as string;
+    expect(message).toContain('Best Set Volume — 500 kg');
+    expect(message).toContain('Most Reps — 5 reps');
+  });
+
+  it('omits the trophy affordance entirely once a set earns nothing (RecordsService returns [] for that workout/set pair)', async () => {
+    const full = makeTrophyWorkoutFull();
+    configureTrophyHistory(full);
+    const workoutRepository: Pick<WorkoutRepository, 'getFull'> = { getFull: async () => full };
+    const exerciseRepository: Pick<ExerciseRepository, 'get'> = {
+      get: async (id) => (id === 'ex-1' ? makeExercise() : null),
+    };
+
+    await renderScreen(workoutRepository, exerciseRepository);
+    await waitFor(() => expect(screen.getByText('Bench Press')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('detail-set-set-1-trophy')).toBeTruthy());
+
+    // No accidental tap target on the no-trophy row.
+    expect(screen.queryByTestId('detail-set-set-2-trophy')).toBeNull();
+  });
+});
+
+describe('HistoryDetailScreen — exercise notes (M4-04, 04 §3.1)', () => {
+  it('renders a workout-exercise\'s note read-only', async () => {
+    const full = makeWorkoutFull({
+      exercises: [
+        {
+          id: 'we-1',
+          workoutId: 'w-1',
+          exerciseId: 'ex-1',
+          position: 0,
+          supersetId: null,
+          notes: 'Elbows tucked, paused reps',
+          restSeconds: null,
+          sets: makeWorkoutFull().exercises[0]!.sets,
+        },
+      ],
+    } as Partial<WorkoutFull>);
+    const workoutRepository: Pick<WorkoutRepository, 'getFull'> = { getFull: async () => full };
+    const exerciseRepository: Pick<ExerciseRepository, 'get'> = {
+      get: async (id) => (id === 'ex-1' ? makeExercise() : null),
+    };
+
+    await renderScreen(workoutRepository, exerciseRepository);
+    await waitFor(() => expect(screen.getByText('Elbows tucked, paused reps')).toBeTruthy());
+  });
+
+  it('renders no note row when the workout-exercise has none', async () => {
+    const full = makeWorkoutFull();
+    const workoutRepository: Pick<WorkoutRepository, 'getFull'> = { getFull: async () => full };
+    const exerciseRepository: Pick<ExerciseRepository, 'get'> = {
+      get: async (id) => (id === 'ex-1' ? makeExercise() : null),
+    };
+
+    await renderScreen(workoutRepository, exerciseRepository);
+    await waitFor(() => expect(screen.getByText('Bench Press')).toBeTruthy());
+    expect(screen.queryByTestId('detail-notes-we-1')).toBeNull();
+  });
+});
+
+describe('HistoryDetailScreen — ⋯ Edit Workout (M4-04 -> M4-05 route)', () => {
+  it('navigates to /workout/{id}/edit', async () => {
+    const full = makeWorkoutFull();
+    const workoutRepository: Pick<WorkoutRepository, 'getFull'> = { getFull: async () => full };
+    const exerciseRepository: Pick<ExerciseRepository, 'get'> = {
+      get: async (id) => (id === 'ex-1' ? makeExercise() : null),
+    };
+
+    await renderScreen(workoutRepository, exerciseRepository);
+    await waitFor(() => expect(screen.getByText('Morning Workout')).toBeTruthy());
+
+    await fireEvent.press(screen.getByTestId('detail-menu-button'));
+    await fireEvent.press(await screen.findByTestId('detail-actions-sheet-edit-workout'));
+
+    expect(router.push).toHaveBeenCalledWith('/workout/w-1/edit');
+  });
+});
+
+describe('HistoryDetailScreen — ⋯ Delete (M4-04, 02 §15)', () => {
+  it('confirms, soft-deletes, recomputes via RecordsService, and navigates back', async () => {
+    const full = makeWorkoutFull();
+    const softDelete = jest.fn().mockResolvedValue(undefined);
+    const workoutRepository: Pick<WorkoutRepository, 'getFull' | 'softDelete'> = {
+      getFull: async () => full,
+      softDelete,
+    };
+    const exerciseRepository: Pick<ExerciseRepository, 'get'> = {
+      get: async (id) => (id === 'ex-1' ? makeExercise() : null),
+    };
+
+    await renderScreen(workoutRepository, exerciseRepository);
+    await waitFor(() => expect(screen.getByText('Morning Workout')).toBeTruthy());
+
+    await fireEvent.press(screen.getByTestId('detail-menu-button'));
+    await fireEvent.press(await screen.findByTestId('detail-actions-sheet-delete'));
+
+    expect(Alert.alert).toHaveBeenCalledWith(
+      'Delete Workout?',
+      `Delete "Morning Workout"? This can't be undone.`,
+      expect.any(Array),
+    );
+    expect(softDelete).not.toHaveBeenCalled();
+
+    await pressAlertButton('Delete');
+
+    expect(softDelete).toHaveBeenCalledWith('w-1');
+    await waitFor(() =>
+      expect(invalidateAfterWorkoutMutation).toHaveBeenCalledWith(expect.anything(), ['ex-1']),
+    );
+    await waitFor(() => expect(router.back).toHaveBeenCalledTimes(1));
+  });
+
+  it('surfaces an error alert when softDelete rejects, without navigating away', async () => {
+    const full = makeWorkoutFull();
+    const workoutRepository: Pick<WorkoutRepository, 'getFull' | 'softDelete'> = {
+      getFull: async () => full,
+      softDelete: jest.fn().mockRejectedValue(new Error('boom')),
+    };
+    const exerciseRepository: Pick<ExerciseRepository, 'get'> = {
+      get: async (id) => (id === 'ex-1' ? makeExercise() : null),
+    };
+
+    await renderScreen(workoutRepository, exerciseRepository);
+    await waitFor(() => expect(screen.getByText('Morning Workout')).toBeTruthy());
+
+    await fireEvent.press(screen.getByTestId('detail-menu-button'));
+    await fireEvent.press(await screen.findByTestId('detail-actions-sheet-delete'));
+    await pressAlertButton('Delete');
+
+    await waitFor(() =>
+      expect(Alert.alert).toHaveBeenCalledWith('Something went wrong', expect.any(String)),
+    );
+    expect(router.back).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when Cancel is pressed', async () => {
+    const full = makeWorkoutFull();
+    const softDelete = jest.fn();
+    const workoutRepository: Pick<WorkoutRepository, 'getFull' | 'softDelete'> = {
+      getFull: async () => full,
+      softDelete,
+    };
+    const exerciseRepository: Pick<ExerciseRepository, 'get'> = {
+      get: async (id) => (id === 'ex-1' ? makeExercise() : null),
+    };
+
+    await renderScreen(workoutRepository, exerciseRepository);
+    await waitFor(() => expect(screen.getByText('Morning Workout')).toBeTruthy());
+
+    await fireEvent.press(screen.getByTestId('detail-menu-button'));
+    await fireEvent.press(await screen.findByTestId('detail-actions-sheet-delete'));
+    await pressAlertButton('Cancel');
+
+    expect(softDelete).not.toHaveBeenCalled();
+    expect(router.back).not.toHaveBeenCalled();
+  });
+});
+
+describe('HistoryDetailScreen — Export CSV hidden until M5-06 (04 §3.1)', () => {
+  it('does not show an Export CSV item in the ⋯ menu', async () => {
+    const full = makeWorkoutFull();
+    const workoutRepository: Pick<WorkoutRepository, 'getFull'> = { getFull: async () => full };
+    const exerciseRepository: Pick<ExerciseRepository, 'get'> = {
+      get: async (id) => (id === 'ex-1' ? makeExercise() : null),
+    };
+
+    await renderScreen(workoutRepository, exerciseRepository);
+    await waitFor(() => expect(screen.getByText('Morning Workout')).toBeTruthy());
+
+    await fireEvent.press(screen.getByTestId('detail-menu-button'));
+    await waitFor(() => expect(screen.getByTestId('detail-actions-sheet-delete')).toBeTruthy());
+
+    expect(screen.queryByText(/export csv/i)).toBeNull();
+  });
+});
+
+describe('HistoryDetailScreen — both-themes smoke (07)', () => {
+  it('renders in light theme without crashing, with trophy badges intact', async () => {
+    const full = makeTrophyWorkoutFull();
+    configureTrophyHistory(full);
+    const workoutRepository: Pick<WorkoutRepository, 'getFull'> = { getFull: async () => full };
+    const exerciseRepository: Pick<ExerciseRepository, 'get'> = {
+      get: async (id) => (id === 'ex-1' ? makeExercise() : null),
+    };
+
+    await renderScreen(workoutRepository, exerciseRepository, defaultRoutineRepository(), 'w-1', 'light');
+
+    await waitFor(() => expect(screen.getByText('Morning Workout')).toBeTruthy());
+    expect(screen.getByTestId('detail-set-set-1-trophy')).toBeTruthy();
+    expect(screen.queryByTestId('detail-set-set-2-trophy')).toBeNull();
   });
 });
