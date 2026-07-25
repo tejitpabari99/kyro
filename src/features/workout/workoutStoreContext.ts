@@ -36,10 +36,14 @@
  *
  * `EditWorkoutModeContext` (default `false`) is the sibling flag
  * `ConnectedSetRow`'s check-handler reads to skip starting a rest timer (02
- * §15: "no rest timers") — the *only* per-check behavior that differs
- * between the two modes (everything else — check/uncheck, value edits,
- * add/remove sets/exercises, reorder, notes, supersets — already works
- * identically against either store instance, since none of
+ * §15: "no rest timers") and to skip the M4-10 live-PR-banner check (04
+ * §5.5 scopes that to "the active workout"; this workout's own sets are
+ * already part of the history baseline during an edit session, and
+ * `prBannerStore` is the same app-wide singleton `restTimerStore` is) —
+ * the *only two* per-check behaviors that differ between the two modes
+ * (everything else — check/uncheck, value edits, add/remove
+ * sets/exercises, reorder, notes, supersets — already works identically
+ * against either store instance, since none of
  * `WorkoutRepositoryMutators`'s methods gate on workout `state`).
  */
 import { createContext, useContext } from 'react';

@@ -54,7 +54,10 @@
  *      (in `workoutStore.getState()` order, which needs no separate
  *      "check order" bookkeeping — see that call site's own comment); any
  *      newly-earned award fires `successPR()` and shows `PRBanner` via
- *      `prBannerStore`, gated on the `live_pr_banner` setting. Then (M2-12):
+ *      `prBannerStore`, gated on the `live_pr_banner` setting — and (M4-05)
+ *      on `!isEditMode`, the same rest-timer-style guard just above, since
+ *      this workout's own sets are already part of the history baseline
+ *      being compared against during an edit session. Then (M2-12):
  *      `onChecked?.()` — this row's own report, unconditional, that a set
  *      here was just successfully checked; `ActiveWorkoutScreen` (not this
  *      file) owns the "is this exercise grouped, is the setting on, which
@@ -601,7 +604,16 @@ function ConnectedSetRowImpl({
     // see that function's own header for why a live banner is a best-effort
     // enhancement that must never throw when the singleton isn't booted
     // (most of this file's own test suite doesn't configure it).
-    if (useSettingsStore.getState().settings.live_pr_banner) {
+    // M4-05 (`isEditMode`): must not fire while editing a past workout — 04
+    // §5.5's own wording scopes this to "the active workout," and this
+    // workout's own sets are already part of the persisted history
+    // `RecordsService`'s cache baseline reads from, so a re-check here would
+    // compare the workout against itself. `prBannerStore` is also the same
+    // app-wide singleton `restTimerStore` is (see the rest-timer guard
+    // above) — showing a banner from here could stomp state meant for a
+    // genuinely active workout running concurrently, exactly the failure
+    // mode the rest-timer guard above already exists to prevent.
+    if (!isEditMode && useSettingsStore.getState().settings.live_pr_banner) {
       const service = tryGetRecordsService();
       const currentWorkout = service ? workoutStore.getState().workout : null;
       if (service && currentWorkout) {
