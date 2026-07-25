@@ -531,6 +531,7 @@ export function EditWorkoutScreen({
                   exercisePosition={workoutExercise.position}
                   exercise={exercise}
                   exerciseRepository={exerciseRepository}
+                  workoutRepository={workoutRepository}
                   notes={workoutExercise.notes}
                   restSeconds={workoutExercise.restSeconds}
                   supersetVisual={supersetVisuals.get(workoutExercise.id) ?? null}
@@ -575,6 +576,7 @@ export function EditWorkoutScreen({
             visible={pickerVisible}
             onDismiss={handleClosePicker}
             repository={exerciseRepository}
+            workoutRepository={workoutRepository}
             mode={pickerMode}
             onAdd={(ids, superset) => void handlePickerAdd(ids, superset)}
             onReplace={handlePickerReplace}

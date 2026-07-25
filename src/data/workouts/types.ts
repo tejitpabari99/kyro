@@ -523,6 +523,55 @@ export interface WorkoutRepositoryMutators {
    * first.
    */
   exerciseHistoryWatermark(exerciseId: string): Promise<number>;
+  /**
+   * `WorkoutRepository.exerciseHistory` (M4-09, 03 §3 / 04 §4.3 / 04 §5.4 —
+   * the exercise-detail History/Charts/Records tabs' shared data feed).
+   * Same scope and chronological-order contract as {@link setsForExercise}
+   * (every set from every completed, non-deleted workout containing
+   * `exerciseId`, ordered `(workoutStartTime, setOrder)`, `setOrder` a
+   * synthetic 0-based index over that exact traversal) — a strict
+   * **superset** of that method's fields, not a different query semantics.
+   * `setsForExercise` stays exactly as `domain/records.ts`'s PR engine needs
+   * it (records never read distance/rpe/title); this method exists because
+   * the History tab's set lines need the parent workout's own `title` and a
+   * set's `rpe` ("`1 · 80kg × 8 @9`"), and the Charts tab's cardio/
+   * short-distance metrics need `distanceMeters` — none of which
+   * `HistoricalSet` carries. One indexed query, same join shape as
+   * `setsForExercise` plus `workouts.title`/`sets.distance_meters`/
+   * `sets.rpe`/`sets.custom_metric` selected alongside the existing columns.
+   */
+  exerciseHistory(exerciseId: string): Promise<ExerciseHistorySet[]>;
+}
+
+/**
+ * One historical set for one exercise, enriched for M4-09's History/Charts
+ * tabs beyond what {@link WorkoutRepositoryMutators.setsForExercise}'s
+ * `HistoricalSet` carries — see that method's own doc comment for why this
+ * is a separate, additive type rather than widening `HistoricalSet` itself
+ * (`domain/records.ts` is a reviewed, closed M4-01 file this task
+ * deliberately doesn't reopen). `setId`/`workoutId`/`workoutStartTime`/
+ * `setOrder`/`setType`/`isCompleted`/`weightKg`/`reps`/`durationSeconds`
+ * match `HistoricalSet`'s own fields field-for-field (same values, same
+ * ordering contract) — only `workoutTitle`/`distanceMeters`/`rpe`/
+ * `customMetric` are new. Deliberately excludes `exerciseType` (unlike
+ * `HistoricalSet`): every row from one `exerciseHistory(exerciseId)` call is
+ * for the same exercise, so the feature layer already has it from its own
+ * `Exercise` fetch — carrying it per-row here would just be redundant.
+ */
+export interface ExerciseHistorySet {
+  setId: string;
+  workoutId: string;
+  workoutTitle: string;
+  workoutStartTime: number;
+  setOrder: number;
+  setType: SetType;
+  isCompleted: boolean;
+  weightKg: number | null;
+  reps: number | null;
+  distanceMeters: number | null;
+  durationSeconds: number | null;
+  rpe: Rpe | null;
+  customMetric: number | null;
 }
 
 /**

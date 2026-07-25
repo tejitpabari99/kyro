@@ -20,6 +20,7 @@
 import React from 'react';
 
 import type { ExerciseRepository } from '@/data/exercises/types';
+import type { WorkoutRepository } from '@/data/workouts/types';
 import { Sheet } from '@/ui/Sheet';
 
 import { ExerciseDetailScreen } from '@/features/exercises/ExerciseDetailScreen';
@@ -28,6 +29,14 @@ export interface ExerciseDetailSheetProps {
   visible: boolean;
   onDismiss: () => void;
   repository: ExerciseRepository;
+  /**
+   * M4-09 addition — threaded straight through to
+   * `ExerciseDetailScreen.workoutRepository` (see that prop's own doc
+   * comment for the optional-and-why). Read-only (`exerciseHistory` is a
+   * plain `SELECT`) — supplying it here can never mutate the active
+   * workout this sheet is opened on top of.
+   */
+  workoutRepository?: Pick<WorkoutRepository, 'exerciseHistory'>;
   /** `null` while no exercise is targeted — the sheet stays closed either way (`visible && exerciseId != null`). */
   exerciseId: string | null;
   testID?: string;
@@ -37,6 +46,7 @@ export function ExerciseDetailSheet({
   visible,
   onDismiss,
   repository,
+  workoutRepository,
   exerciseId,
   testID = 'exercise-detail-sheet',
 }: ExerciseDetailSheetProps): React.JSX.Element {
@@ -51,6 +61,7 @@ export function ExerciseDetailSheet({
         <ExerciseDetailScreen
           testID={`${testID}-content`}
           repository={repository}
+          workoutRepository={workoutRepository}
           exerciseId={exerciseId}
           showBackButton={false}
         />

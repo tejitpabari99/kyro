@@ -64,6 +64,9 @@ import {
 import { EQUIPMENT_LABELS, EXERCISE_TYPE_LABELS, MUSCLE_GROUP_LABELS } from '@/domain/enums';
 import { ExerciseReferencedError } from '@/data/exercises/errors';
 import type { Exercise, ExerciseRepository } from '@/data/exercises/types';
+import type { ExerciseHistorySet, WorkoutRepository } from '@/data/workouts/types';
+import { useSettingsStore } from '@/features/settings/settings-store';
+import { useRecordsSnapshot } from '@/features/stats/records-service';
 import { deleteExercisePhotos } from '@/lib/files';
 import { Chip } from '@/ui/Chip';
 import { EmptyState } from '@/ui/EmptyState';
@@ -72,8 +75,11 @@ import { SegmentedControl } from '@/ui/SegmentedControl';
 import { Sheet } from '@/ui/Sheet';
 import { useTheme } from '@/ui/theme-provider';
 
+import { ExerciseChartsTab } from './ExerciseChartsTab';
 import { setExerciseFormPrefill } from './exercise-form-prefill';
+import { ExerciseHistoryTab } from './ExerciseHistoryTab';
 import { ExerciseMedia } from './ExerciseMedia';
+import { ExerciseRecordsTab } from './ExerciseRecordsTab';
 
 const DETAIL_TABS = [
   { value: 'about', label: 'About' },
@@ -86,6 +92,20 @@ type DetailTab = (typeof DETAIL_TABS)[number]['value'];
 
 export interface ExerciseDetailScreenProps {
   repository: ExerciseRepository;
+  /**
+   * M4-09 addition — the History/Charts tabs' shared data feed
+   * (`WorkoutRepository.exerciseHistory`). Optional and defaulted to
+   * `undefined`: every call site that has a real repository handy wires it
+   * (the primary `/exercise/[id]` route, the mid-workout/edit-workout
+   * `ExerciseDetailSheet`), but a couple of picker-context call sites
+   * (`RoutineEditorScreen`'s add-exercise picker) don't have one in scope
+   * and intentionally omit it — those two tabs simply fall back to their
+   * pre-M4-09 `EmptyState` placeholders rather than crashing. The Records
+   * tab does **not** depend on this prop at all — it reads the app-wide
+   * `RecordsService` singleton directly (`useRecordsSnapshot`), exactly like
+   * every other PR surface in the app already does.
+   */
+  workoutRepository?: Pick<WorkoutRepository, 'exerciseHistory'>;
   exerciseId: string;
   showBackButton?: boolean;
   testID?: string;
@@ -209,6 +229,7 @@ function DetailEmptyTab({
 
 export function ExerciseDetailScreen({
   repository,
+  workoutRepository,
   exerciseId,
   showBackButton = true,
   testID = 'exercise-detail-screen',
@@ -219,12 +240,38 @@ export function ExerciseDetailScreen({
   const [actionsSheetVisible, setActionsSheetVisible] = useState(false);
   const queryClient = useQueryClient();
 
+  const weightUnit = useSettingsStore((state) => state.settings.weight_unit);
+  const distanceUnit = useSettingsStore((state) => state.settings.distance_unit);
+  const rpeEnabled = useSettingsStore((state) => state.settings.rpe_enabled);
+  const warmupInStats = useSettingsStore((state) => state.settings.warmup_in_stats);
+
   const query = useQuery({
     queryKey: ['exercises', 'detail', exerciseId],
     queryFn: () => repository.get(exerciseId),
   });
 
   const exercise = useMemo(() => query.data ?? null, [query.data]);
+
+  // M4-09 — History/Charts tabs' shared data feed. Keyed under the
+  // `['history']` prefix (not a new prefix) so `invalidateAfterWorkoutMutation`
+  // (`records-service.ts`) already invalidates it on every workout create/
+  // edit/delete without that file needing a matching change here (see
+  // `ExerciseDetailScreenProps.workoutRepository`'s own doc comment for why
+  // this is optional). `undefined` `workoutRepository` skips the query
+  // entirely — same conditional-`useQuery` convention every other
+  // `enabled: x != null` call site in this codebase uses.
+  const historyQuery = useQuery({
+    queryKey: ['history', 'exercise', exerciseId],
+    queryFn: () => workoutRepository!.exerciseHistory(exerciseId),
+    enabled: workoutRepository != null,
+  });
+  const historicalSets = useMemo<ExerciseHistorySet[]>(() => historyQuery.data ?? [], [historyQuery.data]);
+
+  // M4-09 — Records tab. Reads the app-wide `RecordsService` singleton
+  // directly (same hook `records-service.ts`'s own header names as this
+  // task's consumer) — independent of `workoutRepository` above, so Records
+  // still works at call sites that only wire the exercise repository.
+  const recordsQuery = useRecordsSnapshot(exerciseId);
 
   const invalidateExerciseQueries = (): Promise<void> =>
     queryClient.invalidateQueries({ queryKey: ['exercises'] }).then(() => undefined);
@@ -419,8 +466,54 @@ export function ExerciseDetailScreen({
           <View style={{ flex: 1, marginTop: spacing['2'] }}>
             {tab === 'about' ? (
               <AboutTab exercise={exercise} testID={`${testID}-about`} />
+            ) : tab === 'history' ? (
+              historyQuery.isLoading ? (
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <ActivityIndicator color={colors.accent.primary} />
+                </View>
+              ) : historicalSets.length === 0 ? (
+                <DetailEmptyTab tab="history" testID={`${testID}-history`} />
+              ) : (
+                <ExerciseHistoryTab
+                  testID={`${testID}-history`}
+                  historicalSets={historicalSets}
+                  exercise={exercise}
+                  weightUnit={weightUnit}
+                  distanceUnit={distanceUnit}
+                  rpeEnabled={rpeEnabled}
+                />
+              )
+            ) : tab === 'charts' ? (
+              historyQuery.isLoading ? (
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <ActivityIndicator color={colors.accent.primary} />
+                </View>
+              ) : historicalSets.length === 0 ? (
+                <DetailEmptyTab tab="charts" testID={`${testID}-charts`} />
+              ) : (
+                <ExerciseChartsTab
+                  testID={`${testID}-charts`}
+                  historicalSets={historicalSets}
+                  exercise={exercise}
+                  weightUnit={weightUnit}
+                  distanceUnit={distanceUnit}
+                  warmupInStats={warmupInStats}
+                />
+              )
+            ) : recordsQuery.isLoading ? (
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                <ActivityIndicator color={colors.accent.primary} />
+              </View>
+            ) : !recordsQuery.data || recordsQuery.data.awards.length === 0 ? (
+              <DetailEmptyTab tab="records" testID={`${testID}-records`} />
             ) : (
-              <DetailEmptyTab tab={tab} testID={`${testID}-${tab}`} />
+              <ExerciseRecordsTab
+                testID={`${testID}-records`}
+                snapshot={recordsQuery.data.snapshot}
+                historicalSets={historicalSets}
+                exerciseType={exercise.exerciseType}
+                weightUnit={weightUnit}
+              />
             )}
           </View>
         </>

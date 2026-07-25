@@ -348,6 +348,90 @@ describe('WorkoutRepositoryImpl — setsForExercise / exerciseHistoryWatermark (
   });
 
   // -------------------------------------------------------------------
+  // exerciseHistory (M4-09)
+  // -------------------------------------------------------------------
+  describe('exerciseHistory', () => {
+    it('returns [] for an exercise with no logged history', async () => {
+      expect(await repo.exerciseHistory(benchId)).toEqual([]);
+    });
+
+    it('returns [] for an unknown exercise id', async () => {
+      expect(await repo.exerciseHistory('does-not-exist')).toEqual([]);
+    });
+
+    it('maps every field, including the parent workout\'s own title, distance/rpe/custom metric', async () => {
+      insertWorkout(driver, 'w1', { startTime: 1_000 });
+      driver.execute(`UPDATE workouts SET title = ? WHERE id = ?`, ['Push Day', 'w1']);
+      const weId = insertWorkoutExercise(driver, 'w1', benchId, 0);
+      driver.execute(
+        `INSERT INTO sets
+           (id, workout_exercise_id, position, set_type, weight_kg, reps, distance_meters,
+            duration_seconds, rpe, custom_metric, is_completed)
+         VALUES ('set-1', ?, 0, 'normal', 100, 5, 12.5, 30, 9, 3, 1)`,
+        [weId],
+      );
+
+      const sets = await repo.exerciseHistory(benchId);
+
+      expect(sets).toEqual([
+        {
+          setId: 'set-1',
+          workoutId: 'w1',
+          workoutTitle: 'Push Day',
+          workoutStartTime: 1_000,
+          setOrder: 0,
+          setType: 'normal',
+          isCompleted: true,
+          weightKg: 100,
+          reps: 5,
+          distanceMeters: 12.5,
+          durationSeconds: 30,
+          rpe: 9,
+          customMetric: 3,
+        },
+      ]);
+    });
+
+    it('orders across workouts by workoutStartTime, assigning a sequential setOrder (same contract as setsForExercise)', async () => {
+      seedCompletedWorkout(driver, 'w-later', benchId, 2_000, [{ weightKg: 105, reps: 5 }]);
+      seedCompletedWorkout(driver, 'w-earlier', benchId, 1_000, [{ weightKg: 100, reps: 5 }]);
+
+      const sets = await repo.exerciseHistory(benchId);
+
+      expect(sets.map((s) => s.workoutId)).toEqual(['w-earlier', 'w-later']);
+      expect(sets.map((s) => s.setOrder)).toEqual([0, 1]);
+    });
+
+    it('excludes an active workout\'s sets', async () => {
+      insertWorkout(driver, 'w-active', { startTime: 1_000, state: 'active' });
+      const weId = insertWorkoutExercise(driver, 'w-active', benchId, 0);
+      insertSet(driver, weId, 0, { weightKg: 999, reps: 1 });
+
+      expect(await repo.exerciseHistory(benchId)).toEqual([]);
+    });
+
+    it('excludes a soft-deleted workout\'s sets', async () => {
+      insertWorkout(driver, 'w-deleted', { startTime: 1_000, deletedAt: 5_000 });
+      const weId = insertWorkoutExercise(driver, 'w-deleted', benchId, 0);
+      insertSet(driver, weId, 0, { weightKg: 999, reps: 1 });
+
+      expect(await repo.exerciseHistory(benchId)).toEqual([]);
+    });
+
+    it('only returns sets for the requested exercise, not a sibling exercise in the same workout', async () => {
+      insertWorkout(driver, 'w-both', { startTime: 1_000 });
+      const benchWe = insertWorkoutExercise(driver, 'w-both', benchId, 0);
+      insertSet(driver, benchWe, 0, { weightKg: 100, reps: 5 });
+      const squatWe = insertWorkoutExercise(driver, 'w-both', squatId, 1);
+      insertSet(driver, squatWe, 0, { weightKg: 20, reps: 8 });
+
+      const benchSets = await repo.exerciseHistory(benchId);
+      expect(benchSets).toHaveLength(1);
+      expect(benchSets[0]!.weightKg).toBe(100);
+    });
+  });
+
+  // -------------------------------------------------------------------
   // getExercisesForWorkouts (M4-03)
   // -------------------------------------------------------------------
   describe('getExercisesForWorkouts', () => {
