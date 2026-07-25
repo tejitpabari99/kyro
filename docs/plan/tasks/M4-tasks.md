@@ -40,7 +40,7 @@ Task count: **12**
 **Acceptance / test gate:** Trophy badges match domain attribution on a fixture history (RNTL + integration); delete recomputes list/calendar/records; both-themes smoke.
 **Est:** 1 d
 
-### M4-05 — Edit past workout + retro-logging entry points
+### M4-05 — Edit past workout + retro-logging entry points [done]
 **Description:** Full edit flow with recompute, and the two retro-log entry points.
 **How:** `workout/[id]/edit` modal reopening the full logger against the saved workout: all sets checked, no stopwatch, no rest timers, everything editable; Save = repo `update(id, full)` replace-content + `updated_at` bump + invalidate union of old+new exercise ids (08 §4.9). Editing while another workout is active is allowed (separate modal; active untouched; must not violate one-active invariant — the edited workout stays `completed`). Retro entry points: Calendar day → "Log past workout" (M4-06 wiring) and History `+` → same; both open the logger in retro mode (M2-05: start_time = chosen date 12:00, stopwatch paused at 0).
 **References:** 02 §15, §1 (retro); 04 §5.6; 08 §4.9.
