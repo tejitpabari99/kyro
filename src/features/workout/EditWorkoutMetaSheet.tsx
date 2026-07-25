@@ -139,11 +139,11 @@ export function EditWorkoutMetaSheet({
     <Sheet visible={visible} onDismiss={onDismiss} testID={testID}>
       <View style={{ paddingHorizontal: spacing['4'] }}>
         <Text style={[typography.title2, { color: colors.text.primary, marginBottom: spacing['4'] }]}>
-          Edit Date &amp; Duration
+          Edit Date & Duration
         </Text>
 
         <View style={{ marginBottom: spacing['5'] }}>
-          <Text style={sectionLabelStyle}>Date &amp; Start Time</Text>
+          <Text style={sectionLabelStyle}>Date & Start Time</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing['2'] }}>
             <NumericInput
               testID={`${testID}-year`}
