@@ -263,6 +263,12 @@ export default function RootLayout(): React.JSX.Element | null {
             name="routine/[id]/edit"
             options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
           />
+          {/* M4-05, 02 §15: the past-workout editor — same fullScreenModal
+              presentation as every other full-logger-shaped screen above. */}
+          <Stack.Screen
+            name="workout/[id]/edit"
+            options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
+          />
         </Stack>
       </ThemeProvider>
     </QueryClientProvider>

@@ -208,6 +208,28 @@ export interface ActiveWorkoutState {
 
   /** Bind `repository` and load the current active workout (06 §5.1 cold-start step; call once at boot, before any other action). Safe to call again (e.g. a manual "resume" after a boot error retry). */
   rehydrate: (repository: WorkoutRepository) => Promise<void>;
+  /**
+   * M4-05 (02 §15) — binds `repository` exactly like {@link rehydrate} but
+   * loads an arbitrary **already-completed** workout by id via
+   * `repository.getFull(workoutId)` instead of `getActive()`. Never used by
+   * the app-wide singleton (`useActiveWorkoutStore` below) — `EditWorkoutScreen`
+   * always constructs its **own** independent store instance via
+   * {@link createActiveWorkoutStore} first, then calls this on that instance,
+   * specifically so the past-workout editor can never observe or replace
+   * whatever the singleton's own `getActive()`-bound (truly active) workout
+   * is — see `createActiveWorkoutStore`'s own file-header rationale for why
+   * this factory exists in the first place. Every granular mutator below
+   * (`updateSet`, `setCompleted`, `addSet`, `removeExercise`, …) already
+   * works against a `workout` of *either* state — none of them gate on
+   * `state === 'active'` (only `startEmpty`/`startFromRoutine`/
+   * `startFromWorkout`/`discard`/`finish` do, and `EditWorkoutScreen` never
+   * calls any of those) — so this store shape is safe to reuse for a
+   * `completed` workout by construction, not by any new special-casing in
+   * those mutators. Sets `workout: null` (leaves it that way — not an error)
+   * when `workoutId` doesn't resolve (unknown or soft-deleted); the caller
+   * surfaces that as its own "not found" state.
+   */
+  loadForEdit: (repository: WorkoutRepository, workoutId: string) => Promise<WorkoutFull | null>;
   /** Clear a surfaced {@link DataError} (e.g. the toast's dismiss action). */
   clearError: () => void;
 
@@ -288,6 +310,14 @@ export function createActiveWorkoutStore(): UseBoundStore<StoreApi<ActiveWorkout
         recordBreadcrumb('workout.rehydrate');
         const workout = await nextRepository.getActive();
         set({ workout, loaded: true, error: null });
+      },
+
+      async loadForEdit(nextRepository, workoutId) {
+        repository = nextRepository;
+        recordBreadcrumb('workout.loadForEdit');
+        const workout = await nextRepository.getFull(workoutId);
+        set({ workout, loaded: true, error: null });
+        return workout;
       },
 
       clearError() {

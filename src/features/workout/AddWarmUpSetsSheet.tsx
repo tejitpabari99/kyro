@@ -44,7 +44,8 @@ import { NumericInput, sanitizeNumericInput } from '@/ui/NumericInput';
 import { Sheet } from '@/ui/Sheet';
 import { useTheme } from '@/ui/theme-provider';
 
-import { selectWorkoutExercise, useActiveWorkoutStore } from './activeWorkoutStore';
+import { selectWorkoutExercise } from './activeWorkoutStore';
+import { useWorkoutStore } from './workoutStoreContext';
 
 export interface AddWarmUpSetsSheetProps {
   visible: boolean;
@@ -55,6 +56,8 @@ export interface AddWarmUpSetsSheetProps {
   weightUnit: WeightUnit;
   previousValuesMode: PreviousValuesMode;
   routineId: string | null;
+  /** M4-05: see `ExerciseSetTableSection`'s own doc comment on the identical prop. */
+  previousSetsExcludeWorkoutId?: string;
   testID?: string;
 }
 
@@ -81,11 +84,13 @@ export function AddWarmUpSetsSheet({
   weightUnit,
   previousValuesMode,
   routineId,
+  previousSetsExcludeWorkoutId,
   testID = 'add-warmup-sets-sheet',
 }: AddWarmUpSetsSheetProps): React.JSX.Element {
   const { colors, typography, spacing, radii } = useTheme();
 
-  const workoutExercise = useActiveWorkoutStore(selectWorkoutExercise(workoutExerciseId));
+  const workoutStore = useWorkoutStore();
+  const workoutExercise = workoutStore(selectWorkoutExercise(workoutExerciseId));
   const warmupCalc = useSettingsStore((s) => s.settings.warmup_calc);
   const plateCalc = useSettingsStore((s) => s.settings.plate_calc);
 
@@ -99,14 +104,13 @@ export function AddWarmUpSetsSheet({
       exerciseId,
       previousValuesMode,
       previousValuesMode === 'same_routine' ? routineId : null,
+      previousSetsExcludeWorkoutId ?? null,
     ],
     queryFn: () =>
-      useActiveWorkoutStore
-        .getState()
-        .previousSets(
-          exerciseId,
-          previousValuesMode === 'same_routine' && routineId ? { routineId } : undefined,
-        ),
+      workoutStore.getState().previousSets(exerciseId, {
+        ...(previousValuesMode === 'same_routine' && routineId ? { routineId } : undefined),
+        ...(previousSetsExcludeWorkoutId ? { beforeWorkoutId: previousSetsExcludeWorkoutId } : undefined),
+      }),
     enabled: visible,
   });
 
@@ -155,7 +159,7 @@ export function AddWarmUpSetsSheet({
       barbellWeightKg,
     });
     const rows = warmupSets(parsedWeight, warmupCalc.sets, rounding);
-    void useActiveWorkoutStore.getState().addWarmUpSets(
+    void workoutStore.getState().addWarmUpSets(
       workoutExerciseId,
       rows.map((row) => ({
         setType: 'warmup' as const,

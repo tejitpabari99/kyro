@@ -307,6 +307,7 @@ import type {
   WorkoutRepositoryDeps,
   WorkoutSet,
   WorkoutSummary,
+  WorkoutUpdateInput,
 } from './types';
 
 // ---------------------------------------------------------------------------
@@ -865,6 +866,93 @@ export class WorkoutRepositoryImpl implements WorkoutRepository {
         id,
       ]);
     });
+  }
+
+  /**
+   * M4-05 addition (`./types.ts`'s own doc comment on {@link WorkoutUpdateInput}
+   * and the `update` interface member has the full write-up) — the past-
+   * workout editor's Save action. Ids for every fresh `workout_exercises`/
+   * `sets` row are generated *before* entering the transaction (file
+   * header's "Id generation" note — `driver.transaction`'s callback is
+   * synchronous), then one transaction: delete every existing
+   * `workout_exercises` row for `id` (cascades `sets`, `schema.ts`'s FK),
+   * insert the fresh rows from `input.exercises` at contiguous 0-based
+   * positions (array order), apply the meta fields, and bump `updated_at`.
+   */
+  async update(id: string, input: WorkoutUpdateInput): Promise<WorkoutFull> {
+    this.requireWorkoutRow(id);
+
+    const prepared = await Promise.all(
+      input.exercises.map(async (exercise) => ({
+        weId: await generateUuid(),
+        exercise,
+        setIds: await Promise.all(exercise.sets.map(() => generateUuid())),
+      })),
+    );
+
+    const now = Date.now();
+    this.driver.transaction(() => {
+      // Cascades to `sets` (schema.ts's `ON DELETE CASCADE` FK) — no
+      // separate `DELETE FROM sets` needed, mirrors `discard()`'s own
+      // reliance on the identical cascade one level up (workouts ->
+      // workout_exercises).
+      this.driver.execute(`DELETE FROM workout_exercises WHERE workout_id = ?`, [id]);
+
+      prepared.forEach(({ weId, exercise, setIds }, position) => {
+        this.driver.execute(
+          `INSERT INTO workout_exercises (id, workout_id, exercise_id, position, superset_id, notes, rest_seconds)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [
+            weId,
+            id,
+            exercise.exerciseId,
+            position,
+            exercise.supersetId,
+            exercise.notes,
+            exercise.restSeconds,
+          ],
+        );
+
+        exercise.sets.forEach((set, setPosition) => {
+          this.driver.execute(
+            `INSERT INTO sets
+               (id, workout_exercise_id, position, set_type, weight_kg, reps, distance_meters,
+                duration_seconds, rpe, custom_metric, is_completed)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              setIds[setPosition],
+              weId,
+              setPosition,
+              set.setType,
+              set.weightKg,
+              set.reps,
+              set.distanceMeters,
+              set.durationSeconds,
+              set.rpe,
+              set.customMetric,
+              set.isCompleted ? 1 : 0,
+            ],
+          );
+        });
+      });
+
+      this.driver.execute(
+        `UPDATE workouts
+         SET title = ?, description = ?, start_time = ?, end_time = ?, duration_pause_offset_ms = ?, updated_at = ?
+         WHERE id = ?`,
+        [
+          input.title,
+          input.description,
+          input.startTime,
+          input.endTime,
+          input.durationPauseOffsetMs,
+          now,
+          id,
+        ],
+      );
+    });
+
+    return (await this.getFull(id))!;
   }
 
   // ---------------------------------------------------------------------

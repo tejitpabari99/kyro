@@ -117,7 +117,11 @@ describe('ExerciseSetTableSection — per-row typing isolation (06 §8)', () => 
     // the actual async fetch, not a guess about render-pass count), then
     // wait for the render-count to stop changing (two consecutive equal
     // polls) so the resulting re-render has actually committed too.
-    const previousSetsQueryKey = ['workout', 'previousSets', exercise.id, 'any_workout', null];
+    // M4-05: the query key grew a 6th segment (`previousSetsExcludeWorkoutId
+    // ?? null`) so the past-workout editor's own `beforeWorkoutId` restriction
+    // (`ExerciseSetTableSection.tsx`'s own doc comment) never collides with
+    // the live logger's cache entry for the same exercise/mode/routine.
+    const previousSetsQueryKey = ['workout', 'previousSets', exercise.id, 'any_workout', null, null];
     await waitFor(() => {
       expect(queryClient.getQueryState(previousSetsQueryKey)?.status).toBe('success');
     });

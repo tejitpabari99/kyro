@@ -64,7 +64,8 @@ import { SetTable } from '@/ui/SetTable';
 import type { SetBadgeKind } from '@/ui/SetRow';
 
 import { ConnectedSetRow } from './ConnectedSetRow';
-import { selectWorkoutExercise, useActiveWorkoutStore } from './activeWorkoutStore';
+import { selectWorkoutExercise } from './activeWorkoutStore';
+import { useWorkoutStore } from './workoutStoreContext';
 
 /** 02 §16.7: "warn > 50 sets/exercise." */
 const MANY_SETS_WARNING_THRESHOLD = 50;
@@ -90,6 +91,17 @@ export interface ExerciseSetTableSectionProps {
    * still renders today.
    */
   getRoutineFull?: (routineId: string) => Promise<RoutineFull | null>;
+  /**
+   * M4-05 (02 §15, `PreviousSetsQuery.beforeWorkoutId`'s own doc comment in
+   * `@/data/workouts/types`): the workout currently being **edited** — when
+   * set, restricts the PREVIOUS lookup to completed workouts strictly
+   * at-or-before this one's own `start_time` and excludes this workout's own
+   * id, so editing a past workout never shows PREVIOUS values sourced from
+   * itself or from anything chronologically after it. `undefined` (the live
+   * logger's own default) means no restriction — the pre-M4-05 behavior,
+   * unchanged.
+   */
+  previousSetsExcludeWorkoutId?: string;
   /** M2-12: threaded straight through to every `ConnectedSetRow` — fired after that row's own set is successfully checked (never uncheck), for `ActiveWorkoutScreen`'s Smart Superset Scrolling hook. */
   onSetChecked?: () => void;
   testID?: string;
@@ -125,10 +137,12 @@ export function ExerciseSetTableSection({
   previousValuesMode,
   routineId,
   getRoutineFull,
+  previousSetsExcludeWorkoutId,
   onSetChecked,
   testID,
 }: ExerciseSetTableSectionProps): React.JSX.Element | null {
-  const workoutExercise = useActiveWorkoutStore(selectWorkoutExercise(workoutExerciseId));
+  const workoutStore = useWorkoutStore();
+  const workoutExercise = workoutStore(selectWorkoutExercise(workoutExerciseId));
 
   const units = useMemo(() => ({ weightUnit, distanceUnit }), [weightUnit, distanceUnit]);
 
@@ -155,14 +169,13 @@ export function ExerciseSetTableSection({
       exercise.id,
       previousValuesMode,
       previousValuesMode === 'same_routine' ? routineId : null,
+      previousSetsExcludeWorkoutId ?? null,
     ],
     queryFn: () =>
-      useActiveWorkoutStore
-        .getState()
-        .previousSets(
-          exercise.id,
-          previousValuesMode === 'same_routine' && routineId ? { routineId } : undefined,
-        ),
+      workoutStore.getState().previousSets(exercise.id, {
+        ...(previousValuesMode === 'same_routine' && routineId ? { routineId } : undefined),
+        ...(previousSetsExcludeWorkoutId ? { beforeWorkoutId: previousSetsExcludeWorkoutId } : undefined),
+      }),
   });
 
   // M3-05: fetched once per screen for free via TanStack Query's own
