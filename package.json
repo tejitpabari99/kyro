@@ -8,6 +8,7 @@
     "@expo/ui": "~56.0.23",
     "@sentry/react-native": "~7.11.0",
     "@shopify/flash-list": "2.3.2",
+    "@shopify/react-native-skia": "^2.6.2",
     "@tanstack/react-query": "^5.101.4",
     "drizzle-orm": "^0.45.2",
     "expo": "~56.0.17",
@@ -47,6 +48,7 @@
     "react-native-svg": "15.15.4",
     "react-native-web": "~0.21.0",
     "react-native-worklets": "0.8.3",
+    "victory-native": "^41.26.0",
     "zod": "^4.4.3",
     "zustand": "^5.0.14"
   },
@@ -62,6 +64,7 @@
     "babel-jest": "^29",
     "babel-plugin-inline-import": "^3.0.0",
     "better-sqlite3": "12.4.1",
+    "canvaskit-wasm": "0.41.0",
     "drizzle-kit": "^0.31.10",
     "eslint": "^9.39.5",
     "eslint-config-expo": "^56.0.4",

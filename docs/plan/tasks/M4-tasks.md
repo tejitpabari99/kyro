@@ -56,7 +56,7 @@ Task count: **12**
 **Acceptance / test gate:** 08 §4.8 streak suite: consecutive weeks, first-day variants, current-week grace, gap breaks, midnight-crossing. UI: deleting a workout updates dots + streak immediately; first-day change re-buckets (recompute hook verified again in M5-04).
 **Est:** 1.5 d
 
-### M4-07 — Chart wrappers (`ui/charts/`)
+### M4-07 — Chart wrappers (`ui/charts/`) [done]
 **Description:** Victory Native XL wrappers so features never import victory directly.
 **How:** Install `victory-native` 41+ (Skia + Reanimated). Build `LineChart`, `BarChart`, `StackedBarChart`, `Sparkline` in `src/ui/charts/` consuming tokens per 07 §7: 2 pt accent line, gradient fill 20%→0%, selection-only dots + tooltip card (bg.elevated, statSmall value + caption date), ≤ 4 dashed y-gridlines, no x-gridlines, caption axes; bars radius-top 3, muted variant accent @ 30%, dashed goal line; stacked bars superset-palette + teal, top-8 + Other; sparkline 1.5 pt no axes; empty state dashed baseline + "No data yet". Range `SegmentedControl` slot in card header.
 **References:** 06 §7; 07 §7; 00 P4.
