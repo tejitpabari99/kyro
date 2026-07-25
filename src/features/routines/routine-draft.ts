@@ -185,8 +185,37 @@ export function addExercisesToDraft(
   return { ...draft, exercises: [...draft.exercises, ...added] };
 }
 
+/**
+ * 02 §8 / M2-19 follow-up review's "group of 1 dissolves automatically" rule
+ * (`docs/qa/M2-checklist.md` §8.2 item 1, `WorkoutRepositoryImpl.finish()`'s
+ * equivalent fix) — reimplemented here for the draft: removing an entire
+ * exercise (⋯ → Remove Exercise), not just "Remove from Superset," can
+ * equally shrink a group to one surviving member. Without this, that lone
+ * survivor would keep its `supersetId` and render with a superset badge/
+ * color it has no partner for (`computeSupersetGroups` groups by id alone,
+ * with no minimum-membership filter) — and unlike the active workout's own
+ * `removeExercise` action (which has an identical gap, but is cleaned up by
+ * `finish()`'s own dissolve pass before ever reaching saved history), a
+ * routine has no later "finish" step: this would persist on `Save`
+ * indefinitely, and propagate onto every future workout started from it
+ * (`superset_id` is copied verbatim, `workout-repository.ts`'s
+ * `startFromRoutine` header).
+ */
 export function removeExerciseFromDraft(draft: RoutineDraft, draftExerciseId: string): RoutineDraft {
-  return { ...draft, exercises: draft.exercises.filter((exercise) => exercise.id !== draftExerciseId) };
+  const target = draft.exercises.find((exercise) => exercise.id === draftExerciseId);
+  const remaining = draft.exercises.filter((exercise) => exercise.id !== draftExerciseId);
+  if (!target || target.supersetId === null) {
+    return { ...draft, exercises: remaining };
+  }
+  const groupId = target.supersetId;
+  const remainingMembers = remaining.filter((exercise) => exercise.supersetId === groupId);
+  const dissolveId = remainingMembers.length === 1 ? remainingMembers[0]!.id : null;
+  return {
+    ...draft,
+    exercises: dissolveId
+      ? remaining.map((exercise) => (exercise.id === dissolveId ? { ...exercise, supersetId: null } : exercise))
+      : remaining,
+  };
 }
 
 export function replaceExerciseInDraft(

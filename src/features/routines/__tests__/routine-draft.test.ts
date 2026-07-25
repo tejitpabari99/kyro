@@ -103,6 +103,46 @@ describe('removeExerciseFromDraft / replaceExerciseInDraft / reorderDraftExercis
     expect(next.exercises[0]!.exerciseId).toBe('squat');
   });
 
+  // M3 milestone-wide review finding: removing an entire grouped exercise
+  // (not just "Remove from Superset") must also auto-dissolve a group left
+  // with one surviving member (02 §8) — see `removeExerciseFromDraft`'s own
+  // doc comment for why this matters more here than on the active-workout
+  // side (no later `finish()` pass to clean it up before it's persisted).
+  it('removing a grouped exercise auto-dissolves a group left with one surviving member', () => {
+    const draft = addExercisesToDraft(createEmptyDraft(), ['bench', 'squat'], {
+      superset: true,
+      defaultRestSeconds: null,
+    });
+    const [bench, squat] = draft.exercises.map((e) => e.id) as [string, string];
+    const next = removeExerciseFromDraft(draft, bench);
+    expect(next.exercises).toHaveLength(1);
+    expect(next.exercises.find((e) => e.id === squat)!.supersetId).toBeNull();
+  });
+
+  it('removing one member of a 3+ group leaves the remaining members grouped', () => {
+    const draft = addExercisesToDraft(createEmptyDraft(), ['bench', 'squat', 'row'], {
+      superset: true,
+      defaultRestSeconds: null,
+    });
+    const [bench, squat, row] = draft.exercises.map((e) => e.id) as [string, string, string];
+    const next = removeExerciseFromDraft(draft, bench);
+    expect(next.exercises).toHaveLength(2);
+    expect(next.exercises.find((e) => e.id === squat)!.supersetId).toBe(0);
+    expect(next.exercises.find((e) => e.id === row)!.supersetId).toBe(0);
+  });
+
+  it('removing an ungrouped exercise never touches other exercises supersetId', () => {
+    const draft = addExercisesToDraft(createEmptyDraft(), ['bench', 'squat'], {
+      superset: true,
+      defaultRestSeconds: null,
+    });
+    let withExtra = addExercisesToDraft(draft, ['row'], { superset: false, defaultRestSeconds: null });
+    const rowId = withExtra.exercises[2]!.id;
+    withExtra = removeExerciseFromDraft(withExtra, rowId);
+    expect(withExtra.exercises).toHaveLength(2);
+    expect(withExtra.exercises.map((e) => e.supersetId)).toEqual([0, 0]);
+  });
+
   it('replaces exerciseId in place, keeping the same draft id/sets', () => {
     const draft = draftWithOneExercise();
     const id = draft.exercises[0]!.id;
