@@ -200,6 +200,20 @@ export const workoutExercises = sqliteTable(
     supersetId: integer('superset_id'),
     notes: text('notes'),
     restSeconds: integer('rest_seconds'),
+    /**
+     * M3-05 review fix: this row's fixed 0-based occurrence index among the
+     * source routine's own exercises sharing this `exercise_id`, pinned at
+     * creation time by `startFromRoutine` — `NULL` for any exercise not
+     * created from a routine occurrence (`addExercises`, or after
+     * `replaceExercise` changes `exercise_id`). Deliberately baked onto the
+     * row rather than recomputed from live `workout_exercises` position
+     * order: unlike routine *target values* (always resolved live, never
+     * stored), "which routine occurrence this row came from" is a fact
+     * fixed at creation time that reordering must not perturb — see
+     * `ActiveWorkoutScreen.tsx`'s file header and `workout-repository.ts`'s
+     * `startFromRoutine` header for the full incident writeup.
+     */
+    routineOccurrenceIndex: integer('routine_occurrence_index'),
   },
   (table) => [
     index('idx_we_workout').on(table.workoutId, table.position),

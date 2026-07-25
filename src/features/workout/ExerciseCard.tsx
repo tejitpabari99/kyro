@@ -72,8 +72,6 @@ export interface ExerciseCardProps {
   previousValuesMode: PreviousValuesMode;
   routineId: string | null;
   /** M3-05: threaded straight through to `ExerciseSetTableSection` — see that file's own doc comment. */
-  exerciseOccurrenceIndex?: number;
-  /** M3-05: threaded straight through to `ExerciseSetTableSection` — see that file's own doc comment. */
   getRoutineFull?: (routineId: string) => Promise<RoutineFull | null>;
   onReorderPress: () => void;
   onReplacePress: (workoutExerciseId: string) => void;
@@ -97,7 +95,6 @@ export function ExerciseCard({
   rpeEnabled,
   previousValuesMode,
   routineId,
-  exerciseOccurrenceIndex,
   getRoutineFull,
   onReorderPress,
   onReplacePress,
@@ -215,7 +212,6 @@ export function ExerciseCard({
         rpeEnabled={rpeEnabled}
         previousValuesMode={previousValuesMode}
         routineId={routineId}
-        exerciseOccurrenceIndex={exerciseOccurrenceIndex}
         getRoutineFull={getRoutineFull}
         onSetChecked={onSetChecked}
       />

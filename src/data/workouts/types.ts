@@ -43,6 +43,19 @@ export interface WorkoutExerciseFull {
   supersetId: number | null;
   notes: string | null;
   restSeconds: number | null;
+  /**
+   * M3-05 review fix: this row's fixed 0-based occurrence index among the
+   * source routine's own exercises sharing `exerciseId`, pinned once by
+   * `startFromRoutine` at creation time — immune to later `reorderExercises`
+   * calls, unlike a live "current position order" computation (which broke
+   * routine-target matching for duplicated exercises after a mid-workout
+   * reorder; see `ActiveWorkoutScreen.tsx`'s file header). `null` for any
+   * exercise not created from a routine occurrence — added via
+   * `addExercises`, or an original routine-sourced row whose identity later
+   * changed via `replaceExercise` — so it can never be mistaken for a match
+   * against a routine occurrence it didn't actually come from.
+   */
+  routineOccurrenceIndex: number | null;
   sets: WorkoutSet[];
 }
 

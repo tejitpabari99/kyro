@@ -761,6 +761,45 @@ describe('ExerciseSetTableSection — routine targets as placeholders end-to-end
     await waitFor(() => expect(screen.getByText('50kg × 5')).toBeTruthy());
     expect(screen.queryByText('80kg × 3')).toBeNull();
   });
+
+  it('an exercise added mid-workout (never from the routine) never resolves a routine target, even when it duplicates a routine exercise (M3-05 review fix)', async () => {
+    const driver = openBetterSqlite3Driver(':memory:');
+    migrate(driver);
+    const exerciseRepo = new ExerciseRepositoryImpl(driver);
+    const workoutRepo = new WorkoutRepositoryImpl(driver, {});
+    const routineRepo = new RoutineRepositoryImpl(driver);
+    const exercise = await exerciseRepo.create({
+      name: 'Bench Press',
+      exerciseType: 'weight_reps',
+      primaryMuscleGroup: 'chest',
+    });
+
+    const routine = await routineRepo.create({
+      title: 'Push Day',
+      exercises: [{ exerciseId: exercise.id, sets: [{ setType: 'normal', weightKg: 60, reps: 8 }] }],
+    });
+
+    await workoutRepo.startFromRoutine(routine.id);
+    await useActiveWorkoutStore.getState().rehydrate(workoutRepo);
+
+    // Add a *second* instance of the same exercise via the "+ Add Exercise"
+    // path (never the routine) — its `routine_occurrence_index` is `NULL`,
+    // so it must not be mistaken for the routine's own (only) occurrence,
+    // index 0, even though `exercise.id` matches.
+    const [added] = await useActiveWorkoutStore.getState().addExercises([{ exerciseId: exercise.id }]);
+    expect(added!.routineOccurrenceIndex).toBeNull();
+
+    await renderSection(added!.id, exercise, {
+      routineId: routine.id,
+      getRoutineFull: (id) => routineRepo.getFull(id),
+    });
+
+    // No routine-target label ever renders for this row — the routine's
+    // "60kg x 8" target belongs to the *other* (routine-sourced) workout
+    // exercise only.
+    await waitFor(() => expect(screen.getByTestId('section-row-0')).toBeTruthy());
+    expect(screen.queryByText('60kg × 8')).toBeNull();
+  });
 });
 
 describe('ConnectedSetRow — rep-range targets never auto-commit on check (04 §2.3)', () => {

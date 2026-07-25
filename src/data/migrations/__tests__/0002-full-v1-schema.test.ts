@@ -58,12 +58,20 @@ describe('migration 0002 fixture-upgrade (M1-01, 08 §5.3)', () => {
     expect(versionRows).toEqual([{ value: '1' }]);
   });
 
-  it('migrates the fixture forward: applies only migration 0002, reaching version 2', () => {
+  // `migrate(driver)` (no explicit manifest arg) always runs the *real*,
+  // full manifest — as of the M3-05 review fix that also includes migration
+  // 0003 (`workout_exercises.routine_occurrence_index`, additive/nullable,
+  // `manifest.ts`'s own header), so a version-1 fixture now picks up both
+  // remaining migrations, reaching version 3.
+  it('migrates the fixture forward: applies migrations 0002 and 0003, reaching version 3', () => {
     const result = migrate(driver);
 
     expect(result.fromVersion).toBe(1);
-    expect(result.toVersion).toBe(2);
-    expect(result.applied).toEqual(['0001_exercises_workouts_routines_measurements']);
+    expect(result.toVersion).toBe(3);
+    expect(result.applied).toEqual([
+      '0001_exercises_workouts_routines_measurements',
+      '0002_workout_exercises_routine_occurrence_index',
+    ]);
   });
 
   it('every M1-01 table exists after migrating', () => {

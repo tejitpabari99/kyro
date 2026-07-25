@@ -15,6 +15,13 @@
       "when": 1784804959903,
       "tag": "0001_exercises_workouts_routines_measurements",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1784937684765,
+      "tag": "0002_workout_exercises_routine_occurrence_index",
+      "breakpoints": true
     }
   ]
 }

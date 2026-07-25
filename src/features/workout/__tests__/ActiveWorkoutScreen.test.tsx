@@ -276,6 +276,70 @@ describe('ActiveWorkoutScreen — routine-start (M3-05, 02 §1)', () => {
     expect(rows.length).toBe(1);
     expect(rows[0]!.id).toBe(existing.id);
   });
+
+  // Review-fix regression (occurrence-index-must-survive-reorder): the
+  // original M3-05 landing recomputed each workout exercise's routine
+  // occurrence live from the workout's *current* position order on every
+  // render — correct immediately after start, but cross-wired once a
+  // mid-workout reorder flipped the relative order of two workout
+  // instances of the *same* duplicated exercise. Fixed by pinning
+  // `routine_occurrence_index` onto each row once, at `startFromRoutine`
+  // creation time (`workout-repository.ts`'s header has the full writeup).
+  it('a duplicated exercise keeps showing its own routine target after a mid-workout reorder flips the two instances (M3-05 review fix)', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+    const routineRepo = new RoutineRepositoryImpl(driver);
+    const exercise = await exerciseRepo.create({
+      name: 'Bench Press',
+      exerciseType: 'weight_reps',
+      primaryMuscleGroup: 'chest',
+    });
+    // Same exercise twice in one routine, different targets — the exact
+    // shape 02 §16.6/§6 already calls out for PREVIOUS matching, and the
+    // one this occurrence-index scheme exists to handle for routine targets.
+    const routine = await routineRepo.create({
+      title: 'Push Day',
+      exercises: [
+        { exerciseId: exercise.id, sets: [{ setType: 'normal', weightKg: 60, reps: 8 }] },
+        { exerciseId: exercise.id, sets: [{ setType: 'normal', weightKg: 40, reps: 12 }] },
+      ],
+    });
+
+    await renderScreen(exerciseRepo, {
+      routineId: routine.id,
+      getRoutineFull: (id) => routineRepo.getFull(id),
+    });
+    await waitFor(() => expect(screen.getByTestId('screen-title')).toBeTruthy());
+
+    const active = await workoutRepo.getActive();
+    const [firstWorkoutExercise, secondWorkoutExercise] = active!.exercises;
+
+    // Before any reorder: first card (routine occurrence 0) shows 60kg x 8,
+    // second card (occurrence 1) shows 40kg x 12 — position order still
+    // matches the routine's own order at this point either way.
+    await waitFor(() => expect(screen.getByText('60kg × 8')).toBeTruthy());
+    expect(screen.getByText('40kg × 12')).toBeTruthy();
+
+    // Flip the two workout instances' relative order — the source routine's
+    // own exercise order is untouched by this, only the *workout's*.
+    await act(async () => {
+      await useActiveWorkoutStore
+        .getState()
+        .reorderExercises([secondWorkoutExercise!.id, firstWorkoutExercise!.id]);
+    });
+
+    // Each workout exercise must still show its OWN original routine
+    // target — never the other occurrence's, regardless of the new display
+    // order. (The bug this regresses: a live "current position order"
+    // occurrence computation would have swapped these two targets here.)
+    await waitFor(() => expect(screen.getByText('60kg × 8')).toBeTruthy());
+    expect(screen.getByText('40kg × 12')).toBeTruthy();
+
+    const firstCard = screen.getByTestId(`screen-exercise-${firstWorkoutExercise!.id}`);
+    const secondCard = screen.getByTestId(`screen-exercise-${secondWorkoutExercise!.id}`);
+    expect(within(firstCard).getByText('60kg × 8')).toBeTruthy();
+    expect(within(secondCard).getByText('40kg × 12')).toBeTruthy();
+  });
 });
 
 describe('ActiveWorkoutScreen — stopwatch (02 §2, §6.1)', () => {

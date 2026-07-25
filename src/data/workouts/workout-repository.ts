@@ -158,6 +158,29 @@
  *   once at start time only — mid-workout edits to `workouts.description`
  *   never write back to `routines.notes` (`updateMeta` already only ever
  *   touches the `workouts` row).
+ *
+ * ## M3-05 review fix — `routine_occurrence_index` (migration 0003)
+ *
+ * The original landing computed each workout exercise's "which routine
+ * occurrence do I match" purely from the *workout's* current position
+ * order, live, on every render (`ActiveWorkoutScreen.tsx`'s now-removed
+ * `exerciseOccurrenceIndexByWorkoutExerciseId` memo) — correct immediately
+ * after `startFromRoutine` (positions mirror the routine 1:1) but silently
+ * wrong once `reorderExercises` changed the workout's position order
+ * without the source routine's own (fixed) order changing to match: for a
+ * routine with the same exercise twice, flipping the two duplicated
+ * instances' relative order in the workout cross-wired each one onto the
+ * *other's* routine target. Fixed by pinning `routine_occurrence_index`
+ * onto the `workout_exercises` row **once, here, at creation time** — the
+ * exact order this exercise appears among same-`exercise_id` rows in the
+ * *source routine's* own `position ASC` order (computed just below, from
+ * `routineExerciseRows`, before any workout-side reordering can exist) —
+ * rather than recomputing it later from state that reordering can change.
+ * `addExercises` leaves it `NULL` (an exercise added mid-workout never came
+ * from a routine occurrence); `replaceExercise` clears it back to `NULL`
+ * (a stale index pointing at the *old* exercise's occurrence would be
+ * actively wrong for the new one). See `schema.ts`'s column doc comment and
+ * `ExerciseSetTableSection.tsx`'s file header for the read side.
  */
 import type { Rpe, SetType } from '@/domain/enums';
 
@@ -219,6 +242,7 @@ interface WorkoutExerciseRow {
   superset_id: number | null;
   notes: string | null;
   rest_seconds: number | null;
+  routine_occurrence_index: number | null;
 }
 
 interface SetRow {
@@ -259,6 +283,7 @@ function mapWorkoutExerciseRow(row: WorkoutExerciseRow, sets: WorkoutSet[]): Wor
     supersetId: row.superset_id,
     notes: row.notes,
     restSeconds: row.rest_seconds,
+    routineOccurrenceIndex: row.routine_occurrence_index,
     sets,
   };
 }
@@ -419,6 +444,23 @@ export class WorkoutRepositoryImpl implements WorkoutRepository {
       ),
     );
 
+    // Each routine_exercise's own fixed 0-based occurrence index among every
+    // routine_exercise sharing its `exercise_id`, in the routine's own
+    // `position ASC` order — computed once, here, from the source routine's
+    // exercise order (never the workout's own, which `reorderExercises` can
+    // freely change later without disturbing this value). Pinned onto the
+    // new `workout_exercises` row below (`routine_occurrence_index`) so
+    // `ExerciseSetTableSection` can match each workout exercise back to
+    // *its own* routine occurrence for its whole lifetime — see
+    // `schema.ts`'s column doc comment and `ActiveWorkoutScreen.tsx`'s file
+    // header for the review-fix writeup this addresses.
+    const routineOccurrenceCounts = new Map<string, number>();
+    const routineOccurrenceIndexes = routineExerciseRows.map((re) => {
+      const occurrence = routineOccurrenceCounts.get(re.exercise_id) ?? 0;
+      routineOccurrenceCounts.set(re.exercise_id, occurrence + 1);
+      return occurrence;
+    });
+
     // Ids first, before the sync transaction (file header's "Id generation"
     // note) — `driver.transaction`'s callback is synchronous.
     const workoutId = await generateUuid();
@@ -426,6 +468,7 @@ export class WorkoutRepositoryImpl implements WorkoutRepository {
       routineExerciseRows.map(async (re, index) => ({
         weId: await generateUuid(),
         re,
+        occurrenceIndex: routineOccurrenceIndexes[index]!,
         setTypes: routineSetRowsByExercise[index]!.map((row) => row.set_type),
         setIds: await Promise.all(routineSetRowsByExercise[index]!.map(() => generateUuid())),
       })),
@@ -441,11 +484,21 @@ export class WorkoutRepositoryImpl implements WorkoutRepository {
           [workoutId, routineRow.title, routineRow.notes, routineId, now, now, now],
         );
 
-        prepared.forEach(({ weId, re, setTypes, setIds }, position) => {
+        prepared.forEach(({ weId, re, occurrenceIndex, setTypes, setIds }, position) => {
           this.driver.execute(
-            `INSERT INTO workout_exercises (id, workout_id, exercise_id, position, superset_id, notes, rest_seconds)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [weId, workoutId, re.exercise_id, position, re.superset_id, re.notes, re.rest_seconds],
+            `INSERT INTO workout_exercises
+               (id, workout_id, exercise_id, position, superset_id, notes, rest_seconds, routine_occurrence_index)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              weId,
+              workoutId,
+              re.exercise_id,
+              position,
+              re.superset_id,
+              re.notes,
+              re.rest_seconds,
+              occurrenceIndex,
+            ],
           );
 
           setIds.forEach((setId, setPosition) => {
@@ -629,6 +682,11 @@ export class WorkoutRepositoryImpl implements WorkoutRepository {
     this.driver.transaction(() => {
       let position = this.nextExercisePosition(workoutId);
       for (const { weId, setIds, item } of prepared) {
+        // `routine_occurrence_index` deliberately left unlisted — it has no
+        // column default set in `schema.ts`, so SQLite leaves it `NULL`,
+        // exactly right: an exercise added mid-workout via `+ Add Exercise`
+        // never came from a routine occurrence, so it must never match one
+        // (`ExerciseSetTableSection`'s matching short-circuits on `null`).
         this.driver.execute(
           `INSERT INTO workout_exercises (id, workout_id, exercise_id, position, superset_id, notes, rest_seconds)
            VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -697,10 +755,15 @@ export class WorkoutRepositoryImpl implements WorkoutRepository {
   ): Promise<WorkoutExerciseFull> {
     this.requireWorkoutExerciseRow(workoutExerciseId);
     this.driver.transaction(() => {
-      this.driver.execute(`UPDATE workout_exercises SET exercise_id = ? WHERE id = ?`, [
-        newExerciseId,
-        workoutExerciseId,
-      ]);
+      // `routine_occurrence_index` is cleared here too, not just left as-is:
+      // whatever routine occurrence this row's *old* `exercise_id` matched
+      // is meaningless once the exercise identity itself has changed — the
+      // stale index would otherwise silently point at some other exercise's
+      // occurrence in the routine (or an out-of-range one) after this swap.
+      this.driver.execute(
+        `UPDATE workout_exercises SET exercise_id = ?, routine_occurrence_index = NULL WHERE id = ?`,
+        [newExerciseId, workoutExerciseId],
+      );
       this.driver.execute(
         `UPDATE sets
          SET set_type = 'normal', weight_kg = NULL, reps = NULL, distance_meters = NULL,

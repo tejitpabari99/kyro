@@ -21,6 +21,7 @@
  */
 import migration0001Sql from './0000_app_meta_and_settings.sql';
 import migration0002Sql from './0001_exercises_workouts_routines_measurements.sql';
+import migration0003Sql from './0002_workout_exercises_routine_occurrence_index.sql';
 
 export interface Migration {
   /** Sequential head recorded into `app_meta.schema_version` after this migration applies. */
@@ -43,6 +44,13 @@ export interface Migration {
  * `routine_folders.id` as uuid, `sync_outbox`) — those are MC-03's scope,
  * landing later; see `schema.ts`'s header comment and
  * `docs/plan/EXECUTION-LOG.md` for the full reasoning.
+ *
+ * Migration 0003 (M3-05 review-fix scope): adds nullable
+ * `workout_exercises.routine_occurrence_index` (`schema.ts`'s own doc
+ * comment on the column has the full incident writeup) — a single additive
+ * `ALTER TABLE ... ADD` column, safe on existing rows (defaults `NULL`,
+ * exactly "not from a routine occurrence," the correct value for every
+ * `workout_exercises` row that existed before this migration).
  */
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, tag: '0000_app_meta_and_settings', sql: migration0001Sql },
@@ -50,5 +58,10 @@ export const MIGRATIONS: readonly Migration[] = [
     version: 2,
     tag: '0001_exercises_workouts_routines_measurements',
     sql: migration0002Sql,
+  },
+  {
+    version: 3,
+    tag: '0002_workout_exercises_routine_occurrence_index',
+    sql: migration0003Sql,
   },
 ];

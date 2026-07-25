@@ -161,6 +161,7 @@ describe('HistoryListScreen — populated list (02 §14 acceptance: correct volu
           supersetId: null,
           notes: null,
           restSeconds: null,
+          routineOccurrenceIndex: null,
           sets: [
             {
               id: 'set-1',

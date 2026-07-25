@@ -32,6 +32,20 @@
  * matches) — `docs/plan/EXECUTION-LOG.md`'s M3-05 entry has the full design
  * writeup (fetch-once-per-screen via TanStack Query cache sharing, narrow
  * `getRoutineFull` function prop rather than the whole `RoutineRepository`).
+ *
+ * **Occurrence index (review fix, `workoutExercise.routineOccurrenceIndex`):**
+ * read directly off the `workoutExercise` this component already selects
+ * from the store — **not** a prop computed by `ActiveWorkoutScreen` from
+ * live position order, which the original M3-05 landing used and which
+ * broke for a duplicated exercise once `reorderExercises` flipped the two
+ * instances' relative order (each one then matched the *other's* routine
+ * target — no crash, no error, just silently wrong data). `WorkoutRepositoryImpl
+ * .startFromRoutine` now pins this value onto the row once, at creation
+ * time, from the source routine's own (reorder-immune) exercise order —
+ * see that method's file header for the full writeup. `null` means "this
+ * row never came from a routine occurrence" (added via `+ Add Exercise`,
+ * or `replaceExercise`d since) and must never resolve a routine target,
+ * regardless of whether `exercise.id` happens to also appear in the routine.
  */
 import React, { useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -66,15 +80,6 @@ export interface ExerciseSetTableSectionProps {
   previousValuesMode: PreviousValuesMode;
   /** The active workout's own `routine_id` (null for empty-start workouts — same_routine then degrades to any_workout automatically, 02 §6, by simply not restricting the query). */
   routineId: string | null;
-  /**
-   * M3-05: this `workoutExerciseId`'s 0-based occurrence index among every
-   * `workout.exercises` sharing `exercise.id`, in position order — computed
-   * once by `ActiveWorkoutScreen` (which already iterates the whole
-   * workout) and threaded down, mirroring `exercisePosition`. Defaults to
-   * `0` (the common case — no duplicated exercise — and harmless whenever
-   * `routineId`/`getRoutineFull` are absent).
-   */
-  exerciseOccurrenceIndex?: number;
   /**
    * M3-05: `RoutineRepository.getFull`, unbound — a narrow function prop
    * (not the whole `RoutineRepository`) mirroring the convention
@@ -119,7 +124,6 @@ export function ExerciseSetTableSection({
   rpeEnabled,
   previousValuesMode,
   routineId,
-  exerciseOccurrenceIndex = 0,
   getRoutineFull,
   onSetChecked,
   testID,
@@ -183,6 +187,14 @@ export function ExerciseSetTableSection({
     [rowSignature],
   );
 
+  // Review fix: the fixed occurrence index pinned onto this workout exercise
+  // at `startFromRoutine` creation time (see file header) — `null` whenever
+  // this row didn't come from a routine occurrence at all (added mid-workout,
+  // or `replaceExercise`d since), in which case it must never resolve a
+  // routine target below, regardless of whether `exercise.id` also happens
+  // to appear in the routine.
+  const routineOccurrenceIndex = workoutExercise?.routineOccurrenceIndex ?? null;
+
   // M3-05: the matched routine_exercise's own sets, bucketed the identical
   // way (see file header, "Bucket matching") — `null` whenever there is no
   // routine, no matching occurrence, or the routine query hasn't resolved
@@ -190,11 +202,11 @@ export function ExerciseSetTableSection({
   // `routineTarget: null` (identical to pre-M3-05 behavior).
   const routineTargetsByBucketKey = useMemo(() => {
     const routine = routineQuery.data;
-    if (!routine) {
+    if (!routine || routineOccurrenceIndex == null) {
       return null;
     }
     const matchingRoutineExercises = routine.exercises.filter((re) => re.exerciseId === exercise.id);
-    const routineExercise = matchingRoutineExercises[exerciseOccurrenceIndex];
+    const routineExercise = matchingRoutineExercises[routineOccurrenceIndex];
     if (!routineExercise) {
       return null;
     }
@@ -207,7 +219,7 @@ export function ExerciseSetTableSection({
       map.set(`${bucket.isWarmup}:${bucket.bucketIndex}`, routineSet);
     });
     return map;
-  }, [routineQuery.data, exercise.id, exerciseOccurrenceIndex]);
+  }, [routineQuery.data, exercise.id, routineOccurrenceIndex]);
 
   const currentRows: CurrentRowLike[] = useMemo(
     () =>

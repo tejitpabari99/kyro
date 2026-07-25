@@ -86,6 +86,20 @@
  * never re-runs) so each `ExerciseCard`/`ExerciseSetTableSection` can
  * resolve routine-target placeholders (02 §6/04 §2.3) via
  * `workout.routineId`, not just at the moment of starting.
+ *
+ * **Occurrence matching (review fix, no longer this screen's job):** the
+ * original M3-05 landing computed each workout exercise's "which routine
+ * occurrence do I match" here, live, from `workout.exercises`'s *current*
+ * position order on every render — correct right after `startFromRoutine`
+ * (positions mirror the routine 1:1) but silently wrong after
+ * `reorderExercises` changed the workout's position order for a routine
+ * with a duplicated exercise (the two instances' matched targets could swap).
+ * That per-render computation is gone; each workout exercise now carries its
+ * own fixed `routineOccurrenceIndex` (pinned once at creation time by
+ * `WorkoutRepositoryImpl.startFromRoutine`, immune to later reordering) and
+ * `ExerciseSetTableSection` reads it directly off the store — see that
+ * file's header and `workout-repository.ts`'s `startFromRoutine` header for
+ * the full writeup.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -281,27 +295,6 @@ export function ActiveWorkoutScreen({
         : new Map(),
     [workout],
   );
-
-  // M3-05: each workout_exercise's own 0-based occurrence index among every
-  // exercise in the workout sharing its `exerciseId`, in position order —
-  // computed once here (this is the one place that already iterates the
-  // whole workout in position order) and handed to `ExerciseCard` alongside
-  // `exercisePosition`, so `ExerciseSetTableSection` can match its rows
-  // against the correct `routine_exercises` occurrence (see that file's own
-  // "Occurrence matching" header note).
-  const exerciseOccurrenceIndexByWorkoutExerciseId = useMemo(() => {
-    const result = new Map<string, number>();
-    if (!workout) {
-      return result;
-    }
-    const seenCounts = new Map<string, number>();
-    for (const workoutExercise of workout.exercises) {
-      const occurrence = seenCounts.get(workoutExercise.exerciseId) ?? 0;
-      result.set(workoutExercise.id, occurrence);
-      seenCounts.set(workoutExercise.exerciseId, occurrence + 1);
-    }
-    return result;
-  }, [workout]);
 
   // M2-12: Smart Superset Scrolling (02 §8, setting default-on,
   // `settings.smart_superset_scroll`) — `cardOffsetsRef` is populated by
@@ -906,9 +899,6 @@ export function ActiveWorkoutScreen({
                 rpeEnabled={rpeEnabled}
                 previousValuesMode={previousValuesMode}
                 routineId={workout.routineId}
-                exerciseOccurrenceIndex={
-                  exerciseOccurrenceIndexByWorkoutExerciseId.get(workoutExercise.id) ?? 0
-                }
                 getRoutineFull={getRoutineFull}
                 onReorderPress={() => setReorderVisible(true)}
                 onReplacePress={handleReplacePress}
