@@ -151,6 +151,7 @@ import {
   type VolumeSetInput,
 } from '@/domain/volume';
 import { useSettingsStore } from '@/features/settings/settings-store';
+import { captureError } from '@/lib/sentry';
 import { Button } from '@/ui/Button';
 import { KeyboardAccessoryBar } from '@/ui/KeyboardAccessoryBar';
 import { Snackbar } from '@/ui/Snackbar';
@@ -600,33 +601,51 @@ export function ActiveWorkoutScreen({
       router.replace(`/history/${finished.id}` as never);
     };
 
+    // The workout itself already finished successfully above (`finish()`
+    // committed the transaction) — nothing in this best-effort "offer to
+    // update the source routine" block may be allowed to strand the user on
+    // a stale screen for an already-completed workout. Both repo calls below
+    // (`getRoutineFull`, `updateRoutineFromWorkout`) are wrapped so any
+    // failure (a transient driver error, or a routine deleted out from under
+    // this exact window) degrades to silently skipping the prompt/write-back
+    // for this run and still falling through to `finishSave()`, the same
+    // "graceful degradation, never an unhandled rejection" posture
+    // `restTimerStore.ts`'s own notification-scheduling failures use.
     const routineId = finished.routineId;
     if (routineId && getRoutineFull) {
-      const routine = await getRoutineFull(routineId);
-      if (routine) {
-        const diff = computeRoutineDiff({ exercises: finished.exercises }, { exercises: routine.exercises });
-        if (diff.material) {
-          Alert.alert(
-            'Update routine?',
-            `Your workout differs from ${routine.title}.`,
-            [
-              { text: 'Keep original', style: 'cancel', onPress: () => void finishSave() },
-              {
-                text: 'Update routine',
-                onPress: () => {
-                  void (async () => {
-                    if (updateRoutineFromWorkout) {
-                      await updateRoutineFromWorkout(routineId, finished.id);
-                      await queryClient.invalidateQueries({ queryKey: ['routines'] });
-                    }
-                    await finishSave();
-                  })();
+      try {
+        const routine = await getRoutineFull(routineId);
+        if (routine) {
+          const diff = computeRoutineDiff({ exercises: finished.exercises }, { exercises: routine.exercises });
+          if (diff.material) {
+            Alert.alert(
+              'Update routine?',
+              `Your workout differs from ${routine.title}.`,
+              [
+                { text: 'Keep original', style: 'cancel', onPress: () => void finishSave() },
+                {
+                  text: 'Update routine',
+                  onPress: () => {
+                    void (async () => {
+                      try {
+                        if (updateRoutineFromWorkout) {
+                          await updateRoutineFromWorkout(routineId, finished.id);
+                          await queryClient.invalidateQueries({ queryKey: ['routines'] });
+                        }
+                      } catch (error) {
+                        captureError(error);
+                      }
+                      await finishSave();
+                    })();
+                  },
                 },
-              },
-            ],
-          );
-          return;
+              ],
+            );
+            return;
+          }
         }
+      } catch (error) {
+        captureError(error);
       }
     }
 

@@ -995,6 +995,78 @@ describe('ActiveWorkoutScreen — update-routine prompt (M3-06, 02 §14 step 4 /
     await waitFor(() => expect(router.replace).toHaveBeenCalled());
     expect(Alert.alert).not.toHaveBeenCalledWith('Update routine?', expect.any(String), expect.any(Array));
   });
+
+  // M3 milestone-wide review finding: `getRoutineFull`/`updateRoutineFromWorkout`
+  // were called with no try/catch around them — any repo failure here (a
+  // transient driver error, a routine deleted in the gap while the user is
+  // looking at the Alert) would have been an unhandled promise rejection that
+  // also stranded the user: `finish()` had already committed, but
+  // `finishSave()` (query invalidation, closing the sheet, navigating away)
+  // never ran. Both cases below assert the already-finished workout still
+  // navigates cleanly instead of hanging.
+  it('getRoutineFull throwing does not block navigation — the already-finished workout still saves cleanly', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+    const { routineRepo, routine } = await seedRoutineStartedAndChecked(driver, workoutRepo, exerciseRepo, {
+      weightKg: 70,
+      reps: 8,
+    });
+    const getRoutineFull = jest.fn(() => Promise.reject(new Error('driver read failed')));
+    const updateRoutineFromWorkout = jest.fn((id: string, workoutId: string) =>
+      routineRepo.updateFromWorkout(id, workoutId),
+    );
+
+    const { queryClient } = await renderScreen(exerciseRepo, {
+      routineId: routine.id,
+      getRoutineFull,
+      updateRoutineFromWorkout,
+    });
+    const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries');
+    await waitFor(() => expect(screen.getByTestId('screen-finish')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('screen-finish'));
+    await waitFor(() => expect(screen.getByTestId('screen-save-sheet-save')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('screen-save-sheet-save'));
+
+    await waitFor(() => expect(getRoutineFull).toHaveBeenCalled());
+    await waitFor(() => expect(router.replace).toHaveBeenCalled());
+    expect(Alert.alert).not.toHaveBeenCalledWith('Update routine?', expect.any(String), expect.any(Array));
+    expect(updateRoutineFromWorkout).not.toHaveBeenCalled();
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['history'] });
+  });
+
+  it('updateRoutineFromWorkout throwing does not block navigation — the already-finished workout still saves cleanly', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+    const { routineRepo, routine } = await seedRoutineStartedAndChecked(driver, workoutRepo, exerciseRepo, {
+      weightKg: 70,
+      reps: 8,
+    });
+    const updateRoutineFromWorkout = jest.fn(() => Promise.reject(new Error('write-back failed')));
+
+    const { queryClient } = await renderScreen(exerciseRepo, {
+      routineId: routine.id,
+      getRoutineFull: (id) => routineRepo.getFull(id),
+      updateRoutineFromWorkout,
+    });
+    const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries');
+    await waitFor(() => expect(screen.getByTestId('screen-finish')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('screen-finish'));
+    await waitFor(() => expect(screen.getByTestId('screen-save-sheet-save')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('screen-save-sheet-save'));
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Update routine?', expect.any(String), expect.any(Array)));
+
+    await pressAlertButton('Update routine');
+
+    await waitFor(() => expect(updateRoutineFromWorkout).toHaveBeenCalled());
+    await waitFor(() => expect(router.replace).toHaveBeenCalled());
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['history'] });
+    // The failed write-back must not have invalidated the routines cache —
+    // nothing to refresh, the repo call itself never completed.
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ['routines'] });
+
+    const stillOriginal = await routineRepo.getFull(routine.id);
+    expect(stillOriginal!.exercises[0]!.sets[0]!.weightKg).toBe(60);
+  });
 });
 
 describe('ActiveWorkoutScreen — meta row counters (02 §2)', () => {
