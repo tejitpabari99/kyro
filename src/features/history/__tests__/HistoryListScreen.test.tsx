@@ -174,6 +174,7 @@ describe('HistoryListScreen — populated list (02 §14 acceptance: correct volu
               rpe: null,
               customMetric: null,
               isCompleted: true,
+              routineSetPosition: null,
             },
             {
               id: 'set-2',
@@ -186,6 +187,7 @@ describe('HistoryListScreen — populated list (02 §14 acceptance: correct volu
               rpe: null,
               customMetric: null,
               isCompleted: false,
+              routineSetPosition: null,
             },
           ],
         },

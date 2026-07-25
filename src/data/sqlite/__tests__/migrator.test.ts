@@ -15,6 +15,12 @@
  * writeup) — a single additive `ALTER TABLE ... ADD` column, no new table,
  * so `ALL_TABLES` below is unchanged; only the version/applied-tag
  * expectations move to three entries.
+ *
+ * M3-06 review fix added migration 0004 (app-level `version: 4`,
+ * `sets.routine_set_position`, same manifest header/`schema.ts` column doc
+ * comment for the full writeup) — the identical additive pattern one level
+ * down; `ALL_TABLES` again unchanged, version/applied-tag expectations move
+ * to four entries.
  */
 import { openBetterSqlite3Driver } from '../driver.better-sqlite3';
 import { migrate } from '../migrator';
@@ -64,11 +70,12 @@ describe('migration runner (better-sqlite3 integration, M0-09 + M1-01)', () => {
     const result = migrate(driver);
 
     expect(result.fromVersion).toBe(0);
-    expect(result.toVersion).toBe(3);
+    expect(result.toVersion).toBe(4);
     expect(result.applied).toEqual([
       '0000_app_meta_and_settings',
       '0001_exercises_workouts_routines_measurements',
       '0002_workout_exercises_routine_occurrence_index',
+      '0003_sets_routine_set_position',
     ]);
 
     expect(listTableNames(driver)).toEqual(ALL_TABLES);
@@ -76,7 +83,7 @@ describe('migration runner (better-sqlite3 integration, M0-09 + M1-01)', () => {
     const versionRows = driver.queryAll<{ value: string }>(
       `SELECT value FROM app_meta WHERE key = 'schema_version'`,
     );
-    expect(versionRows).toEqual([{ value: '3' }]);
+    expect(versionRows).toEqual([{ value: '4' }]);
 
     // Both original tables are actually usable (not just present) —
     // round-trip a row through each, matching 05 §3.5's DDL exactly.
@@ -97,12 +104,13 @@ describe('migration runner (better-sqlite3 integration, M0-09 + M1-01)', () => {
       '0000_app_meta_and_settings',
       '0001_exercises_workouts_routines_measurements',
       '0002_workout_exercises_routine_occurrence_index',
+      '0003_sets_routine_set_position',
     ]);
 
     const second = migrate(driver);
 
-    expect(second.fromVersion).toBe(3);
-    expect(second.toVersion).toBe(3);
+    expect(second.fromVersion).toBe(4);
+    expect(second.toVersion).toBe(4);
     expect(second.applied).toEqual([]);
     expect(listTableNames(driver)).toEqual(ALL_TABLES);
   });

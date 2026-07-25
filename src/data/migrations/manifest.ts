@@ -22,6 +22,7 @@
 import migration0001Sql from './0000_app_meta_and_settings.sql';
 import migration0002Sql from './0001_exercises_workouts_routines_measurements.sql';
 import migration0003Sql from './0002_workout_exercises_routine_occurrence_index.sql';
+import migration0004Sql from './0003_sets_routine_set_position.sql';
 
 export interface Migration {
   /** Sequential head recorded into `app_meta.schema_version` after this migration applies. */
@@ -51,6 +52,17 @@ export interface Migration {
  * `ALTER TABLE ... ADD` column, safe on existing rows (defaults `NULL`,
  * exactly "not from a routine occurrence," the correct value for every
  * `workout_exercises` row that existed before this migration).
+ *
+ * Migration 0004 (M3-06 review-fix scope): adds nullable
+ * `sets.routine_set_position` — the identical additive pattern one level
+ * down, applied to fix a real M3-06 bug (`schema.ts`'s own doc comment on
+ * the column, and `domain/routine-diff.ts`'s file header, have the full
+ * incident writeup: plain `sets[i] <-> routine_sets[i]` position matching
+ * silently mis-correlated a matched exercise's later sets whenever
+ * `WorkoutRepositoryImpl.finish()` deleted a non-trailing unchecked set and
+ * renumbered the survivors). Safe on existing rows for the same reason as
+ * migration 0003: `NULL` is exactly "not pinned to a routine set," the
+ * correct value for every `sets` row that existed before this migration.
  */
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, tag: '0000_app_meta_and_settings', sql: migration0001Sql },
@@ -63,5 +75,10 @@ export const MIGRATIONS: readonly Migration[] = [
     version: 3,
     tag: '0002_workout_exercises_routine_occurrence_index',
     sql: migration0003Sql,
+  },
+  {
+    version: 4,
+    tag: '0003_sets_routine_set_position',
+    sql: migration0004Sql,
   },
 ];

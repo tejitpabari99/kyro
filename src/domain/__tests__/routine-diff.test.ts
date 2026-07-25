@@ -7,6 +7,7 @@
  */
 import {
   computeRoutineDiff,
+  matchWorkoutSetsToRoutineSets,
   matchWorkoutToRoutineExercises,
   repsWithinRoutineRange,
   type FinishedWorkoutLike,
@@ -17,6 +18,13 @@ import {
   type SourceRoutineLike,
 } from '../routine-diff';
 
+// `routineSetPosition` defaults to `0` — every existing single-set fixture
+// below is therefore "this achieved set is the routine's set 0" by default,
+// matching the old (pre-M3-06-review-fix) implicit assumption for the
+// common case. Tests that need a *different* pinned position (the
+// skip-a-middle-set regression below, or a deliberately unmatched
+// mid-workout-added set) override it explicitly — see file header note on
+// `matchWorkoutSetsToRoutineSets` in `../routine-diff.ts`.
 function achievedSet(overrides: Partial<RoutineDiffAchievedSetLike> = {}): RoutineDiffAchievedSetLike {
   return {
     weightKg: 60,
@@ -24,6 +32,7 @@ function achievedSet(overrides: Partial<RoutineDiffAchievedSetLike> = {}): Routi
     distanceMeters: null,
     durationSeconds: null,
     customMetric: null,
+    routineSetPosition: 0,
     ...overrides,
   };
 }
@@ -180,7 +189,10 @@ describe('domain/routine-diff — computeRoutineDiff (02 §14.4)', () => {
   describe('structural change', () => {
     it('a set added on an exercise -> material (set_added_or_removed)', () => {
       const result = computeRoutineDiff(
-        workout([workoutExercise({ sets: [achievedSet(), achievedSet()] })]),
+        // Second set has no routine counterpart (`routineSetPosition: null`
+        // — added mid-workout via `+ Add Set`), same as a real "extra set"
+        // would be pinned.
+        workout([workoutExercise({ sets: [achievedSet(), achievedSet({ routineSetPosition: null })] })]),
         routine([routineExercise({ sets: [targetSet()] })]),
       );
       expect(result.material).toBe(true);
@@ -274,6 +286,74 @@ describe('domain/routine-diff — computeRoutineDiff (02 §14.4)', () => {
           { kind: 'exercise_removed', exerciseId: 'bench' },
         ]),
       );
+    });
+  });
+
+  describe('set correlation survives finish()\'s position compaction around a skipped set (M3-06 review fix)', () => {
+    // Reviewer's exact repro: routine set0 = fixed 12 reps, set1 = fixed 8
+    // reps, set2 = rep range [6,8]. Workout completes set0 (achieved 12) and
+    // set2 (achieved 7, inside range), skips set1. `finish()` deletes the
+    // unchecked set1 row and renumbers the survivors contiguous, so the
+    // achieved-7 set (whose `routineSetPosition` was pinned to `2` at
+    // `startFromRoutine` time, and is never touched by that renumbering)
+    // lands at post-finish `position` 1 — a plain `sets[i] <->
+    // routine_sets[i]` diff would wrongly compare it against
+    // `routine_sets[1]` (the fixed-8 target) instead of its true original,
+    // `routine_sets[2]` (the [6,8] range).
+    const targets = [
+      targetSet({ reps: 12 }), // routine_sets[0]
+      targetSet({ reps: 8 }), // routine_sets[1] — skipped this workout
+      targetSet({ reps: null, repRangeStart: 6, repRangeEnd: 8 }), // routine_sets[2]
+    ];
+
+    it('the later surviving set still correlates against its true original (the range target), not the shifted one', () => {
+      const achievedSets = [
+        achievedSet({ reps: 12, routineSetPosition: 0 }), // post-finish position 0, true origin routine_sets[0]
+        achievedSet({ reps: 7, routineSetPosition: 2 }), // post-finish position 1, true origin routine_sets[2] — NOT routine_sets[1]
+      ];
+
+      const result = computeRoutineDiff(
+        workout([workoutExercise({ sets: achievedSets })]),
+        routine([routineExercise({ sets: targets })]),
+      );
+
+      // Achieved 7 correctly reads as "inside the range it actually
+      // targets" (routine_sets[2]'s [6,8]) — not as "differs from the fixed
+      // 8 reps target" (routine_sets[1], the wrong, shifted correlation a
+      // plain positional diff would have used). The only material reason is
+      // the routine's own set count (3) vs. the workout's surviving set
+      // count (2) — genuinely a set was removed (set1 was skipped) — not a
+      // spurious target_value_changed for the range set.
+      expect(result.material).toBe(true);
+      expect(result.reasons).toEqual([{ kind: 'set_added_or_removed', exerciseId: 'bench' }]);
+    });
+
+    it('two non-adjacent middle sets skipped in a 4-set exercise -> the last surviving set still correlates against routine_sets[3], not the doubly-shifted routine_sets[1]', () => {
+      const fourTargets = [
+        targetSet({ reps: 12 }), // routine_sets[0]
+        targetSet({ reps: 10 }), // routine_sets[1] — skipped
+        targetSet({ reps: 8 }), // routine_sets[2] — skipped
+        targetSet({ reps: null, repRangeStart: 6, repRangeEnd: 8 }), // routine_sets[3]
+      ];
+      // Post-finish, only two sets survive at positions 0 and 1 — a plain
+      // positional diff would compare the second surviving set (achieved 7)
+      // against routine_sets[1] (fixed 10 reps), two full positions off its
+      // true origin.
+      const achievedSets = [
+        achievedSet({ reps: 12, routineSetPosition: 0 }),
+        achievedSet({ reps: 7, routineSetPosition: 3 }),
+      ];
+
+      const result = computeRoutineDiff(
+        workout([workoutExercise({ sets: achievedSets })]),
+        routine([routineExercise({ sets: fourTargets })]),
+      );
+
+      // Only the (genuine) set-count mismatch is material — no spurious
+      // target_value_changed, which a plain positional diff would have
+      // raised (7 !== fixed-10 target at the wrong, shifted index).
+      expect(result.material).toBe(true);
+      expect(result.reasons).toEqual([{ kind: 'set_added_or_removed', exerciseId: 'bench' }]);
     });
   });
 
@@ -373,6 +453,32 @@ describe('domain/routine-diff — matchWorkoutToRoutineExercises', () => {
       [{ exerciseId: 'bench', routineOccurrenceIndex: 5 }],
       [{ exerciseId: 'bench' }],
     );
+    expect(matches).toEqual([]);
+  });
+});
+
+describe('domain/routine-diff — matchWorkoutSetsToRoutineSets (M3-06 review fix)', () => {
+  it('matches purely by routineSetPosition — a skipped middle position does not shift the correlation', () => {
+    // Achieved sets survive at post-finish positions 0 and 1, but their
+    // pinned routineSetPosition values (0 and 2) still name their true
+    // origin — position1 (the skipped set) is simply absent.
+    const matches = matchWorkoutSetsToRoutineSets(
+      [{ routineSetPosition: 0 }, { routineSetPosition: 2 }],
+      3, // routine still has 3 sets live
+    );
+    expect(matches).toEqual([
+      { workoutSetIndex: 0, routineSetIndex: 0 },
+      { workoutSetIndex: 1, routineSetIndex: 2 },
+    ]);
+  });
+
+  it('routineSetPosition: null (mid-workout `+ Add Set`) never matches anything', () => {
+    const matches = matchWorkoutSetsToRoutineSets([{ routineSetPosition: null }], 3);
+    expect(matches).toEqual([]);
+  });
+
+  it('a pinned position the live routine no longer has (routine edited down since) is simply unmatched', () => {
+    const matches = matchWorkoutSetsToRoutineSets([{ routineSetPosition: 2 }], 2);
     expect(matches).toEqual([]);
   });
 });

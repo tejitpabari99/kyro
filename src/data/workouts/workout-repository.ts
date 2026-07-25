@@ -181,6 +181,43 @@
  * (a stale index pointing at the *old* exercise's occurrence would be
  * actively wrong for the new one). See `schema.ts`'s column doc comment and
  * `ExerciseSetTableSection.tsx`'s file header for the read side.
+ *
+ * ## M3-06 review fix — `routine_set_position` (migration 0004)
+ *
+ * The identical class of bug, one level down, in M3-06's own landing this
+ * time: `domain/routine-diff.ts`'s `computeRoutineDiff` and
+ * `RoutineRepositoryImpl.updateFromWorkout` both originally correlated a
+ * matched exercise's *sets* via plain `sets[i] <-> routine_sets[i]`
+ * position-order matching, reasoning that "both sides are already stored in
+ * `position ASC` order" made that a genuine 1:1 correspondence. False: this
+ * file's own `finish()` (below) deletes every `is_completed=0` set and then
+ * calls `renumberSetPositions` to re-compact the survivors back to
+ * contiguous 0-based positions — preserving relative order but closing any
+ * gap. So a *non-trailing* skipped set (e.g. set 1 of a 3-set exercise left
+ * unchecked while sets 0 and 2 are completed) silently shifts every later
+ * surviving set's `position` down by one: the achieved set that was
+ * genuinely `routine_sets[2]` lands at post-finish `position` 1, and a
+ * plain positional diff/write-back wrongly correlates it against
+ * `routine_sets[1]` instead — silently collapsing a rep-range target that
+ * should have survived, purely because a middle set was skipped. Nothing in
+ * the UI/store enforces checking sets in order, so this was a real,
+ * reachable path. Fixed with the exact same shape as the M3-05 fix above:
+ * `routine_set_position` is pinned onto each `sets` row **once, here, at
+ * `startFromRoutine` creation time** — the set's fixed 0-based position
+ * among its *source routine_exercise's own* `routine_sets` (`position ASC`)
+ * — and never touched again by `renumberSetPositions` (which only ever
+ * writes `position`), so it keeps naming the true original `routine_sets`
+ * row no matter what gets skipped around it later. `addSet`/
+ * `insertWarmupSets`/`addExercises`'s own set inserts all leave it `NULL`
+ * (never came from a routine set); `replaceExercise` clears it back to
+ * `NULL` on every set under the row it repoints (same "stale index would be
+ * actively wrong" reasoning as `routine_occurrence_index`). See
+ * `domain/routine-diff.ts`'s file header ("Set correlation") for the full
+ * write-up, including why a bucket-relative (warm-up/working) index —
+ * `domain/previous-values.ts`'s scheme for a *different* problem — would
+ * only have narrowed this bug, not closed it: that scheme is still
+ * recomputed live from current row order, so a same-bucket skip reproduces
+ * the identical shift.
  */
 import type { Rpe, SetType } from '@/domain/enums';
 
@@ -257,6 +294,7 @@ interface SetRow {
   rpe: number | null;
   custom_metric: number | null;
   is_completed: number;
+  routine_set_position: number | null;
 }
 
 function mapSetRow(row: SetRow): WorkoutSet {
@@ -271,6 +309,7 @@ function mapSetRow(row: SetRow): WorkoutSet {
     rpe: row.rpe as WorkoutSet['rpe'],
     customMetric: row.custom_metric,
     isCompleted: row.is_completed === 1,
+    routineSetPosition: row.routine_set_position,
   };
 }
 
@@ -501,11 +540,16 @@ export class WorkoutRepositoryImpl implements WorkoutRepository {
             ],
           );
 
+          // `routine_set_position` pinned to this same 0-based index — the
+          // set's fixed position among the *source* `routine_sets` (`position
+          // ASC`, `routineSetRowsByExercise` above) — so it survives
+          // `finish()`'s later `renumberSetPositions` compaction unchanged.
+          // See this file's header, "M3-06 review fix".
           setIds.forEach((setId, setPosition) => {
             this.driver.execute(
-              `INSERT INTO sets (id, workout_exercise_id, position, set_type, is_completed)
-               VALUES (?, ?, ?, ?, 0)`,
-              [setId, weId, setPosition, setTypes[setPosition]],
+              `INSERT INTO sets (id, workout_exercise_id, position, set_type, is_completed, routine_set_position)
+               VALUES (?, ?, ?, ?, 0, ?)`,
+              [setId, weId, setPosition, setTypes[setPosition], setPosition],
             );
           });
         });
@@ -764,10 +808,15 @@ export class WorkoutRepositoryImpl implements WorkoutRepository {
         `UPDATE workout_exercises SET exercise_id = ?, routine_occurrence_index = NULL WHERE id = ?`,
         [newExerciseId, workoutExerciseId],
       );
+      // `routine_set_position` cleared here too, for the identical reason
+      // `routine_occurrence_index` is cleared above: a stale index pointing
+      // at the *old* exercise's routine_sets would be actively wrong for
+      // the new one (this file's header, "M3-06 review fix").
       this.driver.execute(
         `UPDATE sets
          SET set_type = 'normal', weight_kg = NULL, reps = NULL, distance_meters = NULL,
-             duration_seconds = NULL, rpe = NULL, custom_metric = NULL, is_completed = 0
+             duration_seconds = NULL, rpe = NULL, custom_metric = NULL, is_completed = 0,
+             routine_set_position = NULL
          WHERE workout_exercise_id = ?`,
         [workoutExerciseId],
       );

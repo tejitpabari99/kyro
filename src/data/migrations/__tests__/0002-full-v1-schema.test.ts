@@ -61,16 +61,19 @@ describe('migration 0002 fixture-upgrade (M1-01, 08 §5.3)', () => {
   // `migrate(driver)` (no explicit manifest arg) always runs the *real*,
   // full manifest — as of the M3-05 review fix that also includes migration
   // 0003 (`workout_exercises.routine_occurrence_index`, additive/nullable,
-  // `manifest.ts`'s own header), so a version-1 fixture now picks up both
-  // remaining migrations, reaching version 3.
-  it('migrates the fixture forward: applies migrations 0002 and 0003, reaching version 3', () => {
+  // `manifest.ts`'s own header), and as of the M3-06 review fix migration
+  // 0004 (`sets.routine_set_position`, same additive/nullable shape), so a
+  // version-1 fixture now picks up all three remaining migrations, reaching
+  // version 4.
+  it('migrates the fixture forward: applies migrations 0002, 0003, and 0004, reaching version 4', () => {
     const result = migrate(driver);
 
     expect(result.fromVersion).toBe(1);
-    expect(result.toVersion).toBe(3);
+    expect(result.toVersion).toBe(4);
     expect(result.applied).toEqual([
       '0001_exercises_workouts_routines_measurements',
       '0002_workout_exercises_routine_occurrence_index',
+      '0003_sets_routine_set_position',
     ]);
   });
 

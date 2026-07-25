@@ -18,6 +18,7 @@
 import { openBetterSqlite3Driver } from '../../sqlite/driver.better-sqlite3';
 import { migrate } from '../../sqlite/migrator';
 import type { SqliteDriver } from '../../sqlite/driver';
+import { WorkoutRepositoryImpl } from '../../workouts/workout-repository';
 import {
   RoutineFolderNotFoundError,
   RoutineNotFoundError,
@@ -105,14 +106,26 @@ function insertSet(
     durationSeconds?: number | null;
     customMetric?: number | null;
     isCompleted?: 0 | 1;
+    /**
+     * M3-06 review fix: the set-correlation key `matchWorkoutSetsToRoutineSets`
+     * (`@/domain/routine-diff`) reads. Defaults to `position` — every
+     * existing fixture below inserts sets that already are (pre-`finish()`
+     * skip) their own routine set at that exact index, so this default
+     * reproduces the old (correct-in-the-no-skip-case) behavior without
+     * touching every call site. The skip-a-middle-set regression tests
+     * below override this explicitly to simulate what `startFromRoutine` +
+     * `finish()`'s `renumberSetPositions` actually produces: a pinned
+     * position that no longer equals the post-finish `position`.
+     */
+    routineSetPosition?: number | null;
   } = {},
 ): string {
   const id = `set-${workoutExerciseId}-${position}`;
   driver.execute(
     `INSERT INTO sets
        (id, workout_exercise_id, position, set_type, weight_kg, reps, distance_meters,
-        duration_seconds, custom_metric, is_completed)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        duration_seconds, custom_metric, is_completed, routine_set_position)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       workoutExerciseId,
@@ -124,6 +137,7 @@ function insertSet(
       opts.durationSeconds ?? null,
       opts.customMetric ?? null,
       opts.isCompleted ?? 1,
+      opts.routineSetPosition !== undefined ? opts.routineSetPosition : position,
     ],
   );
   return id;
@@ -395,6 +409,106 @@ describe('RoutineRepositoryImpl — createFromWorkout / updateFromWorkout (M3-01
       expect(updated.exercises[0]!.sets).toHaveLength(2);
       expect(updated.exercises[0]!.sets[0]).toMatchObject({ reps: null, repRangeStart: 6, repRangeEnd: 8 });
       expect(updated.exercises[0]!.sets[1]).toMatchObject({ reps: 6, repRangeStart: null, repRangeEnd: null });
+    });
+
+    describe('a middle set skipped mid-workout (M3-06 review fix regression)', () => {
+      // Reviewer's exact repro, run through the *real* mutators
+      // (`WorkoutRepositoryImpl.startFromRoutine`/`setCompleted`/`finish()`)
+      // rather than hand-built fixtures, so this exercises the actual
+      // `renumberSetPositions` compaction the bug lived in: routine set0 =
+      // fixed 12 reps, set1 = fixed 8 reps, set2 = rep range [6,8].
+      // Completing set0 and set2 but leaving set1 unchecked means
+      // `finish()` deletes set1 and compacts set2 down to post-finish
+      // `position` 1 — the exact position `routine_sets[1]` (the fixed-8
+      // target) sits at. A plain positional write-back would therefore
+      // collapse the achieved-7 set's range target to a fixed 8; the fix
+      // must still resolve it against its true origin, `routine_sets[2]`.
+      it('the surviving later set writes back against its true original routine_sets[2], preserving the range', async () => {
+        const workoutRepo = new WorkoutRepositoryImpl(driver);
+        const routine = await repo.create({
+          title: 'Push Day',
+          exercises: [
+            {
+              exerciseId: benchId,
+              sets: [{ reps: 12 }, { reps: 8 }, { repRangeStart: 6, repRangeEnd: 8 }],
+            },
+          ],
+        });
+
+        const workout = await workoutRepo.startFromRoutine(routine.id);
+        const [set0, set1, set2] = workout.exercises[0]!.sets;
+        expect(set1).toBeDefined(); // the routine_sets[1]-sourced set — deliberately left unchecked below
+
+        await workoutRepo.updateSet(set0!.id, { weightKg: 60, reps: 12 });
+        await workoutRepo.setCompleted(set0!.id, true);
+        // set1 is never touched — stays is_completed=0, deleted by finish().
+        await workoutRepo.updateSet(set2!.id, { weightKg: 60, reps: 7 }); // inside [6,8]
+        await workoutRepo.setCompleted(set2!.id, true);
+
+        const finished = await workoutRepo.finish(workout.id);
+        // Confirms the repro actually landed: only 2 sets survive, and
+        // finish()'s renumbering compacted the surviving achieved-7 set
+        // down to position 1 — exactly where routine_sets[1] (fixed 8
+        // reps) lives, the wrong target a plain positional write-back
+        // would use.
+        expect(finished.exercises[0]!.sets).toHaveLength(2);
+        expect(finished.exercises[0]!.sets[1]).toMatchObject({ position: 1, reps: 7 });
+
+        const updated = await repo.updateFromWorkout(routine.id, workout.id);
+
+        expect(updated.exercises[0]!.sets).toHaveLength(2);
+        expect(updated.exercises[0]!.sets[0]).toMatchObject({
+          reps: 12,
+          repRangeStart: null,
+          repRangeEnd: null,
+        });
+        // The critical assertion: correlates against routine_sets[2] (the
+        // true origin) and preserves its [6,8] range — NOT collapsed to a
+        // fixed reps target, which is what wrongly correlating against the
+        // shifted routine_sets[1] (fixed 8 reps) would have produced.
+        expect(updated.exercises[0]!.sets[1]).toMatchObject({
+          reps: null,
+          repRangeStart: 6,
+          repRangeEnd: 8,
+        });
+      });
+
+      it('an achieved value outside the true range target is still correctly collapsed to a fixed value, not compared against the wrong (shifted) target', async () => {
+        const workoutRepo = new WorkoutRepositoryImpl(driver);
+        const routine = await repo.create({
+          title: 'Push Day',
+          exercises: [
+            {
+              exerciseId: benchId,
+              sets: [{ reps: 12 }, { reps: 8 }, { repRangeStart: 6, repRangeEnd: 8 }],
+            },
+          ],
+        });
+
+        const workout = await workoutRepo.startFromRoutine(routine.id);
+        const [set0, , set2] = workout.exercises[0]!.sets;
+
+        await workoutRepo.updateSet(set0!.id, { weightKg: 60, reps: 12 });
+        await workoutRepo.setCompleted(set0!.id, true);
+        await workoutRepo.updateSet(set2!.id, { weightKg: 60, reps: 10 }); // outside [6,8]
+        await workoutRepo.setCompleted(set2!.id, true);
+
+        await workoutRepo.finish(workout.id);
+        const updated = await repo.updateFromWorkout(routine.id, workout.id);
+
+        // Correctly out-of-range against its true target (routine_sets[2]'s
+        // [6,8]) -> collapses to a fixed target. If this set had instead
+        // been (wrongly) compared against routine_sets[1] (fixed 8 reps),
+        // it would *also* collapse (10 !== 8 either way) — so this case
+        // alone wouldn't discriminate the bug, but combined with the range-
+        // preservation test above it confirms the collapse path still works
+        // correctly under the corrected correlation.
+        expect(updated.exercises[0]!.sets[1]).toMatchObject({
+          reps: 10,
+          repRangeStart: null,
+          repRangeEnd: null,
+        });
+      });
     });
 
     it('copies superset grouping / rest / notes from the workout\'s final structure', async () => {

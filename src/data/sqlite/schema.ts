@@ -238,6 +238,24 @@ export const sets = sqliteTable(
     rpe: real('rpe'),
     customMetric: real('custom_metric'),
     isCompleted: integer('is_completed').notNull().default(0),
+    /**
+     * M3-06 review fix: this row's fixed 0-based position among the source
+     * `routine_exercise`'s own `routine_sets` (`position ASC`), pinned once
+     * by `startFromRoutine` at creation time — the exact `routine_occurrence_index`
+     * precedent (above, `workoutExercises`) applied one level down. Plain
+     * `sets.position` cannot serve this role: `WorkoutRepositoryImpl.finish()`
+     * deletes every unchecked set and then renumbers the survivors back to
+     * contiguous 0-based positions, so a non-trailing skipped set silently
+     * shifts every later set's `position` — `routineSetPosition` is set once
+     * and never touched by that renumbering (`renumberSetPositions` only
+     * ever writes `position`), so it still names the *true* original
+     * `routine_sets` row no matter what got skipped around it. `null` for
+     * any set with no routine counterpart (`addSet`/`insertWarmupSets`
+     * mid-workout, or a `replaceExercise`d exercise's sets). See
+     * `domain/routine-diff.ts`'s file header ("Set correlation") for the
+     * full incident writeup.
+     */
+    routineSetPosition: integer('routine_set_position'),
   },
   (table) => [
     index('idx_sets_we').on(table.workoutExerciseId, table.position),

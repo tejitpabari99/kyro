@@ -50,28 +50,67 @@
  * final exercise list, verbatim) without ever trusting a position-based
  * guess.
  *
- * ## Set correlation: position-order within the matched exercise, not the
- * warm-up/working bucket scheme
+ * ## Set correlation: `routineSetPosition`, not plain position-order
+ * (M3-06 review fix)
  *
- * `previous-values.ts`'s `computeCurrentRowBuckets` numbers warm-up and
- * non-warm-up rows independently so a *display-time* PREVIOUS lookup can
- * match "the i-th warm-up row" against an unrelated prior *session* that
- * may have a different-shaped warm-up prefix (02 §6/§16.6) — a genuinely
- * different problem from this one. Here, both sides of the comparison are
- * already stored in `position ASC` order (`routine_sets`/`sets`, 05
- * §3.2/§3.3), and the write-back is an inherently positional rewrite
- * (delete-all-reinsert-by-array-order, mirroring `RoutineRepositoryImpl
- * .update`'s own replace-all `exercises` convention) — 04 §2.4's own
- * wording, "per-set targets ← the workout's checked sets' actual values,"
- * describes a 1:1 positional correspondence, not an independently-bucketed
- * one. Plain `sets[i] <-> routine_sets[i]` position matching is therefore
- * both simpler and the natural fit, and is used identically by
- * {@link computeRoutineDiff} (is set `i`'s achieved value different from
- * target `i`?) and by `RoutineRepositoryImpl.updateFromWorkout` (is set
- * `i`'s achieved reps inside target `i`'s existing range?) — the same
- * index, the same meaning, in both places. A set-count mismatch between the
- * two sides is caught separately, before any per-index comparison, as its
- * own `set_added_or_removed` reason.
+ * The original version of this module matched sets via plain
+ * `sets[i] <-> routine_sets[i]` position-order, reasoning that "both sides
+ * are already stored in `position ASC` order" made that a genuine 1:1
+ * correspondence. **That reasoning was wrong**, for exactly the same reason
+ * M3-05's review fix (above) rejected live-position matching for
+ * *exercises*: `WorkoutRepositoryImpl.finish()` deletes every
+ * `is_completed=0` set and then renumbers the survivors back to contiguous
+ * 0-based positions (`renumberSetPositions`) — preserving relative order
+ * but closing any gap. Checking set 0 and set 2 of a 3-set exercise while
+ * leaving set 1 unchecked (nothing in the UI/store enforces checking sets
+ * in order) leaves the achieved set that was genuinely `routine_sets[2]`
+ * sitting at post-finish position 1 — a plain positional diff/write-back
+ * then silently correlates it against `routine_sets[1]` instead, e.g.
+ * collapsing a rep-range target that should have survived.
+ *
+ * Fixed the same way M3-05 fixed the exercise-level version of this bug:
+ * {@link matchWorkoutSetsToRoutineSets} matches purely on
+ * `routineSetPosition` — each achieved set's fixed 0-based position among
+ * its *source* `routine_exercise`'s own `routine_sets`, pinned once by
+ * `WorkoutRepositoryImpl.startFromRoutine` at creation time (see
+ * `workout-repository.ts`'s "M3-06 review fix" header section) and never
+ * touched again by `renumberSetPositions` — against the matched routine
+ * exercise's *current* `sets`/`routine_sets` count (live, same "may have
+ * been edited since the workout started" reasoning the exercise-level
+ * matching already applies). An achieved set with `routineSetPosition:
+ * null` (added mid-workout via `+ Add Set`/warm-up insert, or belonging to
+ * a `replaceExercise`d exercise) or whose pinned position no longer exists
+ * in the routine's live `routine_sets` (a set removed from the routine
+ * since) never matches anything, by construction — exactly the "no match"
+ * contract {@link matchWorkoutToRoutineExercises} already establishes one
+ * level up. Used identically by {@link computeRoutineDiff} (is a matched
+ * set's achieved value different from its true target?) and by
+ * `RoutineRepositoryImpl.updateFromWorkout` (is a matched set's achieved
+ * reps inside its true target's existing range?) — the same matches, the
+ * same meaning, in both places. `set_added_or_removed` is now itself
+ * derived from this matching (any achieved or target set left unmatched),
+ * not from a raw set-count comparison — the count-comparison version had
+ * the identical "equal count can still hide a mismatch" flaw the exercise
+ * layer's live-position matching had (e.g. one set skipped mid-workout and
+ * a different, unrelated set added back via `+ Add Set` leaves the count
+ * unchanged but the *identities* wrong).
+ *
+ * **Why not `previous-values.ts`'s warm-up/working bucket scheme?** Worth
+ * reconsidering explicitly, since a bucket-relative index *is* more robust
+ * than a raw position index against insertions/deletions elsewhere in the
+ * same set-type bucket. But `computeCurrentRowBuckets` computes its bucket
+ * index live, from current row order, at lookup time — it has no
+ * creation-time pin. Applied to this problem it would still be recomputed
+ * from the same post-`finish()`, post-renumbering `sets` array this bug
+ * report's repro shows: a skipped set *within the same bucket* (e.g. two
+ * `'normal'`-type sets, skip the first) shifts the bucket-relative index of
+ * every later same-bucket set by exactly the same amount a raw position
+ * index does, reproducing the identical bug. The bucket scheme solves a
+ * genuinely different problem (matching against an *unrelated prior
+ * session* with a different-shaped warm-up prefix, 02 §6/§16.6) — this
+ * problem needs a value immune to *this workout's own* later mutation,
+ * which only a creation-time pin (the `routineOccurrenceIndex` precedent)
+ * provides.
  *
  * ## What participates in the diff (02 §14.4) vs. the write-back (04 §2.4)
  *
@@ -109,13 +148,15 @@
 // `RoutineExerciseFull`/`RoutineSet`, `src/data/workouts|routines/types.ts`).
 // ---------------------------------------------------------------------------
 
-/** Mirrors `WorkoutSet`'s target-relevant fields — the workout side of a diffed/matched set pair. */
+/** Mirrors `WorkoutSet`'s target-relevant and set-correlation fields — the workout side of a diffed/matched set pair. */
 export interface RoutineDiffAchievedSetLike {
   weightKg: number | null;
   reps: number | null;
   distanceMeters: number | null;
   durationSeconds: number | null;
   customMetric: number | null;
+  /** `WorkoutSet.routineSetPosition` — `null` means "no routine counterpart" (mid-workout `+ Add Set`/warm-up insert, or a `replaceExercise`d exercise's set). See file header, "Set correlation". */
+  routineSetPosition: number | null;
 }
 
 /** Mirrors `WorkoutExerciseFull`'s structure-relevant fields. */
@@ -216,6 +257,53 @@ export function matchWorkoutToRoutineExercises(
       return;
     }
     matches.push({ workoutExerciseIndex, routineExerciseIndex });
+  });
+  return matches;
+}
+
+// ---------------------------------------------------------------------------
+// Set correlation (M3-06 review fix) — shared by the diff and by
+// `RoutineRepositoryImpl.updateFromWorkout`'s write-back (file header,
+// "Set correlation"). Matches sets *within one already-matched exercise
+// pair* — call once per {@link ExerciseMatch}.
+// ---------------------------------------------------------------------------
+
+export interface OccurrenceMatchWorkoutSetLike {
+  /** `WorkoutSet.routineSetPosition` — see file header, "Set correlation". */
+  routineSetPosition: number | null;
+}
+
+/** One matched pair — indexes into the achieved-set array and the target-set array passed to {@link matchWorkoutSetsToRoutineSets}. */
+export interface SetMatch {
+  workoutSetIndex: number;
+  routineSetIndex: number;
+}
+
+/**
+ * Matches each achieved set (within one already-matched exercise) to its
+ * routine target set via `routineSetPosition` — never via live position
+ * (file header, "Set correlation"). An achieved set with
+ * `routineSetPosition: null`, or whose pinned position is `>=
+ * routineSetCount` (the set no longer exists in the routine's current live
+ * `routine_sets`, e.g. removed since the workout started), is simply absent
+ * from the returned list — the caller treats "no match" as "added" (diff) /
+ * "no original target" (write-back), the identical contract
+ * {@link matchWorkoutToRoutineExercises} establishes one level up. Returned
+ * in the achieved-set array's own order.
+ */
+export function matchWorkoutSetsToRoutineSets(
+  workoutSets: readonly OccurrenceMatchWorkoutSetLike[],
+  routineSetCount: number,
+): SetMatch[] {
+  const matches: SetMatch[] = [];
+  workoutSets.forEach((ws, workoutSetIndex) => {
+    if (ws.routineSetPosition === null) {
+      return;
+    }
+    if (ws.routineSetPosition < 0 || ws.routineSetPosition >= routineSetCount) {
+      return;
+    }
+    matches.push({ workoutSetIndex, routineSetIndex: ws.routineSetPosition });
   });
   return matches;
 }
@@ -370,15 +458,28 @@ export function computeRoutineDiff(workout: FinishedWorkoutLike, routine: Source
       reasons.push({ kind: 'rest_timer_changed', exerciseId: we.exerciseId });
     }
 
-    if (we.sets.length !== re.sets.length) {
+    // Set correlation via `routineSetPosition`, not plain position-order —
+    // see file header, "Set correlation" (M3-06 review fix). `hasUnmatchedSet`
+    // replaces a raw `we.sets.length !== re.sets.length` count comparison:
+    // equal counts can still hide a mismatch (e.g. one set skipped
+    // mid-workout and a different set added back via `+ Add Set` leaves the
+    // count unchanged but the identities wrong), so "added or removed" is
+    // derived from actual match coverage on both sides instead.
+    const setMatches = matchWorkoutSetsToRoutineSets(we.sets, re.sets.length);
+    const matchedWorkoutSetIndexes = new Set(setMatches.map((m) => m.workoutSetIndex));
+    const matchedRoutineSetIndexes = new Set(setMatches.map((m) => m.routineSetIndex));
+    const hasUnmatchedSet =
+      we.sets.some((_, index) => !matchedWorkoutSetIndexes.has(index)) ||
+      re.sets.some((_, index) => !matchedRoutineSetIndexes.has(index));
+    if (hasUnmatchedSet) {
       reasons.push({ kind: 'set_added_or_removed', exerciseId: we.exerciseId });
-    } else {
-      we.sets.forEach((achievedSet, setIndex) => {
-        const targetSet = re.sets[setIndex]!;
-        if (setValueDiffers(achievedSet, targetSet)) {
-          reasons.push({ kind: 'target_value_changed', exerciseId: we.exerciseId });
-        }
-      });
+    }
+    for (const setMatch of setMatches) {
+      const achievedSet = we.sets[setMatch.workoutSetIndex]!;
+      const targetSet = re.sets[setMatch.routineSetIndex]!;
+      if (setValueDiffers(achievedSet, targetSet)) {
+        reasons.push({ kind: 'target_value_changed', exerciseId: we.exerciseId });
+      }
     }
   }
 

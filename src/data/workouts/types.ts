@@ -32,6 +32,21 @@ export interface WorkoutSet {
   rpe: Rpe | null;
   customMetric: number | null;
   isCompleted: boolean;
+  /**
+   * M3-06 review fix: this row's fixed 0-based position among the source
+   * `routine_exercise`'s own `routine_sets` (`position ASC`), pinned once
+   * by `startFromRoutine` at creation time — the same "pin it at creation
+   * time, immune to later renumbering" precedent
+   * `WorkoutExerciseFull.routineOccurrenceIndex` established, applied one
+   * level down because `finish()`'s `renumberSetPositions` can compact
+   * `position` around a skipped non-trailing set, breaking any plain
+   * `sets[i] <-> routine_sets[i]` positional correlation. `null` for any
+   * set with no routine counterpart (`addSet`/`insertWarmupSets`
+   * mid-workout, or a `replaceExercise`d exercise's sets). See
+   * `domain/routine-diff.ts`'s file header ("Set correlation") for the full
+   * write-up.
+   */
+  routineSetPosition: number | null;
 }
 
 /** One row of the `workout_exercises` table (05 §3.2), hydrated with its `sets` in position order. */

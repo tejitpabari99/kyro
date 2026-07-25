@@ -89,7 +89,11 @@
  *   which achieved set maps to which target.
  */
 import type { SetType } from '@/domain/enums';
-import { matchWorkoutToRoutineExercises, repsWithinRoutineRange } from '@/domain/routine-diff';
+import {
+  matchWorkoutSetsToRoutineSets,
+  matchWorkoutToRoutineExercises,
+  repsWithinRoutineRange,
+} from '@/domain/routine-diff';
 
 import { generateUuid } from '../shared/uuid';
 import type { SqliteDriver, SqliteRunResult } from '../sqlite/driver';
@@ -188,6 +192,11 @@ interface SetSourceRow {
   distance_meters: number | null;
   duration_seconds: number | null;
   custom_metric: number | null;
+}
+
+/** Raw `sets` shape `updateFromWorkout` (M3-06) needs — `SetSourceRow` plus `routine_set_position` (migration 0004), the set-correlation key `matchWorkoutSetsToRoutineSets` (`@/domain/routine-diff`) reads (M3-06 review fix — see that file's header, "Set correlation"). `createFromWorkout` never needs this field (it has no prior routine structure to correlate against), so it stays off `SetSourceRow` itself, same split `WorkoutExerciseWithOccurrenceRow` below already establishes for exercises. */
+interface SetSourceWithRoutinePositionRow extends SetSourceRow {
+  routine_set_position: number | null;
 }
 
 /** Raw `workout_exercises` shape `updateFromWorkout` (M3-06) needs — `WorkoutExerciseSourceRow` plus `routine_occurrence_index`, the exercise-correlation key `matchWorkoutToRoutineExercises` (`@/domain/routine-diff`) reads (see that file's header). `createFromWorkout` never needs this field (it has no prior routine structure to correlate against), so it stays off `WorkoutExerciseSourceRow` itself. */
@@ -785,10 +794,11 @@ export class RoutineRepositoryImpl implements RoutineRepository {
    * become the achieved actual value (mirrors `createFromWorkout`'s own
    * "achieved becomes target" convention) with one carve-out — reps: if the
    * *original* target this set correlates to (via `matchWorkoutToRoutineExercises`
-   * exercise-matching + same-index set-position matching, `@/domain
-   * /routine-diff`'s own file header's "set correlation" section — the
-   * identical scheme the diff itself uses, so the two can never disagree
-   * about which target a set maps to) was a rep range and the achieved reps
+   * exercise-matching + `matchWorkoutSetsToRoutineSets`'s `routine_set_position`
+   * set-matching — M3-06 review fix, `@/domain/routine-diff`'s own file
+   * header's "Set correlation" section has the full write-up — the identical
+   * scheme the diff itself uses, so the two can never disagree about which
+   * target a set maps to) was a rep range and the achieved reps
    * falls inside it (inclusive both ends, `repsWithinRoutineRange`), the
    * range is preserved verbatim and only `weightKg` (already unconditional
    * above) actually changed; otherwise (no original target, not a range, or
@@ -824,8 +834,8 @@ export class RoutineRepositoryImpl implements RoutineRepository {
       [workoutId],
     );
     const setRowsPerExercise = workoutExerciseRows.map((weRow) =>
-      this.driver.queryAll<SetSourceRow>(
-        `SELECT id, position, set_type, weight_kg, reps, distance_meters, duration_seconds, custom_metric
+      this.driver.queryAll<SetSourceWithRoutinePositionRow>(
+        `SELECT id, position, set_type, weight_kg, reps, distance_meters, duration_seconds, custom_metric, routine_set_position
          FROM sets WHERE workout_exercise_id = ? ORDER BY position ASC`,
         [weRow.id],
       ),
@@ -864,8 +874,24 @@ export class RoutineRepositoryImpl implements RoutineRepository {
       const matchedRoutineIndex = routineExerciseIndexByWorkoutIndex.get(weIndex);
       const originalSets = matchedRoutineIndex !== undefined ? routineSetRowsPerExercise[matchedRoutineIndex]! : [];
 
+      // Set correlation via `routine_set_position`, not plain position-order
+      // — see `@/domain/routine-diff`'s file header, "Set correlation"
+      // (M3-06 review fix): `finish()`'s `renumberSetPositions` can compact
+      // `setRow.position` around a skipped non-trailing set, so `setIndex`
+      // alone can no longer be trusted to name the correct `originalSets`
+      // entry. `matchWorkoutSetsToRoutineSets` is the exact same helper
+      // `computeRoutineDiff` uses, so the two can never disagree about which
+      // achieved set maps to which target.
+      const setMatches = matchWorkoutSetsToRoutineSets(
+        setRowsPerExercise[weIndex]!.map((setRow) => ({ routineSetPosition: setRow.routine_set_position })),
+        originalSets.length,
+      );
+      const originalSetByWorkoutSetIndex = new Map(
+        setMatches.map((m) => [m.workoutSetIndex, originalSets[m.routineSetIndex]]),
+      );
+
       const sets: NewRoutineSetInput[] = setRowsPerExercise[weIndex]!.map((setRow, setIndex) => {
-        const repTarget = computeUpdatedRepTarget(setRow.reps, originalSets[setIndex]);
+        const repTarget = computeUpdatedRepTarget(setRow.reps, originalSetByWorkoutSetIndex.get(setIndex));
         return {
           setType: setRow.set_type as SetType,
           weightKg: setRow.weight_kg,
