@@ -80,7 +80,7 @@ Task count: **12**
 **Acceptance / test gate:** 03 §3 acceptance: all four tabs identical for built-in and custom; charts respect units + warm-up rules; set-records table matches domain fixtures; detail-as-sheet mid-workout doesn't disturb active workout.
 **Est:** 2 d
 
-### M4-10 — Live PR banner + records earned + remaining PR surfaces
+### M4-10 — Live PR banner + records earned + remaining PR surfaces [done]
 **Description:** Wire the live evaluator into logging and finish.
 **How:** Replace M2's no-op hooks: on check, run the live evaluator (M4-01/02) — beaten record → `PRBanner` (07 §5): top toast, bg.surface + accent border-left, trophy icon, combined types in one banner ("Heaviest Weight PR — 102.5 kg"), auto-dismiss 3 s, `notificationSuccess` haptic, announced politely (a11y); setting-gated (`live_pr_banner`, default on). Uncheck removes contribution; duplicate equal value → no banner. Finish/save screen: "Records earned" trophy rows from post-save evaluation (M2-14 slot). History cards PR counts (M4-03) and detail trophies (M4-04) verified against the same engine.
 **References:** 04 §5.4–5.5; 02 §14; 07 §5; 08 §4.1 cases 10/13.

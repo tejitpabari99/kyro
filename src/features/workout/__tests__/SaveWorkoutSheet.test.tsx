@@ -30,6 +30,8 @@ async function renderSheet(overrides: Partial<React.ComponentProps<typeof SaveWo
     elapsedMs: 45 * 60 * 1000, // 45 minutes
     volumeLabel: '480 kg',
     setsCount: 3,
+    recordsEarnedExercises: [],
+    weightUnit: 'kg',
     onSave,
     testID: 'save-sheet',
     ...overrides,
@@ -86,7 +88,7 @@ describe('SaveWorkoutSheet — Records earned (M2-14 no-op wiring)', () => {
 
   it('renders a trophy row per award when the records provider returns data', async () => {
     const awards: RecordAward[] = [
-      { exerciseId: 'ex-1', exerciseName: 'Bench Press', kind: 'weight', value: 100 },
+      { exerciseId: 'ex-1', exerciseName: 'Bench Press', kind: 'Heaviest Weight', value: '100 kg' },
     ];
     mockUseWorkoutRecordsEarned.mockReturnValue({ data: awards });
     await renderSheet();

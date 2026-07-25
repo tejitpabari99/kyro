@@ -13,6 +13,8 @@ import {
   computeRecordsSnapshot,
   EMPTY_RECORDS_SNAPSHOT,
   evaluateLiveCheck,
+  evaluateWorkoutRecordsEarned,
+  recordAwardValue,
   type HistoricalSet,
   type RecordAward,
 } from '../records';
@@ -646,5 +648,97 @@ describe('evaluateLiveCheck: does not sort sessionCheckedSets (real-time check o
     // three share identical workoutStartTime/setOrder).
     const awards = evaluateLiveCheck(historySnapshot, [checkedFirst, checkedSecond], candidate);
     expect(awards).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M4-10 (04 §5.4): the finish/save-screen "Records earned" evaluator —
+// folds a not-yet-persisted workout's own checked sets over the cached
+// history baseline, exactly matching what a post-save computeRecordsSnapshot
+// read over the same sets would produce.
+// ---------------------------------------------------------------------------
+describe('evaluateWorkoutRecordsEarned (04 §5.4, "Records earned")', () => {
+  it('a workout set beating history earns the award, attributed to that workout', () => {
+    const historySnapshot = computeRecordsSnapshot([
+      historicalSet({ setId: 'hist', workoutId: 'w-hist', workoutStartTime: 1, weightKg: 100, reps: 5 }),
+    ]).snapshot;
+
+    const workoutSets = [
+      historicalSet({ setId: 'new-1', workoutId: 'w-new', setOrder: 0, weightKg: 102.5, reps: 5 }),
+    ];
+    const earned = evaluateWorkoutRecordsEarned(historySnapshot, workoutSets);
+    expect(recordTypesOf(earned)).toContain('heaviest_weight');
+    expect(earned.every((a) => a.workoutId === 'w-new')).toBe(true);
+  });
+
+  it('a workout with multiple own sets can earn multiple distinct record types, attributed to the specific set that earned each', () => {
+    const historySnapshot = EMPTY_RECORDS_SNAPSHOT;
+    const heaviest = historicalSet({ setId: 'w-heaviest', workoutId: 'w-new', setOrder: 0, weightKg: 100, reps: 3 });
+    const mostVolume = historicalSet({ setId: 'w-volume', workoutId: 'w-new', setOrder: 1, weightKg: 60, reps: 10 });
+    const earned = evaluateWorkoutRecordsEarned(historySnapshot, [heaviest, mostVolume]);
+
+    expect(earned.find((a) => a.recordType === 'heaviest_weight')?.setId).toBe('w-heaviest');
+    // Both sets earn a `best_set_volume` award (300 beats null, then 600
+    // beats 300) — the *last* one is who currently holds it, same
+    // "last award wins" convention `computeRecordsSnapshot`'s own header
+    // documents.
+    expect(
+      [...earned].reverse().find((a) => a.recordType === 'best_set_volume')?.setId,
+    ).toBe('w-volume');
+  });
+
+  it('unchecked sets must never be passed in — a caller that filters correctly earns nothing for a workout with zero checked sets (08 §4.1 case 13)', () => {
+    const historySnapshot = computeRecordsSnapshot([
+      historicalSet({ setId: 'hist', workoutId: 'w-hist', workoutStartTime: 1, weightKg: 100, reps: 5 }),
+    ]).snapshot;
+    expect(evaluateWorkoutRecordsEarned(historySnapshot, [])).toEqual([]);
+  });
+
+  it('a workout set that does not beat history earns nothing', () => {
+    const historySnapshot = computeRecordsSnapshot([
+      historicalSet({ setId: 'hist', workoutId: 'w-hist', workoutStartTime: 1, weightKg: 150, reps: 5 }),
+    ]).snapshot;
+    const workoutSets = [historicalSet({ setId: 'new-1', workoutId: 'w-new', weightKg: 100, reps: 5 })];
+    expect(evaluateWorkoutRecordsEarned(historySnapshot, workoutSets)).toEqual([]);
+  });
+});
+
+describe('recordAwardValue (04 §5.1 per-type value formulas)', () => {
+  it('heaviest_weight and set_record read the set\'s own weightKg', () => {
+    const set = historicalSet({ weightKg: 102.5, reps: 5 });
+    expect(recordAwardValue(set, { recordType: 'heaviest_weight', setId: set.setId, workoutId: set.workoutId })).toBe(102.5);
+    expect(
+      recordAwardValue(set, { recordType: 'set_record', bucket: 5, setId: set.setId, workoutId: set.workoutId }),
+    ).toBe(102.5);
+  });
+
+  it('best_1rm applies the Epley formula', () => {
+    const set = historicalSet({ weightKg: 100, reps: 5 });
+    expect(
+      recordAwardValue(set, { recordType: 'best_1rm', setId: set.setId, workoutId: set.workoutId }),
+    ).toBeCloseTo(100 * (1 + 5 / 30), 5);
+  });
+
+  it('best_set_volume multiplies weight by reps', () => {
+    const set = historicalSet({ weightKg: 60, reps: 10 });
+    expect(
+      recordAwardValue(set, { recordType: 'best_set_volume', setId: set.setId, workoutId: set.workoutId }),
+    ).toBe(600);
+  });
+
+  it('most_reps reads reps; longest_duration reads durationSeconds', () => {
+    const repsSet = historicalSet({ exerciseType: 'reps_only', weightKg: null, reps: 12 });
+    expect(
+      recordAwardValue(repsSet, { recordType: 'most_reps', setId: repsSet.setId, workoutId: repsSet.workoutId }),
+    ).toBe(12);
+
+    const durationSet = historicalSet({ exerciseType: 'duration', weightKg: null, reps: null, durationSeconds: 90 });
+    expect(
+      recordAwardValue(durationSet, {
+        recordType: 'longest_duration',
+        setId: durationSet.setId,
+        workoutId: durationSet.workoutId,
+      }),
+    ).toBe(90);
   });
 });

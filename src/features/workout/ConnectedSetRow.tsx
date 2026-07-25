@@ -48,14 +48,17 @@
  *      them live from `workout.exercises`, no separate counter action to
  *      call). Then (M2-10): `shouldStartRestTimer` decides whether to start
  *      this exercise's rest timer (`restTimerStore.start`) — Off setting or
- *      a next-row-same-exercise dropset suppress it. Then (M2-12):
+ *      a next-row-same-exercise dropset suppress it. Then (M4-10, 04 §5.5):
+ *      the live-PR check — `RecordsService.evaluateLive`, fed this exercise's
+ *      cached history baseline plus this session's own already-checked sets
+ *      (in `useActiveWorkoutStore.getState()` order, which needs no separate
+ *      "check order" bookkeeping — see that call site's own comment); any
+ *      newly-earned award fires `successPR()` and shows `PRBanner` via
+ *      `prBannerStore`, gated on the `live_pr_banner` setting. Then (M2-12):
  *      `onChecked?.()` — this row's own report, unconditional, that a set
  *      here was just successfully checked; `ActiveWorkoutScreen` (not this
  *      file) owns the "is this exercise grouped, is the setting on, which
- *      member's next" decision (`domain/supersets.ts`). The live-PR check
- *      is still a **hook point for a later milestone that doesn't exist
- *      yet** — the records provider is a no-op until M4-10 per the M2 task
- *      notes.
+ *      member's next" decision (`domain/supersets.ts`).
  *  - **Uncheck** (`set.isCompleted` already `true`): `restTimerStore
  *    .cancelForSet(setId)` (M2-10 — no-op unless the running timer, if
  *    any, was started by *this* set) then `setCompleted(false)` — counters
@@ -100,14 +103,16 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { TextInput } from 'react-native';
 
-import type { UpdateSetInput } from '@/data/workouts/types';
+import type { UpdateSetInput, WorkoutSet } from '@/data/workouts/types';
 import { formatCellValue, parseCellValue, type SetCellUnits } from '@/domain/set-cell-values';
 import { evaluateSetCheck, type SetCheckColumnInput } from '@/domain/set-check';
 import type { SetColumnSpec } from '@/domain/set-table-columns';
 import type { PreviousValueResult } from '@/domain/previous-values';
 import { RPE_VALUES, type ExerciseType, type Rpe, type SetType } from '@/domain/enums';
+import type { HistoricalSet } from '@/domain/records';
 import { useSettingsStore } from '@/features/settings/settings-store';
-import { tickCheck, warnInvalid } from '@/lib/haptics';
+import { tryGetRecordsService } from '@/features/stats/records-service';
+import { successPR, tickCheck, warnInvalid } from '@/lib/haptics';
 import { playSetCheckChime } from '@/lib/sound';
 import { ListRow } from '@/ui/ListRow';
 import { Sheet } from '@/ui/Sheet';
@@ -116,6 +121,8 @@ import { SetRow, type SetBadgeKind } from '@/ui/SetRow';
 import { selectWorkoutSet, useActiveWorkoutStore } from './activeWorkoutStore';
 import { DurationTimerSheet } from './DurationTimerSheet';
 import { KEYBOARD_ACCESSORY_VIEW_ID, useKeyboardFocusStore } from './keyboardFocusStore';
+import { usePRBannerStore } from './prBannerStore';
+import { formatPRBannerMessage } from './records-provider';
 import { shouldStartRestTimer, useRestTimerStore } from './restTimerStore';
 
 export interface ConnectedSetRowProps {
@@ -569,10 +576,55 @@ function ConnectedSetRowImpl({
         volume: sounds.timer_volume,
       });
     }
-    // TODO(M4-10): run the live-PR check against this newly-committed set
-    // and surface a PR banner — the records provider is intentionally a
-    // no-op until M4-10 (per the M2 task notes), so there is nothing to
-    // wire yet.
+    // M4-10 (04 §5.5): live PR check. Baseline = completed history (cached
+    // by RecordsService, warmed by `ActiveWorkoutScreen`'s own mount effect)
+    // plus this session's own already-checked sets for this exercise —
+    // across every workout-exercise row sharing this same library
+    // `exerciseId` (a duplicated exercise within one workout), not just this
+    // row's own exercise instance. Reads `useActiveWorkoutStore.getState()`
+    // (not a closed-over `set`) for the same reason `setCompleted` above
+    // does: `updateSet`'s optimistic `set()` call already applied
+    // synchronously, so the store's current state already reflects this
+    // set's just-committed values. Setting-gated (`live_pr_banner`,
+    // 02 §13 item 11) and `tryGetRecordsService` (not `getRecordsService`) —
+    // see that function's own header for why a live banner is a best-effort
+    // enhancement that must never throw when the singleton isn't booted
+    // (most of this file's own test suite doesn't configure it).
+    if (useSettingsStore.getState().settings.live_pr_banner) {
+      const service = tryGetRecordsService();
+      const currentWorkout = service ? useActiveWorkoutStore.getState().workout : null;
+      if (service && currentWorkout) {
+        const toHistoricalSet = (s: WorkoutSet): HistoricalSet => ({
+          setId: s.id,
+          workoutId: currentWorkout.id,
+          workoutStartTime: currentWorkout.startTime,
+          setOrder: s.position,
+          exerciseType,
+          setType: s.setType,
+          isCompleted: true,
+          weightKg: s.weightKg,
+          reps: s.reps,
+          durationSeconds: s.durationSeconds,
+        });
+        const committedSet = currentWorkout.exercises
+          .flatMap((e) => e.sets)
+          .find((s) => s.id === setId);
+        if (committedSet) {
+          const candidate = toHistoricalSet(committedSet);
+          const sessionCheckedSets = currentWorkout.exercises
+            .filter((e) => e.exerciseId === exerciseId)
+            .flatMap((e) => e.sets)
+            .filter((s) => s.isCompleted && s.id !== setId)
+            .map(toHistoricalSet);
+          const prAwards = service.evaluateLive(exerciseId, sessionCheckedSets, candidate);
+          if (prAwards && prAwards.length > 0) {
+            successPR();
+            const { weight_unit: weightUnit } = useSettingsStore.getState().settings;
+            usePRBannerStore.getState().show(formatPRBannerMessage(prAwards, candidate, weightUnit));
+          }
+        }
+      }
+    }
     // M2-12: Smart Superset Scrolling hook — `onChecked` is `ExerciseCard`'s
     // own `onSetChecked` prop, threaded through unchanged; `ActiveWorkoutScreen`
     // decides whether this exercise is actually grouped, whether the setting
