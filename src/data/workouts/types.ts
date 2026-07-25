@@ -23,10 +23,22 @@
  * here — the repository implementation owns the snake_case mapping at the
  * SQL boundary, exactly like `src/data/exercises/types.ts` does for
  * `exercises`.
+ *
+ * `statsFeed` (M4-08, 05 §6's own list: "dashboard feed") is the newest
+ * addition — the Profile → Statistics dashboard's single ranged query (05
+ * §4: "computed in TS from a single ranged query of `(workout start_time,
+ * exercise_id, primary_muscle_group, set fields)`; avoid N+1"). Its row
+ * shape ({@link StatsFeedRow}) and range input ({@link StatsFeedRange})
+ * mirror `workoutDates`/`WorkoutDatesRange`'s own "defined in `domain/`,
+ * re-exported here" split — `domain/stats-buckets.ts` owns every bucketing
+ * rule over the rows this method returns.
  */
 import type { Rpe, SetType } from '@/domain/enums';
 import type { HistoricalSet } from '@/domain/records';
+import type { StatsFeedRow } from '@/domain/stats-buckets';
 import type { WorkoutDateCount } from '@/domain/streaks';
+
+export type { StatsFeedRow };
 
 export type { WorkoutDateCount };
 
@@ -140,6 +152,21 @@ export interface ListCompletedPage {
  * pass — see `CalendarScreen.tsx`'s own comment on that query).
  */
 export interface WorkoutDatesRange {
+  /** Inclusive lower bound (epoch ms) on `start_time`; omitted = no lower bound. */
+  start?: number;
+  /** Exclusive upper bound (epoch ms) on `start_time`; omitted = no upper bound. */
+  end?: number;
+}
+
+/**
+ * `WorkoutRepository.statsFeed`'s range input (M4-08) — identical shape to
+ * {@link WorkoutDatesRange} (same inclusive-start/exclusive-end
+ * convention), kept as its own named type since it's a distinct interface
+ * member with its own doc comment; structurally interchangeable with
+ * `domain/stats-buckets.ts`'s `RangeQueryBounds` (that module's own
+ * `rangeQueryBounds(range)` return value is a valid argument here as-is).
+ */
+export interface StatsFeedRange {
   /** Inclusive lower bound (epoch ms) on `start_time`; omitted = no lower bound. */
   start?: number;
   /** Exclusive upper bound (epoch ms) on `start_time`; omitted = no upper bound. */
@@ -472,6 +499,27 @@ export interface WorkoutRepositoryMutators {
    * across different workouts").
    */
   setsForExercise(exerciseId: string): Promise<HistoricalSet[]>;
+  /**
+   * `WorkoutRepository.statsFeed` (M4-08, 05 §6's own list: "dashboard
+   * feed (§4)") — the Profile → Statistics dashboard's single ranged query
+   * (05 §4: "computed in TS from a single ranged query of `(workout
+   * start_time, exercise_id, primary_muscle_group, set fields)`; avoid
+   * N+1"). One {@link StatsFeedRow} per `sets` row from every **completed,
+   * non-deleted** workout whose `start_time` falls in `range` (same
+   * inclusive-start/exclusive-end convention as `workoutDates`/
+   * {@link WorkoutDatesRange}; an omitted bound means no bound on that
+   * side — `range` omitted entirely returns every completed workout's
+   * history, exactly like `workoutDates()`'s own unranged call). Joins
+   * `sets` -> `workout_exercises` -> `workouts` -> `exercises` in one
+   * indexed query (`idx_workouts_start`) so every row already carries its
+   * own workout's `start_time`/`end_time` and its exercise's
+   * `exercise_type`/`primary_muscle_group`/`secondary_muscle_groups`
+   * inline — no per-exercise lookup loop. Every bucketing/aggregation rule
+   * over this feed lives in `domain/stats-buckets.ts`, which also owns
+   * {@link StatsFeedRow}'s own shape (re-exported here, same "defined in
+   * `domain/`" split as `WorkoutDateCount`/`HistoricalSet`).
+   */
+  statsFeed(range?: StatsFeedRange): Promise<StatsFeedRow[]>;
   /**
    * `WorkoutRepository.getExercisesForWorkouts` (M4-03 addition, not in 05
    * §6's own list) — the batched hydrate 05 §4/`06` §8 both call for by name
