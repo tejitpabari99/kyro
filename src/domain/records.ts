@@ -90,22 +90,23 @@
  *    participate (Most Reps, Best Set Volume, Best Est. 1RM's reps input,
  *    Set Records' bucket key, Longest Duration) — a `0` is "no value
  *    entered," not a legitimate 0-rep/0-second performance.
- *  - `weightKg === 0` is excluded from the three record types that are
- *    themselves fundamentally *about* a weight value — Heaviest Weight, Best
- *    Est. 1RM, Set Records — per the task text's literal "weight 0 excluded
- *    from weight records." **Best Set Volume is deliberately exempt from
- *    this exclusion** (judgment call): `weightKg × reps` already naturally
- *    evaluates to `0` for a 0-weight set and can never become a new max
- *    unless *every* eligible set in history is also weightless (an
- *    unreachable edge case for `weight_reps`, and for `bodyweight_reps` a
- *    genuine "pure bodyweight, no added load" set — 02 §4: "+KG (optional
- *    added weight)... empty = 0" — is real, common, everyday data that
- *    should still compete for the volume record on its `reps` alone if that
- *    ever becomes the max seen; excluding it here would just silently
- *    suppress a legitimate volume value for no benefit, unlike Heaviest
- *    Weight/Set Records, where a `0` genuinely means "this set carries no
- *    information about how much weight this exercise can bear" and
- *    excluding it is the entire point of the rule).
+ *  - `weightKg === 0` is excluded from **every** weight-based record type —
+ *    Heaviest Weight, Best Est. 1RM, Best Set Volume, and Set Records — per
+ *    the task text's literal "weight 0 excluded from weight records." Best
+ *    Set Volume is *not* a carve-out from this rule: the very same task
+ *    sentence pairs "Heaviest" and "volume" together as one family one
+ *    clause later ("assisted excluded from Heaviest/**volume** records"),
+ *    and this module already honors that pairing for the assisted-exclusion
+ *    case ({@link eligibilityForExerciseType}'s `bodyweight_assisted_reps`
+ *    branch sets both `heaviestWeight` and `bestSetVolume` to `false`) — the
+ *    weight-0 exclusion is the same family, so it applies symmetrically.
+ *    Concretely: a `bodyweight_reps` set with no added load (weight `0`) is
+ *    real, common data, but it is excluded from the *volume* record exactly
+ *    like it's excluded from *Heaviest*, not specially admitted — a `0`
+ *    means "this set carries no information about how much weight this
+ *    exercise can bear," which is equally true of "how much weight-volume
+ *    this exercise can move" (04 §5.1/§5.3, no textual exception carved out
+ *    for Best Set Volume anywhere in the spec).
  *  - `weightKg === null` (or `reps`/`durationSeconds === null`) is always
  *    excluded from any record type that reads that field — "no value
  *    entered" is never treated as `0`.
@@ -431,7 +432,7 @@ export function applyRecordSet(
     }
   }
 
-  if (eligibility.bestSetVolume && weightKg !== null && reps !== null && reps > 0) {
+  if (eligibility.bestSetVolume && weightKg !== null && weightKg > 0 && reps !== null && reps > 0) {
     const volume = weightKg * reps;
     if (next.bestSetVolumeKg === null || beatsKg(volume, next.bestSetVolumeKg.value)) {
       next = { ...next, bestSetVolumeKg: holder(volume) };

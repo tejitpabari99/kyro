@@ -3,10 +3,10 @@
  * of 08 §4.1** ("PR computation — the highest-risk area"), each in its own
  * `describe` block titled with the case number so the mapping from this
  * file to that doc section is unambiguous, plus a broader matrix (every
- * `exercise_type`'s eligibility branch, the weight-0-vs-volume judgment
- * call, tolerance edges, sort-order correctness, empty-history/empty-set
- * baselines) at the file's own quality bar (`routine-diff.test.ts`, 36
- * cases).
+ * `exercise_type`'s eligibility branch, the weight-0 exclusion applying
+ * symmetrically to Best Set Volume, tolerance edges, sort-order correctness,
+ * empty-history/empty-set baselines) at the file's own quality bar
+ * (`routine-diff.test.ts`, 36 cases).
  */
 import {
   applyRecordSet,
@@ -477,8 +477,8 @@ describe('08 §4.1 case 13 — uncheck/re-check/finish-unchecked', () => {
 
 // ---------------------------------------------------------------------------
 // Broader matrix — beyond the 13 named cases: full exercise-type coverage,
-// the weight-0-vs-volume judgment call, null handling, global gate,
-// sort-order correctness, empty inputs.
+// the weight-0 exclusion applying symmetrically to Best Set Volume, null
+// handling, global gate, sort-order correctness, empty inputs.
 // ---------------------------------------------------------------------------
 
 describe('exercise-type eligibility matrix (04 §5.1 table, every branch)', () => {
@@ -528,7 +528,7 @@ describe('exercise-type eligibility matrix (04 §5.1 table, every branch)', () =
   });
 });
 
-describe('weight-0 exclusion: weight-based records only, deliberately NOT Best Set Volume (file header judgment call)', () => {
+describe('weight-0 exclusion: every weight-based record, Best Set Volume included (04 §5.1/§5.3 — "assisted excluded from Heaviest/volume records" pairs the two families, so the weight-0 rule pairs them identically)', () => {
   it('weight=0 excludes Heaviest Weight, Best Est. 1RM, and the set-record bucket', () => {
     const { snapshot, awards } = computeRecordsSnapshot([historicalSet({ weightKg: 0, reps: 5 })]);
     expect(snapshot.heaviestWeightKg).toBeNull();
@@ -538,11 +538,26 @@ describe('weight-0 exclusion: weight-based records only, deliberately NOT Best S
     expect(recordTypesOf(awards)).not.toContain('best_1rm');
   });
 
-  it('weight=0 does NOT exclude Best Set Volume — a pure-bodyweight (no added load) set still competes on volume (0×reps)', () => {
+  it('weight=0 also excludes Best Set Volume — a pure-bodyweight (no added load) set does not earn a spurious "0 kg volume" PR', () => {
     const { snapshot, awards } = computeRecordsSnapshot([
       historicalSet({ exerciseType: 'bodyweight_reps', weightKg: 0, reps: 8 }),
     ]);
-    expect(snapshot.bestSetVolumeKg).toEqual({ value: 0, setId: expect.any(String), workoutId: expect.any(String) });
+    expect(snapshot.bestSetVolumeKg).toBeNull();
+    expect(recordTypesOf(awards)).not.toContain('best_set_volume');
+  });
+
+  it('weight=0 excludes Best Set Volume for weight_reps too (not just the bodyweight-specific case)', () => {
+    const { snapshot, awards } = computeRecordsSnapshot([historicalSet({ weightKg: 0, reps: 8 })]);
+    expect(snapshot.bestSetVolumeKg).toBeNull();
+    expect(recordTypesOf(awards)).not.toContain('best_set_volume');
+  });
+
+  it('a later, real-weight bodyweight_reps set still earns Best Set Volume normally after a 0-weight set was excluded', () => {
+    const { snapshot, awards } = computeRecordsSnapshot([
+      historicalSet({ setId: 'zero', exerciseType: 'bodyweight_reps', weightKg: 0, reps: 8, workoutStartTime: 1 }),
+      historicalSet({ setId: 'real', exerciseType: 'bodyweight_reps', weightKg: 10, reps: 8, workoutStartTime: 2 }),
+    ]);
+    expect(snapshot.bestSetVolumeKg).toEqual({ value: 80, setId: 'real', workoutId: expect.any(String) });
     expect(recordTypesOf(awards)).toContain('best_set_volume');
   });
 });
