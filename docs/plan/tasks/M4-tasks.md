@@ -16,7 +16,7 @@ Task count: **12**
 **Acceptance / test gate:** **All 13 named cases of 08 §4.1 green** — this task owns them: (1) single-history values, (2) warm-up never beats, (3) failure/dropset eligible, (4) strict-greater, (5) Epley bounds, (6) set-record buckets, (7) kg tolerance, (8) trophy attribution sequence + edit reflow, (9) delete → next-best, (10) live-check in-session baseline, (11) bodyweight/assisted/reps-only, (12) duration type, (13) uncheck/re-check/finish-unchecked.
 **Est:** 2 d
 
-### M4-02 — RecordsService: cache, queries, invalidation helper
+### M4-02 — RecordsService: cache, queries, invalidation helper [done]
 **Description:** Query-layer wrapper making PRs cheap everywhere.
 **How:** `setsForExercise(exerciseId)` repo feed (05 §6) + memoized per-exercise cache keyed by `updated_at` watermark (06 §4.4); exposed via TanStack Query `['records', exerciseId]`. Central `invalidateAfterWorkoutMutation(exerciseIds)` helper invalidating records + history + stats + calendar keys — used by finish/edit/delete/import (06 §4). Live PR check runs synchronously against cached baseline + session sets, no DB hit per check.
 **References:** 06 §4.4; 04 §5.6; 05 §4 (query notes).
