@@ -346,6 +346,26 @@ export interface WorkoutRepositoryMutators {
    */
   setsForExercise(exerciseId: string): Promise<HistoricalSet[]>;
   /**
+   * `WorkoutRepository.getExercisesForWorkouts` (M4-03 addition, not in 05
+   * §6's own list) — the batched hydrate 05 §4/`06` §8 both call for by name
+   * ("History pagination: `idx_workouts_start` + per-workout hydrate (2
+   * queries/page via `IN` batching)"): given one page's worth of workout
+   * ids (`listCompleted`'s own return), fetches every one of their
+   * `workout_exercises` rows (hydrated with `sets`) in exactly **two** `IN`-
+   * batched queries total — one for `workout_exercises WHERE workout_id IN
+   * (...)`, one for `sets WHERE workout_exercise_id IN (...)` over the
+   * resulting exercise ids — rather than calling `getFull` once per workout
+   * (which would cost roughly `2 + exercise_count` queries *per workout*,
+   * exactly the N+1 shape `records-service.ts`'s file header calls out
+   * `HistoryListScreen.tsx`'s old M2-14 approach for and says "M4 replaces").
+   * Returns a `Map` keyed by `workoutId`, values in `position ASC` order
+   * (each exercise's own `sets` also `position ASC`) — every id in
+   * `workoutIds` is present in the returned map, `[]` for a workout that
+   * (legitimately) has no exercises. `workoutIds.length === 0` short-
+   * circuits to an empty map with no query at all.
+   */
+  getExercisesForWorkouts(workoutIds: readonly string[]): Promise<Map<string, WorkoutExerciseFull[]>>;
+  /**
    * `WorkoutRepository.exerciseHistoryWatermark` (M4-02 addition, not in 05
    * §6's own list — `06` §4.4's "memoized per-exercise cache keyed by
    * `updated_at` watermark" needs a cheap fact this interface didn't

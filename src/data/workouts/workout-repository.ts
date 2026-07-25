@@ -1211,6 +1211,63 @@ export class WorkoutRepositoryImpl implements WorkoutRepository {
   }
 
   /**
+   * M4-03 (`./types.ts`'s own doc comment): the History list page's batched
+   * hydrate — two `IN`-batched queries total for however many `workoutIds`
+   * are in one page, not `getFull`'s per-workout `1 + 1 + exercise_count`
+   * shape repeated per row. Every id in `workoutIds` is a key in the
+   * returned map even when that workout turns out to have zero exercises
+   * (an edge case, not expected in practice, but the caller should never
+   * have to distinguish "empty array" from "missing key").
+   */
+  async getExercisesForWorkouts(
+    workoutIds: readonly string[],
+  ): Promise<Map<string, WorkoutExerciseFull[]>> {
+    const result = new Map<string, WorkoutExerciseFull[]>();
+    for (const id of workoutIds) {
+      result.set(id, []);
+    }
+    if (workoutIds.length === 0) {
+      return result;
+    }
+
+    const workoutPlaceholders = workoutIds.map(() => '?').join(',');
+    const exerciseRows = this.driver.queryAll<WorkoutExerciseRow>(
+      `SELECT * FROM workout_exercises WHERE workout_id IN (${workoutPlaceholders})
+       ORDER BY workout_id ASC, position ASC`,
+      [...workoutIds],
+    );
+    if (exerciseRows.length === 0) {
+      return result;
+    }
+
+    const exerciseIds = exerciseRows.map((row) => row.id);
+    const exercisePlaceholders = exerciseIds.map(() => '?').join(',');
+    const setRows = this.driver.queryAll<SetRow>(
+      `SELECT * FROM sets WHERE workout_exercise_id IN (${exercisePlaceholders})
+       ORDER BY workout_exercise_id ASC, position ASC`,
+      exerciseIds,
+    );
+
+    const setsByExerciseId = new Map<string, SetRow[]>();
+    for (const row of setRows) {
+      const bucket = setsByExerciseId.get(row.workout_exercise_id);
+      if (bucket) {
+        bucket.push(row);
+      } else {
+        setsByExerciseId.set(row.workout_exercise_id, [row]);
+      }
+    }
+
+    for (const weRow of exerciseRows) {
+      const sets = (setsByExerciseId.get(weRow.id) ?? []).map(mapSetRow);
+      const full = mapWorkoutExerciseRow(weRow, sets);
+      result.get(weRow.workout_id)?.push(full);
+    }
+
+    return result;
+  }
+
+  /**
    * M4-02 review fix: this must be sensitive to *every* completed workout
    * that ever referenced `exerciseId` being deleted, not just to whichever
    * one currently happens to hold the per-exercise max `updated_at`. A
