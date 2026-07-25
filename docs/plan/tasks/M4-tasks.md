@@ -72,7 +72,7 @@ Task count: **12**
 **Acceptance / test gate:** 08 §4.8 bucketing suite: week boundaries, All-range monthly switch; 04 §4 acceptance: bodyweight +10×8 → 80 kg volume, assisted/reps-only → 0; warm-up toggle flips dashboard live but never Records; first-day switch re-buckets. Perf budget verified in M4-11.
 **Est:** 2 d
 
-### M4-09 — Per-exercise charts + exercise-detail tabs go live
+### M4-09 — Per-exercise charts + exercise-detail tabs go live [done]
 **Description:** Fill the History/Charts/Records tabs stubbed in M1-08.
 **How:** History tab: reverse-chron performances — workout title + date + set lines (`1 · 80kg × 8 @9`, W badge), tap → workout detail, infinite scroll 20/page. Charts tab: metric selector per type (04 §4.3 — rep/weight: Heaviest, Est 1RM, Best Set Volume, Session Volume, Total Reps; duration: Longest/Total Duration (+Heaviest for weighted); cardio: Total Distance, Total Duration, Best Pace min/km|mi; short_distance_weight: Heaviest, Total Distance); one point per workout date; tooltip; ranges 3M/1Y/All. Records tab: PR cards (value + date + link to workout) + **Set Records table** (1–10, "10+" bucket, best weight + date); assisted shows least-assistance info line. Unit settings + warm-up exclusion respected everywhere.
 **References:** 03 §3; 04 §4.3, §5.1, §5.4.
