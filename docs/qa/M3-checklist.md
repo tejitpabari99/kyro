@@ -316,3 +316,172 @@ carried forward — not new gaps introduced here.
 P0/P1 open. Tagged `v0.3.0-m3` (annotated, not pushed, mirroring M2's own `v0.2.0-m2` — see
 `git tag -l` / `git log` around the M2 exit commit for the precedent this follows). Working tree
 clean after all commits.
+
+## 8. Independent milestone-wide review (post-close, per the current one-review-per-milestone process)
+
+A separate reviewing agent independently re-verified all 8 M3 tasks' actual source against
+their acceptance gates in `docs/plan/tasks/M3-tasks.md` and the referenced PRD sections (02, 04,
+05 §3.3/§6, 06 §1/§3, 07 §5/§6/§8), prioritizing M3-03 and M3-04 — the two tasks that, per this
+task's own instructions, only ever had a plain `done` `EXECUTION-LOG.md` row and no dedicated
+review-fix pass (unlike M3-01/M3-02/M3-05/M3-06, each of which already has its own review-fix
+commit, and M3-07/M3-08, each independently reviewed earlier the same day and found clean).
+Mirrors M2-checklist.md's own §8 in scope/format — a from-scratch re-verification, not a
+re-litigation of §1–7 above. Verified at commit `a638afd` (tip of `users/tejitpabari/init` at the
+start of this pass). Fixes landed during this pass: `c84db7c`, `41ae752` (see §8.2).
+
+### 8.1 — What was re-verified
+
+- **`pnpm run ci` re-run fresh, independently, twice** (once as a clean baseline before any
+  edits, once again after this pass's own fixes): both green end to end. Baseline: **132 suites
+  / 1679 tests**, matching §5's own reported numbers exactly (not just trusted) — all four active
+  coverage thresholds held, `expo-doctor` 21/21, `expo export --platform ios` succeeded. Final
+  (with this pass's own two fixes + 5 new regression tests): **132 suites / 1684 tests**, same
+  thresholds held, `expo-doctor` 21/21, `expo export` succeeded.
+- **Full independent code read, M3-01** (`RoutineRepositoryImpl` + folders CRUD): `src/data/
+  routines/routine-repository.ts` (1082 lines, every method) and `src/data/routines/types.ts`
+  (full) against 05 §3.3/§6 and this task's own acceptance gate — folders CRUD, the
+  `moveToFolder`/`reorderRoutines` split, contiguous-position renumbering after every mutator,
+  both `deleteFolder` modes' FK-ordering rationale (cascade deletes routines *before* the folder
+  row so `ON DELETE SET NULL` never silently rescues them), the repo-boundary reps-XOR-range
+  re-enforcement, and `createFromWorkout`/`updateFromWorkout`'s set/exercise correlation scheme
+  (shared with `domain/routine-diff.ts`, below) all read correct and match their own doc
+  comments. No further issue found beyond the two fixed below.
+- **Full independent code read, M3-02/M3-03** (hub UI + drag-reorder): `RoutinesHubScreen.tsx`,
+  `routine-hub-model.ts`, `routine-reorder.ts`, `FolderSection.tsx`, `RoutineCard.tsx`,
+  `FolderNameSheet.tsx`, `MoveToFolderSheet.tsx`, `RoutineActionsSheet.tsx`, and
+  `app/(tabs)/workout/index.tsx` against 04 §1 and 07 §5/§6/§8 — every mutation call site
+  (`createFolder`/`renameFolder`/`setFolderCollapsed`/`deleteFolder`/`reorderFolders`/
+  `moveToFolder`/`reorderRoutines`/`duplicate`/`delete`) is a `.then().catch()` chain that
+  reports a user-facing alert on failure, never a bare unguarded promise; the reorder-mode drag/
+  drop wiring (`computeRoutineReorderPlan`/`computeFolderReorderIds`, pure and independently
+  unit-tested) composes `moveToFolder` then `reorderRoutines` exactly as `types.ts`'s own header
+  prescribes for a cross-folder drop. No issue found.
+- **Full independent code read, M3-04** (routine editor — the task this pass's own instructions
+  flagged as highest-priority, never having had a dedicated review-fix pass): `routine-draft.ts`
+  (446 lines, every mutator/converter), `RoutineEditorScreen.tsx` (full), `RoutineExerciseCard
+  .tsx` (full), `RoutineExerciseMenuSheet.tsx` (full), `RoutineSetRow.tsx` (full),
+  `app/routine/new.tsx`, `app/routine/[id]/edit.tsx`, and `src/domain/supersets.ts` (full, for
+  the dissolution-rule cross-check) against 04 §2.1 and 02 §3–4/§8. Found and fixed a real gap —
+  see §8.2 item 1. Everything else (rep-range XOR enforcement mirrored at the save boundary,
+  dirty-flag tracking, Cancel-if-dirty confirm, zero-exercise warn-but-allow, the reorder/
+  replace/add-to-superset bubble-up split, `performSave`'s own try/catch/Alert) reads correct
+  and matches 04 §2.1 verbatim.
+- **Full independent code read, M3-05/M3-06** (start-from-routine, routine diff + update-routine
+  prompt): `WorkoutRepositoryImpl.startFromRoutine` (`workout-repository.ts`, including its own
+  documented M3-05/M3-06 review-fix write-ups for `routine_occurrence_index`/
+  `routine_set_position`), `domain/routine-diff.ts`'s full design write-up and exercise/set
+  correlation logic, and `ActiveWorkoutScreen.tsx`'s `handleSaveWorkout` update-routine block
+  against 02 §1/§6/§14.4 and 04 §2.3/§2.4. Both prior review-fix passes (`9a1d301`, `3a1bd29`)
+  re-confirmed genuinely present and correct by reading the current source directly, not just
+  trusting their commit messages. Found and fixed a second, distinct gap in this same block —
+  see §8.2 item 2.
+- **Full independent code read, M3-07** (Save as Routine / Repeat Workout / duplicate / delete):
+  `HistoryDetailScreen.tsx`'s `handleSaveAsRoutine`/`handleRepeatWorkout`/
+  `confirmDiscardAndRepeat`, `RoutinesHubScreen.tsx`'s duplicate/delete handlers, and
+  `WorkoutRepositoryImpl.startFromWorkout` against 04 §2.2/02 §1/§15/03 §5. `handleSaveAsRoutine`
+  is a properly-caught `.then().catch()`; the discard-then-repeat chain matches the identical,
+  already-reviewed-safe `discard().then(async () => { await skip(); navigate(); })` shape
+  `RoutinesHubScreen.tsx`'s own `confirmDiscardAndStartNew` and `ActiveWorkoutScreen.tsx`'s own
+  `performDiscard` already use (both `discard()` and `skip()` catch internally and never reject
+  — confirmed by reading both store actions directly, not assumed). No new issue found — this
+  reuses an existing, already-safe pattern rather than introducing a new one.
+- **Full independent code read, M3-08** (Maestro flow 2 + exit gate): re-confirmed
+  `e2e/flows/02-create-routine-and-start.yaml` and the `v0.3.0-m3` tag both still exist
+  (`git tag -l`, `ls e2e/flows/`); `docs/qa/M3-checklist.md` §1–7 read in full. No new issue
+  found beyond this task's own already-independently-reviewed-clean status earlier the same day.
+- **Unhandled-promise-rejection sweep** (the exact bug shape M1's own review and M2's own §8
+  review each found, and this task's own instructions asked to specifically re-check): grepped
+  every direct `Repository.` call site under `src/features/routines/**`, `app/routine/**`,
+  `app/(tabs)/workout/**`, and every M3-touched location in `src/features/workout/**`/
+  `src/features/history/**`, plus a scripted "`.then(` with no `.catch(` within the next several
+  lines" sweep across those same directories. Every routines-side call site was already a
+  properly-caught `.then().catch()` reporting a user alert (`RoutinesHubScreen.tsx`,
+  `RoutineEditorScreen.tsx`'s `performSave`, `HistoryDetailScreen.tsx`'s `handleSaveAsRoutine`).
+  One real, previously-unguarded gap was found and fixed in `ActiveWorkoutScreen.tsx`'s M3-06
+  update-routine block — see §8.2 item 2. The three `.then(` sites the sweep also flagged
+  without an immediately-adjacent `.catch(` (`RoutinesHubScreen.tsx`'s and
+  `HistoryDetailScreen.tsx`'s discard-then-start/repeat chains, `ActiveWorkoutScreen.tsx`'s own
+  `performDiscard`) were each individually traced to `discard()`/`skip()`, both of which already
+  catch their own repo/native-seam errors internally and never reject — confirmed by reading
+  both store actions' current source, not assumed safe by pattern-matching alone.
+- **Superset dissolution re-trace** (this task's own instructions: check whether the routine
+  editor's set/exercise-removal paths have an equivalent gap to M2's own `finish()` "group of 1
+  dissolves automatically" finding, §8.2 items 1–3 in `M2-checklist.md`). Confirmed the active
+  workout's own interactive `removeExercise` action (`activeWorkoutStore.ts`) still doesn't call
+  `computeDissolution` either — but that gap is real, pre-existing M2 scope (not introduced or
+  touched by M3), and is masked in practice because `finish()`'s own dissolve pass (`4f7f96d`)
+  re-derives group membership from whatever is left in the workout at finish time, regardless of
+  *why* a group shrank to one member — so it cleans this up too before anything reaches saved
+  history. The routine editor (M3-04) has no equivalent later "finish" pass, so the identical gap
+  there is load-bearing rather than cosmetic — fixed, §8.2 item 1. The M2-side `removeExercise`
+  gap itself is out of this pass's scope (M3's own surface only, per this task's explicit
+  instruction) and is noted here for a future pass to judge on its own merits, not fixed.
+
+### 8.2 — Found and fixed
+
+Two real gaps found, one per the two never-review-fixed tasks this pass prioritized, each with
+its own commit and regression tests:
+
+1. **Routine editor's "Remove Exercise" didn't auto-dissolve an orphaned superset group of one
+   (M3-04, `c84db7c`).** `removeExerciseFromDraft` (`routine-draft.ts`) filtered the removed
+   exercise out of the draft but never checked whether that left its superset group with exactly
+   one surviving member (02 §8's "group of 1 dissolves automatically") — the sibling action
+   `removeDraftExerciseFromSuperset` ("Remove from Superset") already implements this rule
+   in-line, but full exercise removal (⋯ → Remove Exercise) didn't share it.
+   `computeSupersetGroups` has no minimum-membership filter, so the lone survivor would
+   immediately render with a stray "Superset A"-style badge/color in the editor with no partner,
+   and — unlike the equivalent gap on the active-workout side, which `finish()`'s own dissolve
+   pass (M2's `4f7f96d`) cleans up before anything is saved to history — a routine has no later
+   "finish" step: this would persist on Save indefinitely and propagate onto every future workout
+   started from the routine (`superset_id` copied verbatim, `startFromRoutine`'s own header).
+   Fixed by dissolving the group the same way `removeDraftExerciseFromSuperset` already does.
+   Three new unit tests in `routine-draft.test.ts` (group-of-2 dissolves on removal; a 3+ group
+   leaves its survivors grouped; removing an unrelated ungrouped exercise leaves an existing
+   group untouched).
+2. **`handleSaveWorkout`'s M3-06 update-routine block had no try/catch around its two repo calls
+   (`ActiveWorkoutScreen.tsx`, `41ae752`).** `getRoutineFull(routineId)` and
+   `updateRoutineFromWorkout(routineId, finished.id)` were both called directly with no
+   try/catch, unlike every other repo-failure path on this screen (06 §9's "store actions roll
+   back... typed `DataError`" posture, mirrored at this UI layer by every other handler's own
+   `.catch`/try-catch). By the time either call runs, `finish()` has already committed the
+   workout as completed — a failure in this best-effort "offer to update the source routine"
+   follow-on block (a transient driver error, or the source routine deleted in the window while
+   the user is still looking at the "Update routine?" `Alert`) would have been a genuine
+   unhandled promise rejection that also stranded the user: `finishSave()` (history-query
+   invalidation, closing the save sheet, `router.replace` to the detail route) would never run
+   for an already-completed workout, with no error surfaced and no way forward short of
+   restarting the app. Fixed by wrapping both call sites in try/catch, capturing via the existing
+   `captureError` (`@/lib/sentry`) seam and falling through to `finishSave()` regardless — the
+   same "graceful degradation, never an unhandled rejection" posture `restTimerStore.ts`'s own
+   notification-scheduling failures already use. Two new regression tests in
+   `ActiveWorkoutScreen.test.tsx`'s "update-routine prompt" describe block assert the
+   already-finished workout still saves and navigates cleanly when `getRoutineFull`/
+   `updateRoutineFromWorkout` reject, and that a failed write-back does not invalidate the
+   `['routines']` query cache (nothing to refresh — the repo call itself never completed).
+
+Both are genuine crash-safety/data-integrity-adjacent gaps (an unhandled promise rejection with
+a real, reachable stranding scenario) rather than the "already-correct code, missing test only"
+shape M3-08's own §3 found — both are fixed at the source, not just covered with a new test.
+
+### 8.3 — Reviewed, no further issues found
+
+Every other area read in §8.1 above — the full `RoutineRepositoryImpl` mutator set and its
+reps-XOR-range/position-renumbering invariants, the hub's reorder-mode drag/drop wiring and
+every folder/routine mutation's error handling, the routine editor's rep-range toggle/dirty-
+tracking/save-round-trip logic, `startFromRoutine`'s occurrence-index pinning, `domain/
+routine-diff.ts`'s exercise/set correlation scheme, and the M3-07 history-side entry points —
+matches its own spec section verbatim with no further data-integrity, crash-safety, incorrect-
+calculation, race-condition, unhandled-rejection, or re-render-discipline bug found beyond the
+two items in §8.2. The pre-existing M2-side `removeExercise`/superset-dissolution gap noted in
+§8.1's last bullet is real but out of this pass's own M3-scoped surface, and is flagged for a
+future pass rather than fixed here.
+
+### 8.4 — Verdict
+
+**Unchanged: M3 milestone exit criteria met, zero P0/P1 open**, now confirmed by a second,
+independent reviewing pass rather than resting on §1–7's own self-report. Two real gaps were
+found and fixed within this pass, each with regression tests, both in the two tasks (M3-03's
+sibling M3-04, and M3-06's own follow-on block) this task's own instructions flagged as
+highest-priority for never having had a dedicated review-fix pass. `pnpm run ci` is green end to
+end after this pass's changes (132 suites / 1684 tests, all four active coverage thresholds held,
+21/21 `expo-doctor`, clean `expo export`). M3 remains ready for M4 to build on top of.
