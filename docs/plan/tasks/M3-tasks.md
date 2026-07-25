@@ -48,7 +48,7 @@ Task count: **8**
 **Acceptance / test gate:** 02 §1 acceptance (routine start pre-populates everything, nothing pre-checked); integration test: targets → placeholders mapping incl. ranges; same_routine previous-values mode now testable end-to-end (02 §6 acceptance: two routines, different loads → routine-correct PREVIOUS).
 **Est:** 1 d
 
-### M3-06 — Routine diff + update-routine prompt
+### M3-06 — Routine diff + update-routine prompt [done]
 **Description:** Material-change detection on finish and the write-back flow.
 **How:** Pure `domain/routine-diff.ts`: compare finished workout vs source routine — material iff any of: set added/removed on an exercise, exercise added/removed/replaced/reordered, target-relevant value differs from target, rest timer changed, superset changed (02 §14.4). Finish flow (M2-14 hook): non-empty diff → dialog "Update routine? …" [Keep original / Update routine]. Update applies 04 §2.4: structure ← checked exercises only; per-set targets ← checked sets' actuals; rep-range preserved if achieved reps inside the range (weight target only updates), else collapses to achieved value; `updated_at` bumped. Keep original: byte-identical routine, not re-asked for this workout.
 **References:** 02 §14.4; 04 §2.4; 08 §4.9 (routine-diff fixtures).
