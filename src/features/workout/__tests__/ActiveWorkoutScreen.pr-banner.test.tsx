@@ -123,6 +123,20 @@ beforeEach(() => {
   usePRBannerStore.getState().dismiss();
 });
 
+async function pressAlertButton(label: string): Promise<void> {
+  const alertMock = Alert.alert as jest.Mock;
+  const lastCall = alertMock.mock.calls[alertMock.mock.calls.length - 1];
+  const buttons = lastCall[2] as { text: string; onPress?: () => void }[];
+  const button = buttons.find((b) => b.text === label);
+  if (!button) {
+    throw new Error(`No "${label}" button was found.`);
+  }
+  await act(async () => {
+    button.onPress?.();
+    await Promise.resolve();
+  });
+}
+
 describe('ActiveWorkoutScreen — live PR banner (M4-10, 04 §5.5)', () => {
   it('checking 102.5 kg over a 100 kg history best shows the banner (04 §5 acceptance: "102.5 over 100 banners")', async () => {
     const { driver, workoutRepo, exerciseRepo } = setup();
@@ -249,5 +263,58 @@ describe('ActiveWorkoutScreen — live PR banner (M4-10, 04 §5.5)', () => {
 
     expect(usePRBannerStore.getState().message).toBeNull();
     expect(screen.queryByTestId('screen-pr-banner')).toBeNull();
+  });
+
+  it('finishing with a would-be-PR set left unchecked earns no record on the Save sheet (08 §4.1 case 13)', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+
+    const exercise = await exerciseRepo.create({
+      name: 'Bench Press',
+      exerciseType: 'weight_reps',
+      primaryMuscleGroup: 'chest',
+    });
+    await seedHistory(workoutRepo, exercise.id, 100, 5);
+
+    await useActiveWorkoutStore.getState().startEmpty({ title: 'Push Day', startTime: Date.now() });
+    const [added] = await useActiveWorkoutStore.getState().addExercises([{ exerciseId: exercise.id }]);
+    // A second row, deliberately left unchecked below — filled with a value
+    // that would easily beat the 100 kg history baseline if it were ever
+    // fed into `evaluateWorkoutEarned`.
+    await useActiveWorkoutStore.getState().addSet(added!.id);
+
+    await renderScreen(exerciseRepo);
+    await waitFor(() => expect(screen.getByText('Bench Press')).toBeTruthy(), { timeout: 8000 });
+    await waitFor(() => expect(usePRBannerStore.getState().message).toBeNull());
+
+    // First row: checked, but below history — no live banner, no PR.
+    await checkSetWithValue(added!.id, 0, 90, 5);
+    await waitFor(() => {
+      const ex = useActiveWorkoutStore.getState().workout!.exercises.find((e) => e.id === added!.id)!;
+      expect(ex.sets[0]!.isCompleted).toBe(true);
+    });
+    expect(usePRBannerStore.getState().message).toBeNull();
+
+    // Second row: fill a 200 kg value but never press its check button.
+    const secondRowTestID = `screen-exercise-${added!.id}-table-row-1`;
+    await fireEvent.changeText(screen.getByTestId(`${secondRowTestID}-value-weight`), '200');
+    await fireEvent.changeText(screen.getByTestId(`${secondRowTestID}-value-reps`), '5');
+
+    await fireEvent.press(screen.getByTestId('screen-finish'));
+    // One row is still unchecked -> the "Uncompleted sets" alert fires first.
+    await waitFor(() =>
+      expect(Alert.alert).toHaveBeenCalledWith(
+        'Uncompleted sets',
+        expect.stringContaining('are not marked complete'),
+        expect.any(Array),
+      ),
+    );
+    await pressAlertButton('Finish anyway');
+
+    await waitFor(() => expect(screen.getByTestId('screen-save-sheet-save')).toBeTruthy());
+    // The unchecked 200 kg set must never surface as a Records-earned row —
+    // `ActiveWorkoutScreen`'s `recordsEarnedExercises` memo filters to
+    // `isCompleted` sets before it ever reaches `evaluateWorkoutEarned`.
+    expect(screen.queryByTestId('screen-save-sheet-records')).toBeNull();
   });
 });

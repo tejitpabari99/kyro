@@ -336,13 +336,21 @@ export function ActiveWorkoutScreen({
   // of this screen's own test suite never boots the singleton, and warming
   // is a pure enhancement — silently skipping it there is the same posture
   // `ConnectedSetRow.tsx`'s own live-check call site takes (see that file).
+  // Review fix: `getSnapshot` is a real DB read (`exerciseHistoryWatermark`/
+  // `setsForExercise`) that can reject (06 §9's `DataError` case) — a bare
+  // `void service.getSnapshot(exerciseId)` would then be an unhandled
+  // promise rejection, the exact bug class `handleSaveWorkout`'s own
+  // update-routine block was fixed for earlier this milestone (`41ae752`).
+  // This warm is best-effort (never blocks the live check, which itself
+  // degrades gracefully on a cold cache), so a failure here is caught and
+  // reported, never left to reject silently.
   useEffect(() => {
     const service = tryGetRecordsService();
     if (!service) {
       return;
     }
     for (const exerciseId of exerciseIds) {
-      void service.getSnapshot(exerciseId);
+      service.getSnapshot(exerciseId).catch((error: unknown) => captureError(error));
     }
   }, [exerciseIds]);
 
