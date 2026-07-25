@@ -1,18 +1,22 @@
 /**
- * `WorkoutRepository`'s public shapes (M2-01/M2-02, extended M4-02) — 05 §6's
- * interface, scoped to exactly what's implemented so far. 05 §6 also lists
- * `update` (edit a past workout wholesale, M4-05/`02` §15) and
- * `workoutDates` (calendar, M4-06) — those are deliberately **not** on this
- * interface yet; they land with the tasks that first need them and get
- * added here then, per that section's own "verbatim signatures, simplified"
- * framing (it documents the interface's *eventual* end state, not a
- * contract every milestone must implement in one shot — exactly how
- * `startFromRoutine` below is present as a stub per M2-01's task text but
- * not implemented until M3-05). `setsForExercise` (records/charts feed) was
- * the one 05 §6 method deliberately kept off entirely through M2/M3 since
- * nothing referenced it even as a stub — M4-02 is the task that first needs
- * it, so it (plus `exerciseHistoryWatermark`, a genuinely new addition on
- * top of 05 §6's own list — see its own doc comment below) lands here now.
+ * `WorkoutRepository`'s public shapes (M2-01/M2-02, extended M4-02/M4-06) —
+ * 05 §6's interface, scoped to exactly what's implemented so far. `update`
+ * (edit a past workout wholesale) landed with M4-05; `workoutDates`
+ * (calendar, M4-06) lands here now, per that section's own "verbatim
+ * signatures, simplified" framing (it documents the interface's *eventual*
+ * end state, not a contract every milestone must implement in one shot —
+ * exactly how `startFromRoutine` below is present as a stub per M2-01's task
+ * text but not implemented until M3-05). `setsForExercise` (records/charts
+ * feed) was the one 05 §6 method deliberately kept off entirely through
+ * M2/M3 since nothing referenced it even as a stub — M4-02 is the task that
+ * first needed it, so it (plus `exerciseHistoryWatermark`, a genuinely new
+ * addition on top of 05 §6's own list — see its own doc comment below)
+ * landed here then. `workoutsForDate` (M4-06 addition, not in 05 §6's own
+ * list either — same "the task that first needs it adds it" posture as
+ * `getExercisesForWorkouts`/`exerciseHistoryWatermark` above) is the
+ * calendar day-sheet's own "list this day's workouts" query — `workoutDates`
+ * alone only returns aggregate counts, not enough to render tap-through
+ * rows.
  *
  * Field naming mirrors `src/data/sqlite/schema.ts`'s `workouts` /
  * `workout_exercises` / `sets` tables (05 §3.2) field-for-field, camelCase
@@ -22,6 +26,9 @@
  */
 import type { Rpe, SetType } from '@/domain/enums';
 import type { HistoricalSet } from '@/domain/records';
+import type { WorkoutDateCount } from '@/domain/streaks';
+
+export type { WorkoutDateCount };
 
 /** One row of the `sets` table (05 §3.2), decoded into TS-native shapes. */
 export interface WorkoutSet {
@@ -118,6 +125,25 @@ export interface ListCompletedPage {
   before?: number;
   /** Default 20 (matches `06` §8's History FlashList page size). */
   limit?: number;
+}
+
+/**
+ * `WorkoutRepository.workoutDates`'s range input (M4-06, 05 §6). Both bounds
+ * optional and independent — `start` inclusive, `end` exclusive, exactly
+ * mirroring `ListCompletedPage.before`'s "strictly before" convention on
+ * the upper bound. Omitting both returns every completed, non-deleted
+ * workout's local calendar day — fine for this app's realistic personal-
+ * history scale (05 §4's own "1000+ workouts" ceiling is still just one
+ * cheap indexed `start_time` scan grouped into at most a few thousand
+ * date rows), and it's what the calendar screen's streak query uses (a
+ * streak can span arbitrarily far back, so there's no natural bound to
+ * pass — see `CalendarScreen.tsx`'s own comment on that query).
+ */
+export interface WorkoutDatesRange {
+  /** Inclusive lower bound (epoch ms) on `start_time`; omitted = no lower bound. */
+  start?: number;
+  /** Exclusive upper bound (epoch ms) on `start_time`; omitted = no upper bound. */
+  end?: number;
 }
 
 /** `WorkoutRepository.finish`'s meta input (05 §6 `FinishMeta`, 02 §14's save sheet: editable title/description/start-time/duration). `endTime` defaults to "now" when omitted; `duration_pause_offset_ms` is edited separately via `updateMeta` (02 §2's duration sheet), not here. */
@@ -334,6 +360,36 @@ export interface WorkoutRepositoryLifecycle {
   finish(id: string, meta?: FinishMeta): Promise<WorkoutFull>;
   getFull(id: string): Promise<WorkoutFull | null>;
   listCompleted(page?: ListCompletedPage): Promise<WorkoutSummary[]>;
+  /**
+   * `WorkoutRepository.workoutDates` (M4-06, 05 §6; 04 §3.2's calendar dots
+   * + streak header) — every completed, non-deleted workout in `range`
+   * (see {@link WorkoutDatesRange}'s own doc comment), grouped by **local**
+   * calendar day (`domain/streaks.ts`'s `localDateKey` — 02 §16.3:
+   * "midnight-crossing workouts belong to `start_time`'s day," which is
+   * inherently a local-timezone question, not a raw UTC-epoch one — grouping
+   * happens in this method after the SQL fetch, not via a SQLite
+   * date-function, precisely so it behaves identically under `better-sqlite3`
+   * (Jest, machine-local TZ) and `expo-sqlite` (device, user's real TZ)
+   * without depending on SQLite's own `localtime` modifier agreeing with
+   * either). One row per distinct local day with `count >= 1`; a day with no
+   * workouts is simply absent, never a `count: 0` row (`WorkoutDateCount`'s
+   * own doc comment) — callers building a calendar grid default missing
+   * days to `0` themselves (`calendar-month-model.ts`'s `buildMonthGrid`).
+   */
+  workoutDates(range?: WorkoutDatesRange): Promise<WorkoutDateCount[]>;
+  /**
+   * `WorkoutRepository.workoutsForDate` (M4-06 addition, not in 05 §6's own
+   * list — this file's header explains why) — every completed, non-deleted
+   * `WorkoutSummary` whose `start_time` falls on `date`'s **local** calendar
+   * day (`domain/streaks.ts`'s `parseLocalDateKey` resolves `date` back to
+   * that day's local `[00:00, next 00:00)` bounds — day-boundary arithmetic
+   * done via `Date#setDate` rather than a flat `+86_400_000` ms offset, so a
+   * DST-shifted 23-or-25-hour local day still gets the correct exclusive
+   * upper bound), ordered `start_time ASC`. The calendar day-sheet's own
+   * data source (`CalendarScreen.tsx`) — `workoutDates` alone only reports
+   * aggregate counts, not enough to render one tappable row per workout.
+   */
+  workoutsForDate(date: string): Promise<WorkoutSummary[]>;
   softDelete(id: string): Promise<void>;
   /**
    * `WorkoutRepository.update` (M4-05, 02 §15 / 08 §4.9) — the past-workout

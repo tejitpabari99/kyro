@@ -278,6 +278,7 @@
  */
 import type { ExerciseType, Rpe, SetType } from '@/domain/enums';
 import type { HistoricalSet } from '@/domain/records';
+import { localDateKey, parseLocalDateKey } from '@/domain/streaks';
 
 import { generateUuid } from '../shared/uuid';
 import type { SqliteDriver } from '../sqlite/driver';
@@ -308,6 +309,8 @@ import type {
   WorkoutSet,
   WorkoutSummary,
   WorkoutUpdateInput,
+  WorkoutDateCount,
+  WorkoutDatesRange,
 } from './types';
 
 // ---------------------------------------------------------------------------
@@ -852,6 +855,63 @@ export class WorkoutRepositoryImpl implements WorkoutRepository {
     const rows = this.driver.queryAll<WorkoutRow>(
       `SELECT * FROM workouts WHERE ${conditions.join(' AND ')} ORDER BY start_time DESC LIMIT ?`,
       params,
+    );
+    return rows.map(mapWorkoutSummaryRow);
+  }
+
+  /**
+   * M4-06 addition — see `./types.ts`'s own doc comment on the interface
+   * member for the full write-up (local-day grouping done here, in TS,
+   * rather than via a SQLite date function). Only `start_time` needs to
+   * leave the DB — grouping/mapping happens entirely in memory.
+   */
+  async workoutDates(range: WorkoutDatesRange = {}): Promise<WorkoutDateCount[]> {
+    const conditions = [`state = 'completed'`, `deleted_at IS NULL`];
+    const params: unknown[] = [];
+
+    if (range.start !== undefined) {
+      conditions.push('start_time >= ?');
+      params.push(range.start);
+    }
+    if (range.end !== undefined) {
+      conditions.push('start_time < ?');
+      params.push(range.end);
+    }
+
+    const rows = this.driver.queryAll<{ start_time: number }>(
+      `SELECT start_time FROM workouts WHERE ${conditions.join(' AND ')}`,
+      params,
+    );
+
+    const counts = new Map<string, number>();
+    for (const row of rows) {
+      const key = localDateKey(row.start_time);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+
+    return Array.from(counts.entries())
+      .map(([date, count]) => ({ date, count }))
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  }
+
+  /**
+   * M4-06 addition — see `./types.ts`'s own doc comment on the interface
+   * member. `date`'s exclusive upper bound is computed via `Date#setDate`
+   * (not a flat `+ 24h` ms offset) so a DST-shifted local day still gets
+   * the correct next-midnight boundary, mirroring
+   * `domain/streaks.ts`'s own "local calendar arithmetic via `Date`
+   * accessors, never raw ms" posture throughout that module.
+   */
+  async workoutsForDate(date: string): Promise<WorkoutSummary[]> {
+    const dayStart = parseLocalDateKey(date);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayEnd.getDate() + 1);
+
+    const rows = this.driver.queryAll<WorkoutRow>(
+      `SELECT * FROM workouts
+       WHERE state = 'completed' AND deleted_at IS NULL AND start_time >= ? AND start_time < ?
+       ORDER BY start_time ASC`,
+      [dayStart.getTime(), dayEnd.getTime()],
     );
     return rows.map(mapWorkoutSummaryRow);
   }
