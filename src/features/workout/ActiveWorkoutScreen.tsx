@@ -151,6 +151,7 @@ import {
   type VolumeSetInput,
 } from '@/domain/volume';
 import { useSettingsStore } from '@/features/settings/settings-store';
+import { invalidateAfterWorkoutMutation } from '@/features/stats/records-service';
 import { captureError } from '@/lib/sentry';
 import { Button } from '@/ui/Button';
 import { KeyboardAccessoryBar } from '@/ui/KeyboardAccessoryBar';
@@ -596,7 +597,13 @@ export function ActiveWorkoutScreen({
     await useRestTimerStore.getState().skip();
 
     const finishSave = async (): Promise<void> => {
-      await queryClient.invalidateQueries({ queryKey: ['history'] });
+      // M4-02 (06 §4.4): central helper — invalidates `['records',
+      // exerciseId]` for every exercise this workout touched, plus the
+      // broad `['history']`/`['stats']`/`['calendar']` keys `finishSave`
+      // used to invalidate by hand (still includes `['history']`, so the
+      // existing "invalidates history" assertions keep passing unchanged).
+      const exerciseIds = finished.exercises.map((exercise) => exercise.exerciseId);
+      await invalidateAfterWorkoutMutation(queryClient, exerciseIds);
       setSaveSheetVisible(false);
       router.replace(`/history/${finished.id}` as never);
     };

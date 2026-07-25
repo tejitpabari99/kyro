@@ -831,7 +831,16 @@ describe('ActiveWorkoutScreen — finish flow (M2-14, 02 §14)', () => {
 
     expect(useRestTimerStore.getState().timer).toBeNull();
     expect(cancelNotification).toHaveBeenCalledWith(pendingNotificationId);
+    // M4-02: `finishSave` now goes through `invalidateAfterWorkoutMutation`
+    // (`@/features/stats/records-service.ts`) instead of a bare
+    // `['history']` call — still invalidates `['history']` (below), plus
+    // the per-exercise records key for every exercise this workout touched
+    // and the two other workout-scoped aggregate keys (06 §4.4's "records +
+    // history + stats + calendar keys").
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['records', exerciseId] });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['history'] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['stats'] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['calendar'] });
 
     const saved = await workoutRepo.getFull(workoutId);
     expect(saved?.state).toBe('completed');
@@ -1144,6 +1153,8 @@ describe('ActiveWorkoutScreen — smoke render (both themes)', () => {
       updateExercise: () => Promise.reject(new Error('not used')),
       updateMeta: () => Promise.reject(new Error('not used')),
       previousSets: () => Promise.resolve([]),
+      setsForExercise: () => Promise.resolve([]),
+      exerciseHistoryWatermark: () => Promise.resolve(0),
     };
     await useActiveWorkoutStore.getState().rehydrate(hangingRepo);
 

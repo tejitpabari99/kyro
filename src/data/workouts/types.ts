@@ -1,16 +1,18 @@
 /**
- * `WorkoutRepository`'s public shapes (M2-01/M2-02) — 05 §6's interface,
- * scoped to exactly what M2 implements. 05 §6 also lists `update` (edit a
- * past workout wholesale, M2-15/`02` §15), `workoutDates` (calendar, M4-06),
- * and `statsFeed` (dashboard, M4) — those are deliberately **not** on this
+ * `WorkoutRepository`'s public shapes (M2-01/M2-02, extended M4-02) — 05 §6's
+ * interface, scoped to exactly what's implemented so far. 05 §6 also lists
+ * `update` (edit a past workout wholesale, M4-05/`02` §15) and
+ * `workoutDates` (calendar, M4-06) — those are deliberately **not** on this
  * interface yet; they land with the tasks that first need them and get
  * added here then, per that section's own "verbatim signatures, simplified"
  * framing (it documents the interface's *eventual* end state, not a
  * contract every milestone must implement in one shot — exactly how
  * `startFromRoutine` below is present as a stub per M2-01's task text but
- * not implemented until M3-05). `setsForExercise` (records/charts feed,
- * M4) is the one exception kept off entirely for now since nothing in M2
- * references it even as a stub.
+ * not implemented until M3-05). `setsForExercise` (records/charts feed) was
+ * the one 05 §6 method deliberately kept off entirely through M2/M3 since
+ * nothing referenced it even as a stub — M4-02 is the task that first needs
+ * it, so it (plus `exerciseHistoryWatermark`, a genuinely new addition on
+ * top of 05 §6's own list — see its own doc comment below) lands here now.
  *
  * Field naming mirrors `src/data/sqlite/schema.ts`'s `workouts` /
  * `workout_exercises` / `sets` tables (05 §3.2) field-for-field, camelCase
@@ -19,6 +21,7 @@
  * `exercises`.
  */
 import type { Rpe, SetType } from '@/domain/enums';
+import type { HistoricalSet } from '@/domain/records';
 
 /** One row of the `sets` table (05 §3.2), decoded into TS-native shapes. */
 export interface WorkoutSet {
@@ -318,6 +321,52 @@ export interface WorkoutRepositoryMutators {
   updateExercise(workoutExerciseId: string, patch: UpdateExerciseInput): Promise<WorkoutExerciseFull>;
   updateMeta(workoutId: string, patch: UpdateMetaInput): Promise<WorkoutFull>;
   previousSets(exerciseId: string, opts?: PreviousSetsQuery): Promise<PreviousSet[]>;
+  /**
+   * `WorkoutRepository.setsForExercise` (M4-02, 05 §6's own "records/charts
+   * feed" — the exact method `domain/records.ts`'s file header names as the
+   * caller that scopes `HistoricalSet[]` to one exercise before ever
+   * reaching the pure PR engine). Every set from every **completed,
+   * non-deleted** workout containing `exerciseId`
+   * (`workouts.state = 'completed' AND deleted_at IS NULL` — an active
+   * workout's own sets are never eligible for PRs, 04 §5.2's "checked...
+   * sets" only ever means finished history), ordered
+   * `(workoutStartTime, setOrder)` per `domain/records.ts`'s own sort
+   * contract. `setOrder` here is this repository's own 0-based index in
+   * that exact traversal order (`workouts.start_time ASC,
+   * workout_exercises.position ASC, sets.position ASC`), not raw
+   * `sets.position` alone — `sets.position` is only unique **within one
+   * `workout_exercises` occurrence**, so a duplicated-exercise-in-one-
+   * workout case (two `workout_exercises` rows sharing `exerciseId` inside
+   * the same workout) would otherwise produce two sets both claiming
+   * `setOrder 0`. A synthetic, strictly-increasing index across the whole
+   * already-sorted result still satisfies `domain/records.ts`'s own
+   * contract verbatim ("only relative order among sets of the *same*
+   * workout needs to be correct — values don't need to be globally unique
+   * across different workouts").
+   */
+  setsForExercise(exerciseId: string): Promise<HistoricalSet[]>;
+  /**
+   * `WorkoutRepository.exerciseHistoryWatermark` (M4-02 addition, not in 05
+   * §6's own list — `06` §4.4's "memoized per-exercise cache keyed by
+   * `updated_at` watermark" needs a cheap fact this interface didn't
+   * otherwise expose) — the single cheapest signal
+   * `RecordsService` (`src/features/stats/records-service.ts`) needs to
+   * answer "has anything that could move this exercise's PRs changed since
+   * I last computed its snapshot": the max `workouts.updated_at` across
+   * every completed, non-deleted workout that references `exerciseId` (`0`
+   * when there is none yet). `workouts.updated_at` is exactly the column
+   * every mutation that can move a PR touches — `finish`, the eventual
+   * M4-05 `update` (edit past workout), `softDelete` — while in-progress
+   * `sets`/`workout_exercises` mutations on an *active* workout never bump
+   * it (05 §3.2's own DDL has no `updated_at` column on either table), and
+   * correctly never invalidate anything: an active workout's own sets
+   * aren't part of PR history until `finish()` commits them. One indexed
+   * `MAX(...)` query (`idx_we_exercise` + `idx_workouts_start`, 05 §4) —
+   * orders of magnitude cheaper than re-fetching and re-folding every
+   * historical set via {@link setsForExercise}, which is the entire point
+   * of checking this first.
+   */
+  exerciseHistoryWatermark(exerciseId: string): Promise<number>;
 }
 
 /**

@@ -42,6 +42,13 @@
  *     `recordBreadcrumb`/`captureError` (`src/lib/sentry.ts`) for the 06 §9
  *     "log to Sentry as warning" requirement `WorkoutRepositoryDeps
  *     .onAutoHeal`'s own doc comment describes.
+ *  3b. (M4-02) `configureRecordsService(workoutRepository)` — injects the
+ *     same `WorkoutRepositoryImpl` instance into the app-wide
+ *     `RecordsService` singleton (`src/features/stats/records-service.ts`,
+ *     06 §4.4), mirroring step 3's own boot-injection shape exactly (see
+ *     that file's header for why it isn't self-constructed instead). Order
+ *     relative to step 3 doesn't matter (no data dependency) — placed right
+ *     after so both `workoutRepository`-consuming boot steps stay adjacent.
  *  4. (M2-10) `useRestTimerStore.getState().restore(openExpoKvStore())` —
  *     restores any in-progress rest timer (06 §5.1's "... + timer", same
  *     step as #3 above). Wrapped in its own try/catch, deliberately
@@ -104,6 +111,7 @@ import { getAppDriver, runDbBoot } from '@/data/sqlite/boot';
 import { SettingsRepository } from '@/data/settings/settings-repository';
 import { WorkoutRepositoryImpl } from '@/data/workouts/workout-repository';
 import { useSettingsStore } from '@/features/settings/settings-store';
+import { configureRecordsService } from '@/features/stats/records-service';
 import { useActiveWorkoutStore } from '@/features/workout/activeWorkoutStore';
 import { useRestTimerStore } from '@/features/workout/restTimerStore';
 import { useForegroundReconciliation } from '@/features/workout/useForegroundReconciliation';
@@ -161,6 +169,11 @@ export default function RootLayout(): React.JSX.Element | null {
             );
           },
         });
+        // M4-02 (06 §4.4): `RecordsService` is injected the exact same way
+        // as the store above — one shared `WorkoutRepositoryImpl` instance,
+        // configured once at boot before any screen can read
+        // `getRecordsService()`.
+        configureRecordsService(workoutRepository);
         await useActiveWorkoutStore.getState().rehydrate(workoutRepository);
         // M2-10: restore any in-progress rest timer right after the active
         // workout itself (06 §5.1: "rehydrate active workout + timer").

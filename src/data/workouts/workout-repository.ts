@@ -259,8 +259,25 @@
  *   achieved values surface as PREVIOUS placeholders through the exact
  *   same, already-tested previousSets mechanism every non-routine workout
  *   already uses, with zero new display-layer code.
+ *
+ * ## M4-02 additions — `setsForExercise` + `exerciseHistoryWatermark`
+ *
+ * The records/charts feed 05 §6 always specified but M2/M3 never
+ * implemented (`./types.ts`'s own header). Both are plain reads, both
+ * scoped identically (`workout_exercises.exercise_id = ?` joined to
+ * `workouts`, filtered to `state = 'completed' AND deleted_at IS NULL` — an
+ * active workout's own sets are never PR-eligible history, 04 §5.2) and
+ * both are documented in full on their own interface declarations in
+ * `./types.ts` rather than here, matching that file's existing convention
+ * of carrying the "why" for query-only methods (`previousSets` is the
+ * precedent). `exerciseHistoryWatermark` has no 05 §6 citation — it is a
+ * new addition this task introduces specifically to make `RecordsService`'s
+ * `06` §4.4 "memoized ... cache keyed by `updated_at` watermark" possible
+ * without re-fetching and re-folding a whole exercise's history just to
+ * find out nothing changed.
  */
-import type { Rpe, SetType } from '@/domain/enums';
+import type { ExerciseType, Rpe, SetType } from '@/domain/enums';
+import type { HistoricalSet } from '@/domain/records';
 
 import { generateUuid } from '../shared/uuid';
 import type { SqliteDriver } from '../sqlite/driver';
@@ -409,6 +426,33 @@ function mapPreviousSetRow(row: SetRow, bucketIndex: number, isWarmup: boolean):
     durationSeconds: row.duration_seconds,
     rpe: row.rpe as Rpe | null,
     customMetric: row.custom_metric,
+  };
+}
+
+/** One joined `sets`/`workout_exercises`/`workouts` row for {@link WorkoutRepositoryImpl.setsForExercise} — already filtered/ordered by the SQL query itself (M4-02); `setOrder` is assigned afterward from the row's position in that already-sorted array, not read off any column (see that method's own comment). */
+interface HistoricalSetRow {
+  set_id: string;
+  set_type: string;
+  weight_kg: number | null;
+  reps: number | null;
+  duration_seconds: number | null;
+  is_completed: number;
+  workout_id: string;
+  workout_start_time: number;
+}
+
+function mapHistoricalSetRow(row: HistoricalSetRow, setOrder: number, exerciseType: ExerciseType): HistoricalSet {
+  return {
+    setId: row.set_id,
+    workoutId: row.workout_id,
+    workoutStartTime: row.workout_start_time,
+    setOrder,
+    exerciseType,
+    setType: row.set_type as SetType,
+    isCompleted: row.is_completed === 1,
+    weightKg: row.weight_kg,
+    reps: row.reps,
+    durationSeconds: row.duration_seconds,
   };
 }
 
@@ -1134,6 +1178,47 @@ export class WorkoutRepositoryImpl implements WorkoutRepository {
       ...nonWarmups.map((row, index) => mapPreviousSetRow(row, index, false)),
       ...warmups.map((row, index) => mapPreviousSetRow(row, index, true)),
     ];
+  }
+
+  async setsForExercise(exerciseId: string): Promise<HistoricalSet[]> {
+    // `exercise_type` is a property of the exercise, not of any one set —
+    // every row this query returns is for the same `exerciseId`, so one
+    // lookup covers the whole result (see `./types.ts`'s doc comment). No
+    // rows (unknown/never-logged exerciseId) is a legitimate "no history
+    // yet" answer, not an error — mirrors `previousSets`'s own permissive
+    // handling of an exercise it can't find anything for.
+    const exerciseRow = this.driver.queryAll<{ exercise_type: string }>(
+      `SELECT exercise_type FROM exercises WHERE id = ?`,
+      [exerciseId],
+    )[0];
+    if (!exerciseRow) {
+      return [];
+    }
+
+    const rows = this.driver.queryAll<HistoricalSetRow>(
+      `SELECT s.id AS set_id, s.set_type, s.weight_kg, s.reps, s.duration_seconds, s.is_completed,
+              we.workout_id AS workout_id, w.start_time AS workout_start_time
+       FROM sets s
+       JOIN workout_exercises we ON we.id = s.workout_exercise_id
+       JOIN workouts w ON w.id = we.workout_id
+       WHERE we.exercise_id = ? AND w.state = 'completed' AND w.deleted_at IS NULL
+       ORDER BY w.start_time ASC, we.position ASC, s.position ASC`,
+      [exerciseId],
+    );
+
+    const exerciseType = exerciseRow.exercise_type as ExerciseType;
+    return rows.map((row, index) => mapHistoricalSetRow(row, index, exerciseType));
+  }
+
+  async exerciseHistoryWatermark(exerciseId: string): Promise<number> {
+    const row = this.driver.queryAll<{ watermark: number | null }>(
+      `SELECT MAX(w.updated_at) AS watermark
+       FROM workouts w
+       JOIN workout_exercises we ON we.workout_id = w.id
+       WHERE we.exercise_id = ? AND w.state = 'completed' AND w.deleted_at IS NULL`,
+      [exerciseId],
+    )[0];
+    return row?.watermark ?? 0;
   }
 
   // ---------------------------------------------------------------------
