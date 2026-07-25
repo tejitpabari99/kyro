@@ -48,7 +48,7 @@ Task count: **12**
 **Acceptance / test gate:** 02 §15 acceptance: raising an old weight above current PR moves the trophy (charts update once M4-09 lands); deleting PR-holder reassigns next-best; edit cannot corrupt one-active invariant (integration test). Retro workout lands on the chosen day.
 **Est:** 1.5 d
 
-### M4-06 — domain/streaks.ts + calendar screen
+### M4-06 — domain/streaks.ts + calendar screen [done]
 **Description:** Streak math and the month-pager calendar.
 **How:** `domain/streaks.ts`: consecutive calendar weeks with ≥ 1 completed workout, respecting first-day-of-week (monday/sunday/saturday), counting back from current week; current week counts if it has a workout **or is still in progress** (shows but doesn't break until the week ends workoutless); midnight-crossing workouts belong to start_time's day (02 §16.3). `CalendarMonth` primitive (custom grid, 07 §5): swipe/chevron month pager, accent dot/fill on workout days, today outlined, ×2 badge on multi-workout days; day tap → sheet listing that day's workouts (tap-through) + "Log past workout" on empty days. Streak header "🔥 N-week streak". Data via `workoutDates(range)`.
 **References:** 04 §3.2; 02 §16.3; 08 §4.8 (streak cases); 05 §6.

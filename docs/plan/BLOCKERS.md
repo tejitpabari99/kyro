@@ -220,6 +220,21 @@ above (in "Practical impact on the task list") for exactly this split
 ("the *logic* is fully covered by Jest/RNTL instead... [the physical feel]
 cannot be measured here").
 
+## Calendar month-pager swipe gesture feel (M4-06 finding, 2026-07-25)
+
+`CalendarMonth` (`src/ui/CalendarMonth.tsx`) implements 04 §3.2's "swipe/chevron month pager" with
+both an always-available chevron pair and a `Gesture.Pan()` swipe over the week grid, the same
+`Gesture.Pan()` + threshold-on-`onEnd` shape `SetRow.tsx`'s swipe-to-delete and `Sheet.tsx`'s
+drag-to-dismiss already use. Same category as `Sheet.test.tsx`'s (M0-07) and M3-03's own
+drag-reorder blocker above: this sandbox has no iOS Simulator/physical device, and RNTL's
+`fireGestureHandler`-less setup here doesn't simulate a real native pan sequence, so
+`CalendarMonth.test.tsx` (M4-06) exercises the chevron-button paging path only — the *logic* both
+paths share (`onPrevMonth`/`onNextMonth` callbacks, month-grid rebuild, query refetch) is fully
+covered; whether the swipe gesture actually feels responsive, whether the `SWIPE_PAGE_THRESHOLD`
+(50 pt) is a good value against a real finger, and whether it fights `FlashList`'s own vertical
+scroll anywhere it's embedded, are on-device-only checks deferred to the same physical-device QA
+pass the two precedents above are deferred to.
+
 ## Everything else
 
 Every other task — all of M0 through M7 except the six owner-gated tasks listed above — is
