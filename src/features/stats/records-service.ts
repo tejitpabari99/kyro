@@ -81,6 +81,7 @@ import type { WorkoutRepository } from '@/data/workouts/types';
 import {
   computeRecordsSnapshot,
   evaluateLiveCheck,
+  evaluateWorkoutRecordsEarned,
   type HistoricalSet,
   type RecordAward,
   type RecordsComputation,
@@ -121,6 +122,17 @@ export interface RecordsServiceApi {
     sessionCheckedSets: readonly HistoricalSet[],
     candidate: HistoricalSet,
   ): RecordAward[] | null;
+  /**
+   * The finish/save-screen "Records earned" evaluator (04 §5.4) —
+   * `domain/records.ts`'s `evaluateWorkoutRecordsEarned`, fed the same cached
+   * baseline {@link evaluateLive} reads. Like `evaluateLive`, returns `null`
+   * when `exerciseId` hasn't been warmed via {@link getSnapshot} yet rather
+   * than evaluating against an assumed-empty baseline.
+   */
+  evaluateWorkoutEarned(
+    exerciseId: string,
+    workoutSets: readonly HistoricalSet[],
+  ): RecordAward[] | null;
 }
 
 /** Pure factory — no module-level state, safe to construct fresh per test (mirrors `createSettingsStore`/`createActiveWorkoutStore`). */
@@ -156,7 +168,18 @@ export function createRecordsService(repository: RecordsRepository): RecordsServ
     return evaluateLiveCheck(baseline, sessionCheckedSets, candidate);
   }
 
-  return { getSnapshot, peekSnapshot, evaluateLive };
+  function evaluateWorkoutEarned(
+    exerciseId: string,
+    workoutSets: readonly HistoricalSet[],
+  ): RecordAward[] | null {
+    const baseline = peekSnapshot(exerciseId);
+    if (!baseline) {
+      return null;
+    }
+    return evaluateWorkoutRecordsEarned(baseline, workoutSets);
+  }
+
+  return { getSnapshot, peekSnapshot, evaluateLive, evaluateWorkoutEarned };
 }
 
 let singleton: RecordsServiceApi | null = null;
@@ -174,6 +197,23 @@ export function getRecordsService(): RecordsServiceApi {
       'RecordsService not configured — call configureRecordsService(repository) at boot before use.',
     );
   }
+  return singleton;
+}
+
+/**
+ * The non-throwing sibling of {@link getRecordsService} — `null` when
+ * unconfigured instead of throwing. For call sites where the RecordsService
+ * is a best-effort enhancement rather than the core data being read (M4-10's
+ * live-PR-banner check and its warming-mount effect, and the finish
+ * screen's "Records earned" preview) — none of those may ever crash a
+ * screen just because a test (or, in principle, a boot ordering bug) never
+ * called `configureRecordsService`. `getRecordsService`'s own throwing
+ * contract stays as-is for reads that *are* the core data (`useRecordsSnapshot`
+ * and this file's own `getSnapshot`/`evaluateLive`/`evaluateWorkoutEarned`
+ * internals) — silently no-op-ing those would hide a real boot bug instead
+ * of surfacing it.
+ */
+export function tryGetRecordsService(): RecordsServiceApi | null {
   return singleton;
 }
 

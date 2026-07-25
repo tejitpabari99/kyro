@@ -14,7 +14,13 @@ import { QueryClient } from '@tanstack/react-query';
 
 import type { HistoricalSet } from '@/domain/records';
 
-import { createRecordsService, invalidateAfterWorkoutMutation, type RecordsRepository } from '../records-service';
+import {
+  configureRecordsService,
+  createRecordsService,
+  invalidateAfterWorkoutMutation,
+  tryGetRecordsService,
+  type RecordsRepository,
+} from '../records-service';
 
 function makeSet(overrides: Partial<HistoricalSet> = {}): HistoricalSet {
   return {
@@ -176,6 +182,54 @@ describe('createRecordsService', () => {
       // 101 candidate does not re-award (04 §5.3 strict-greater).
       expect(result).toEqual([]);
     });
+  });
+
+  describe('evaluateWorkoutEarned — the finish/save-screen "Records earned" preview (M4-10, 04 §5.4)', () => {
+    it('returns null when the exercise has never been warmed', () => {
+      const repo = createFakeRepo();
+      const service = createRecordsService(repo);
+
+      const result = service.evaluateWorkoutEarned('bench', [makeSet({ weightKg: 999 })]);
+
+      expect(result).toBeNull();
+      expect(repo.setsForExercise).not.toHaveBeenCalled();
+    });
+
+    it('evaluates this workout\'s own sets against the warmed baseline without touching the repository', async () => {
+      const repo = createFakeRepo({ watermark: 1, sets: [makeSet({ weightKg: 100 })] });
+      const service = createRecordsService(repo);
+      await service.getSnapshot('bench');
+      (repo.setsForExercise as jest.Mock).mockClear();
+
+      const earned = service.evaluateWorkoutEarned('bench', [
+        makeSet({ setId: 's-new', workoutId: 'w-new', weightKg: 102.5, reps: null }),
+      ]);
+
+      expect(earned).toEqual([{ recordType: 'heaviest_weight', setId: 's-new', workoutId: 'w-new' }]);
+      expect(repo.setsForExercise).not.toHaveBeenCalled();
+    });
+
+    it('a workout with no sets beating history earns nothing', async () => {
+      const repo = createFakeRepo({ watermark: 1, sets: [makeSet({ weightKg: 150 })] });
+      const service = createRecordsService(repo);
+      await service.getSnapshot('bench');
+
+      const earned = service.evaluateWorkoutEarned('bench', [
+        makeSet({ setId: 's-new', workoutId: 'w-new', weightKg: 100 }),
+      ]);
+      expect(earned).toEqual([]);
+    });
+  });
+});
+
+describe('tryGetRecordsService', () => {
+  it('returns null before configureRecordsService has ever run', () => {
+    expect(tryGetRecordsService()).toBeNull();
+  });
+
+  it('returns the configured singleton after configureRecordsService runs', () => {
+    const configured = configureRecordsService(createFakeRepo());
+    expect(tryGetRecordsService()).toBe(configured);
   });
 });
 

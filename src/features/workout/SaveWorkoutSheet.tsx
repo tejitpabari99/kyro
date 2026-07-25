@@ -34,6 +34,7 @@ import { ScrollView, Text, TextInput, View } from 'react-native';
 import { Trophy } from 'lucide-react-native';
 
 import type { FinishMeta } from '@/data/workouts/types';
+import type { WeightUnit } from '@/domain/enums';
 import { formatDuration } from '@/domain/units';
 import { Button } from '@/ui/Button';
 import { NumericInput } from '@/ui/NumericInput';
@@ -41,7 +42,7 @@ import { Sheet } from '@/ui/Sheet';
 import { StatColumn } from '@/ui/StatColumn';
 import { useTheme } from '@/ui/theme-provider';
 
-import { useWorkoutRecordsEarned } from './records-provider';
+import { useWorkoutRecordsEarned, type WorkoutRecordsEarnedExerciseInput } from './records-provider';
 
 export interface SaveWorkoutSheetProps {
   visible: boolean;
@@ -58,6 +59,10 @@ export interface SaveWorkoutSheetProps {
   volumeLabel: string;
   /** Checked-sets count — fixed (see file header), same source as the logger's own Sets stat. */
   setsCount: number;
+  /** M4-10 (04 §5.4): this workout's own already-checked sets, grouped per exercise — threaded straight to {@link useWorkoutRecordsEarned}, never persisted from here. */
+  recordsEarnedExercises: readonly WorkoutRecordsEarnedExerciseInput[];
+  /** M4-10: unit the Records-earned rows display weight-based values in. */
+  weightUnit: WeightUnit;
   onSave: (meta: FinishMeta) => void;
   testID?: string;
 }
@@ -76,6 +81,8 @@ export function SaveWorkoutSheet({
   elapsedMs,
   volumeLabel,
   setsCount,
+  recordsEarnedExercises,
+  weightUnit,
   onSave,
   testID = 'save-workout-sheet',
 }: SaveWorkoutSheetProps): React.JSX.Element {
@@ -116,10 +123,14 @@ export function SaveWorkoutSheet({
   }
 
   // M2-14 "How": "Records earned section renders only when the records
-  // provider returns data — wire to a no-op provider now, M4-10 fills it."
-  // `visible ? workoutId : null` skips the (no-op, but still a real Query
-  // call) hook entirely while the sheet is closed.
-  const recordsQuery = useWorkoutRecordsEarned(visible ? workoutId : null);
+  // provider returns data." M4-10 fills the provider itself in for real;
+  // `visible ? workoutId : null` still skips the query entirely while the
+  // sheet is closed.
+  const recordsQuery = useWorkoutRecordsEarned(
+    visible ? workoutId : null,
+    recordsEarnedExercises,
+    weightUnit,
+  );
   const awards = recordsQuery.data ?? [];
 
   const durationSeconds =
@@ -304,7 +315,7 @@ export function SaveWorkoutSheet({
                   gap: spacing['2'],
                 }}
               >
-                <Trophy size={18} strokeWidth={1.75} color={colors.semantic.warning} />
+                <Trophy size={18} strokeWidth={1.75} color={colors.semantic.success} />
                 <Text style={[typography.body, { color: colors.text.primary }]}>
                   {award.exerciseName} — new {award.kind} PR: {award.value}
                 </Text>

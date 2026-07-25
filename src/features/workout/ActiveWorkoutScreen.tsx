@@ -151,7 +151,7 @@ import {
   type VolumeSetInput,
 } from '@/domain/volume';
 import { useSettingsStore } from '@/features/settings/settings-store';
-import { invalidateAfterWorkoutMutation } from '@/features/stats/records-service';
+import { invalidateAfterWorkoutMutation, tryGetRecordsService } from '@/features/stats/records-service';
 import { captureError } from '@/lib/sentry';
 import { Button } from '@/ui/Button';
 import { KeyboardAccessoryBar } from '@/ui/KeyboardAccessoryBar';
@@ -166,6 +166,8 @@ import { ExercisePickerSheet, type ExercisePickerMode } from './ExercisePickerSh
 import { KeepAwakeGate } from './KeepAwakeGate';
 import { KEYBOARD_ACCESSORY_VIEW_ID, useKeyboardFocusStore } from './keyboardFocusStore';
 import { PlateCalculatorSheet } from './PlateCalculatorSheet';
+import { PRBannerHost } from './PRBannerHost';
+import type { WorkoutRecordsEarnedExerciseInput } from './records-provider';
 import { ReorderExercisesSheet } from './ReorderExercisesSheet';
 import { useRestTimerStore } from './restTimerStore';
 import { SaveWorkoutSheet } from './SaveWorkoutSheet';
@@ -321,6 +323,73 @@ export function ActiveWorkoutScreen({
     },
     enabled: exerciseIds.length > 0,
   });
+
+  // M4-10 (04 §5.5): warm the RecordsService cache for every exercise this
+  // workout currently touches so `ConnectedSetRow`'s synchronous
+  // `evaluateLive` read (no DB hit per check, records-service.ts's own
+  // header) is never stuck on a cold cache — the cache-warming `getSnapshot`
+  // call is the only place a DB round trip happens for this feature. Runs
+  // again whenever `exerciseIds` changes identity (an exercise added
+  // mid-workout) so a brand-new exercise gets warmed too; already-cached
+  // ids just re-check their watermark (cheap, M4-02's own header) rather
+  // than re-fetching. `tryGetRecordsService` (not `getRecordsService`): most
+  // of this screen's own test suite never boots the singleton, and warming
+  // is a pure enhancement — silently skipping it there is the same posture
+  // `ConnectedSetRow.tsx`'s own live-check call site takes (see that file).
+  useEffect(() => {
+    const service = tryGetRecordsService();
+    if (!service) {
+      return;
+    }
+    for (const exerciseId of exerciseIds) {
+      void service.getSnapshot(exerciseId);
+    }
+  }, [exerciseIds]);
+
+  // M4-10 (04 §5.4): the finish/save-screen "Records earned" input — this
+  // workout's own already-checked sets (P9/08 §4.1 case 13: unchecked rows
+  // are filtered out *here*, never handed to `SaveWorkoutSheet`, since
+  // they're what `finish()` itself discards), grouped by `exerciseId` so a
+  // duplicated exercise's two workout-exercise rows fold as one chronological
+  // sequence (matching how `ConnectedSetRow`'s own live-check baseline
+  // treats the same case).
+  const recordsEarnedExercises: WorkoutRecordsEarnedExerciseInput[] = useMemo(() => {
+    if (!workout) {
+      return [];
+    }
+    const byExercise = new Map<string, WorkoutRecordsEarnedExerciseInput>();
+    for (const workoutExercise of workout.exercises) {
+      const exercise = exercisesQuery.data?.get(workoutExercise.exerciseId);
+      if (!exercise) {
+        continue;
+      }
+      const checkedSets = workoutExercise.sets
+        .filter((s) => s.isCompleted)
+        .map((s) => ({
+          id: s.id,
+          position: s.position,
+          setType: s.setType,
+          weightKg: s.weightKg,
+          reps: s.reps,
+          durationSeconds: s.durationSeconds,
+        }));
+      if (checkedSets.length === 0) {
+        continue;
+      }
+      const existing = byExercise.get(workoutExercise.exerciseId);
+      if (existing) {
+        existing.sets = [...existing.sets, ...checkedSets];
+      } else {
+        byExercise.set(workoutExercise.exerciseId, {
+          exerciseId: workoutExercise.exerciseId,
+          exerciseName: exercise.name,
+          exerciseType: exercise.exerciseType,
+          sets: checkedSets,
+        });
+      }
+    }
+    return Array.from(byExercise.values());
+  }, [workout, exercisesQuery.data]);
 
   // M2-12 (02 §8 / 07 §2.5): every grouped exercise's own label/color,
   // recomputed whenever the workout's exercise list changes identity —
@@ -1097,6 +1166,8 @@ export function ActiveWorkoutScreen({
         elapsedMs={stopwatch.elapsedMs}
         volumeLabel={`${Math.round(displayVolume)} ${weightUnit}`}
         setsCount={checkedSetsCount}
+        recordsEarnedExercises={recordsEarnedExercises}
+        weightUnit={weightUnit}
         onSave={(meta) => void handleSaveWorkout(meta)}
       />
 
@@ -1160,6 +1231,9 @@ export function ActiveWorkoutScreen({
 
       {/* M2-11 (02 §16.9): one-time notification-permission-denied inline warning — independent of whether a timer is running right now (see that component's own header for why it isn't nested inside `TimerPill`). */}
       <RestTimerPermissionNotice testID={`${testID}-timer-permission-notice`} />
+
+      {/* M4-10 (04 §5.5): the live PR banner's own top-toast surface — renders `null` internally whenever `prBannerStore.message` is `null`. Mounted unconditionally, same "screen unmount tears it down for free" reasoning as `TimerPill`/`KeepAwakeGate` above. */}
+      <PRBannerHost testID={`${testID}-pr-banner`} />
     </View>
   );
 }

@@ -494,9 +494,12 @@ export interface RecordsComputation {
  * the updated array (P10/04 §5.6) — there is nothing else to invalidate
  * inside this module, it holds no state of its own.
  */
-export function computeRecordsSnapshot(sets: readonly HistoricalSet[]): RecordsComputation {
+function foldChronological(
+  startingSnapshot: RecordsSnapshot,
+  sets: readonly HistoricalSet[],
+): RecordsComputation {
   const sorted = [...sets].sort(compareChronological);
-  let snapshot = EMPTY_RECORDS_SNAPSHOT;
+  let snapshot = startingSnapshot;
   const awards: RecordAward[] = [];
   for (const set of sorted) {
     const result = applyRecordSet(snapshot, set);
@@ -504,6 +507,10 @@ export function computeRecordsSnapshot(sets: readonly HistoricalSet[]): RecordsC
     awards.push(...result.awards);
   }
   return { snapshot, awards };
+}
+
+export function computeRecordsSnapshot(sets: readonly HistoricalSet[]): RecordsComputation {
+  return foldChronological(EMPTY_RECORDS_SNAPSHOT, sets);
 }
 
 /**
@@ -533,4 +540,63 @@ export function evaluateLiveCheck(
     snapshot = applyRecordSet(snapshot, set).snapshot;
   }
   return applyRecordSet(snapshot, candidate).awards;
+}
+
+/**
+ * The finish/save-screen "Records earned" evaluator (04 §5.4, this task's
+ * own "How": "Records earned list = record types this workout's sets newly
+ * hold"; 08 §4.1 case 13's "finish-with-unchecked persists no record").
+ * Folds `workoutSets` — one in-progress (not-yet-persisted) workout's own
+ * **already-checked** sets for one exercise, sorted by `setOrder` same as
+ * {@link computeRecordsSnapshot} — over `historySnapshot` (the cached
+ * full-history baseline, the exact same baseline {@link evaluateLiveCheck}
+ * uses) and returns every (set, record-type) award this workout's own sets
+ * newly earn.
+ *
+ * This is the identical computation a post-save
+ * `computeRecordsSnapshot(repository.setsForExercise(exerciseId))` read
+ * would produce once this workout is actually persisted (its sets, sorted
+ * by `workoutStartTime`, land after all pre-existing history) — computing it
+ * here, ahead of the real DB write, is what lets the Save sheet show
+ * "Records earned" *before* the user taps Save Workout rather than only
+ * after navigating away.
+ *
+ * Never includes unchecked rows — the caller must pass only `isCompleted`
+ * sets (exactly what `finish()` itself keeps, P9/05 §1): a still-unchecked
+ * set fed in here would show a preview trophy that `finish()` then silently
+ * drops on the floor, the exact bug 08 §4.1 case 13 names.
+ */
+export function evaluateWorkoutRecordsEarned(
+  historySnapshot: RecordsSnapshot,
+  workoutSets: readonly HistoricalSet[],
+): RecordAward[] {
+  return foldChronological(historySnapshot, workoutSets).awards;
+}
+
+/**
+ * The achieved value behind one {@link RecordAward} — 04 §5.1's per-type
+ * formula, recomputed from `set` (the exact set `award.setId` refers to;
+ * callers must pass the matching set). Every branch's non-null assertion
+ * relies on {@link applyRecordSet} never emitting an award for a record
+ * type without first checking the exact same fields are non-null (see that
+ * function's own eligibility gates) — a `RecordAward` cannot exist for a
+ * set missing the data its own value formula needs. Shared by the finish
+ * screen's "Records earned" rows and the live-check banner's message so
+ * both surfaces read the same numbers for the same award, never
+ * reimplementing the Epley/volume formulas at the feature layer.
+ */
+export function recordAwardValue(set: HistoricalSet, award: RecordAward): number {
+  switch (award.recordType) {
+    case 'heaviest_weight':
+    case 'set_record':
+      return set.weightKg!;
+    case 'best_1rm':
+      return epley1RM(set.weightKg!, set.reps!)!;
+    case 'best_set_volume':
+      return set.weightKg! * set.reps!;
+    case 'most_reps':
+      return set.reps!;
+    case 'longest_duration':
+      return set.durationSeconds!;
+  }
 }
