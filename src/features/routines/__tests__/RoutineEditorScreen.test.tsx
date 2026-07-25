@@ -506,4 +506,48 @@ describe('RoutineEditorScreen — per-exercise ⋯ menu (04 §2.1: reorder/repla
     expect(screen.queryByTestId(benchCardTestID)).toBeNull();
     expect(await screen.findByTestId(`${testID}-card-${fixture.squat.id}`)).toBeTruthy();
   });
+
+  // M3-08 milestone-QA-sweep addition: the rest-timer row/⋯-menu path had a
+  // fully-wired pure mutator (`updateDraftExerciseRestSeconds`, unit-tested
+  // since M3-04's own `routine-draft.test.ts`) and fully-wired UI
+  // (`RoutineExerciseCard`'s rest-timer-row press / ⋯ → "Rest Timer" both
+  // open the same `RestTimerSheet`, `onChange={handleSaveRestSeconds}`) but
+  // — unlike every other ⋯ item just above — no RNTL test ever drove the
+  // sheet interaction end to end (open -> pick a wheel option -> label
+  // updates -> value survives Save). Same shape as the folder-rename gap
+  // this task's own sweep found in `RoutinesHubScreen.test.tsx`: working
+  // code, missing wiring-level test, not a broken feature. `defaultRestSeconds`
+  // is deliberately overridden to `null` (Off) here — `renderEditor`'s own
+  // default is 90, which would make a real "did the picker actually change
+  // anything" bug invisible (a freshly-added exercise already reading 90
+  // either way).
+  it('⋯ → Rest Timer opens the wheel picker; picking 90 s updates the row label and survives Save', async () => {
+    const fixture = await setup();
+    await renderEditor(fixture, { defaultRestSeconds: null });
+    await screen.findByTestId(`${testID}-title-input`);
+    await addBenchViaPicker(testID, fixture);
+
+    const benchCardTestID = `${testID}-card-${fixture.bench.id}`;
+    expect(screen.getByText('Rest Timer: Off')).toBeTruthy();
+
+    await fireEvent.press(screen.getByTestId(`${benchCardTestID}-menu-button`));
+    await fireEvent.press(screen.getByTestId(`${benchCardTestID}-menu-rest-timer`));
+
+    const sheetTestID = `${benchCardTestID}-rest-timer-sheet`;
+    await screen.findByTestId(sheetTestID);
+    await fireEvent.press(screen.getByTestId(`${sheetTestID}-wheel-option-90`));
+
+    expect(screen.getByText('Rest Timer: 1min 30s')).toBeTruthy();
+
+    await fireEvent.press(screen.getByTestId(`${sheetTestID}-done`));
+    expect(screen.queryByTestId(sheetTestID)).toBeNull();
+
+    await fireEvent.changeText(screen.getByTestId(`${testID}-title-input`), 'Push Day');
+    await fireEvent.press(screen.getByTestId(`${testID}-save`));
+    await waitFor(() => expect(router.back).toHaveBeenCalledTimes(1));
+
+    const list = await fixture.routineRepository.list();
+    const full = await fixture.routineRepository.getFull(list[0]!.id);
+    expect(full!.exercises[0]!.restSeconds).toBe(90);
+  });
 });

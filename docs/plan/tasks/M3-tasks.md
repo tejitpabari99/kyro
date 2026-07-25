@@ -64,7 +64,7 @@ Task count: **8**
 **Acceptance / test gate:** 04 §2 acceptance: Save as Routine reproduces structure incl. supersets + rest timers; repeat pre-populates placeholders; deleting a routine leaves history intact and renderable; archived-exercise routine starts.
 **Est:** 1 d
 
-### M3-08 — Maestro flow 2 + M3 QA & exit gate
+### M3-08 — Maestro flow 2 + M3 QA & exit gate [done]
 **Description:** E2E for the routine loop and milestone close.
 **How:** Maestro flow 2: new routine → 2 exercises, rep range 6-8, rest 90 s → save → start → placeholders show targets → complete → update-routine prompt → accept → routine shows new targets. Manual QA over all 04 §1–2 acceptance boxes both themes; fix P0/P1 + regression tests; `docs/qa/M3-checklist.md`; tag.
 **References:** 08 §6 flow 2; 09 M3 exit.

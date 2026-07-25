@@ -273,6 +273,47 @@ describe('RoutinesHubScreen — folder delete (both paths)', () => {
   });
 });
 
+// M3-08 milestone-QA-sweep addition: folder ⋯ → Rename had a fully-wired
+// repository method (`renameFolder`, integration-tested since M3-01's own
+// `routine-repository.folders.test.ts`) and fully-wired UI handler
+// (`handleFolderNameSave`'s "rename" branch, `RoutinesHubScreen.tsx`) but —
+// unlike its Create/Delete siblings just above — no RNTL test ever drove
+// the ⋯ → Rename → `FolderNameSheet` (pre-filled with the folder's current
+// title, `title="Rename Folder"`) → save → `repository.renameFolder` path
+// end to end. 04 §1's own acceptance line is "Create/rename/delete folder"
+// — a real, spec-named behavior with a real coverage gap, the same shape
+// M2-19's exit-gate found for the crash-safety action set (working code,
+// missing wiring-level test), not a broken feature. No bug found once
+// traced (`renameFolder` itself, `RoutinesHubScreen`'s handler, and
+// `FolderNameSheet`'s `initialValue` prefill all read correct) — this is a
+// pure coverage-completeness addition, not a fix.
+describe('RoutinesHubScreen — folder rename (04 §1 acceptance, M3-08 coverage gap closed)', () => {
+  it('⋯ → Rename pre-fills the current title and renames via repository.renameFolder', async () => {
+    const folder = fixtureFolder({ id: 1, title: 'Push/Pull/Legs' });
+    const routine = fixtureRoutine({ id: 'r1', title: 'Push Day', folderId: 1 });
+    const repo = new FakeRoutineRepository({
+      folders: [folder],
+      routines: [routine],
+      fulls: [fixtureRoutineFull({ id: 'r1', title: 'Push Day', folderId: 1 })],
+    });
+    await renderHub(repo);
+    await screen.findByTestId('routine-card-r1');
+
+    await fireEvent.press(screen.getByTestId('folder-section-1-menu'));
+    await fireEvent.press(await screen.findByTestId('folder-actions-sheet-rename'));
+
+    const input = await screen.findByTestId('folder-name-sheet-input');
+    expect(input.props.value).toBe('Push/Pull/Legs');
+
+    await fireEvent.changeText(input, 'Upper Body');
+    await fireEvent.press(screen.getByTestId('folder-name-sheet-save'));
+
+    await waitFor(() => expect(repo.folders[0]!.title).toBe('Upper Body'));
+    // The folder's own id is untouched by a rename — only the title changes.
+    expect(repo.folders[0]!.id).toBe(1);
+  });
+});
+
 describe('RoutinesHubScreen — routine ⋯ menu', () => {
   function repoWithRoutine(): FakeRoutineRepository {
     const routine = fixtureRoutine({ id: 'r1', title: 'Push Day', folderId: null });
