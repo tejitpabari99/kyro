@@ -107,9 +107,26 @@
  * timer" — RN's native responder system generally lets a short tap still
  * reach the child `TextInput` while a sustained hold reaches the outer
  * `Pressable` first, but this hasn't been confirmed on real hardware here.
+ *
+ * **Trophy badge** (M4-04, 04 §5.4/07 §6 — workout-detail record-defining
+ * sets): `readOnly`-only, like the value cells' static-`Text` swap above.
+ * `trophyLabel` is a caller-already-formatted display string (e.g.
+ * `"Heaviest Weight — 102.5 kg"`, possibly multiple joined with a newline
+ * when one set earns more than one record type) — this component never
+ * imports `domain/records.ts` itself (`src/ui/**`'s tokens-only dependency
+ * boundary, 06 §2 — the same reason `SetTypeBadge`'s own `kind` union is a
+ * structurally-identical local type rather than an import of `SetType`).
+ * Rendered as a small `accent.text` glyph (07 §6: "trophies use
+ * `accent.text`... not `warning` gold") overlaid on the SET cell's own
+ * corner — deliberately *not* a new flex column, so it never shifts the
+ * SET/PREVIOUS/value/RPE/✓ columns out of alignment with `SetTable`'s
+ * header row (which has no matching slot for it). Tapping it fires
+ * `onTrophyPress` — the caller (`HistoryDetailScreen`) surfaces
+ * `trophyLabel` via `Alert.alert`, matching this task's "record-type label
+ * on tap" text.
  */
 import React, { useEffect, useMemo } from 'react';
-import { Check, Timer, Trash2 } from 'lucide-react-native';
+import { Check, Timer, Trash2, Trophy } from 'lucide-react-native';
 import {
   Pressable,
   StyleSheet,
@@ -160,6 +177,10 @@ export interface SetRowProps {
   onDelete?: () => void;
   /** M2-14 (07 §5) — see file header's "Read-only mode" section. Defaults `false`. */
   readOnly?: boolean;
+  /** M4-04 — see file header's "Trophy badge" section. `null`/unset renders no badge; only meaningful when `readOnly`. */
+  trophyLabel?: string | null;
+  /** M4-04 — fires when the trophy badge (see `trophyLabel`) is tapped. */
+  onTrophyPress?: () => void;
   /** M3-04 (04 §2.1) — see file header's "Target mode" section. Defaults `false`. */
   targetMode?: boolean;
   /** M3-04 — only meaningful when `targetMode`: is this row's REPS cell currently showing the `from`–`to` range inputs (`true`) or a single value (`false`/unset)? Caller-owned, same shape as `isCompleted`. */
@@ -223,6 +244,8 @@ function SetRowImpl({
   onRpePress,
   onDelete,
   readOnly = false,
+  trophyLabel,
+  onTrophyPress,
   targetMode = false,
   repRangeMode = false,
   onToggleRepRange,
@@ -340,12 +363,26 @@ function SetRowImpl({
           ]}
         >
           <SetCell testID={testID ? `${testID}-set-cell` : undefined} width={SET_CELL_WIDTH}>
-            <SetTypeBadge
-              testID={testID ? `${testID}-badge` : undefined}
-              kind={badgeKind}
-              workingIndex={workingIndex}
-              onPress={readOnly ? undefined : onSetCellPress}
-            />
+            <View style={{ position: 'relative' }}>
+              <SetTypeBadge
+                testID={testID ? `${testID}-badge` : undefined}
+                kind={badgeKind}
+                workingIndex={workingIndex}
+                onPress={readOnly ? undefined : onSetCellPress}
+              />
+              {readOnly && trophyLabel ? (
+                <Pressable
+                  testID={testID ? `${testID}-trophy` : undefined}
+                  accessibilityRole="button"
+                  accessibilityLabel={trophyLabel}
+                  onPress={onTrophyPress}
+                  hitSlop={8}
+                  style={{ position: 'absolute', top: -4, right: -6 }}
+                >
+                  <Trophy size={12} strokeWidth={2.25} color={colors.accent.text} />
+                </Pressable>
+              ) : null}
+            </View>
           </SetCell>
 
           <SetCell testID={testID ? `${testID}-previous-cell` : undefined} flex={1.3}>

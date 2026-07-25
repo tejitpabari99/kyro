@@ -57,18 +57,68 @@
  * 05 §3.3's soft-reference invariant (deleting a routine never touches past
  * workouts) actually renders correctly, not just that `routine_id` survives
  * at the DB layer (already covered by M3-01's own repo-level test).
+ *
+ * ## M4-04 additions — trophy badges, notes, Edit Workout, Delete (04 §3.1/§5.4; 02 §15; 07 §6)
+ *
+ * This task upgrades M2-14's "minimal" ⋯ menu (its own header explicitly
+ * deferred "the full Edit-Workout/Export-CSV/Delete version" to this task's
+ * own text in `docs/plan/tasks/M4-tasks.md`) to the full spec:
+ *
+ * - **Trophy badges** — for each distinct exercise this workout touches,
+ *   `getRecordsService().getSnapshot(exerciseId).awards` (the exact same
+ *   `RecordsService`/`domain/records.ts` engine `HistoryWorkoutCard`'s "🏆 N
+ *   PRs" count and the live PR banner already read, 04 §5.4's own "verified
+ *   against the same engine" acceptance line) gives every (set, record-type)
+ *   award ever earned for that exercise; filtering to `award.workoutId ===
+ *   workoutId && award.setId === set.id` per row is this workout's own
+ *   per-set trophy list. A non-empty list is joined into one already-
+ *   formatted display string (`formatRecordTypeLabel`/`formatRecordAwardValue`
+ *   /`recordAwardValue`, all reused unchanged from `features/workout/
+ *   records-provider.ts` — the exact same formatters the Save sheet's
+ *   "Records earned" rows and the live PR banner already use, so a set's
+ *   trophy label reads identically everywhere it appears) and handed to
+ *   `SetRow`'s new `trophyLabel`/`onTrophyPress` props (see that file's own
+ *   "Trophy badge" header section) — tapping the glyph shows the label via
+ *   `Alert.alert` (this task's "record-type label on tap").
+ * - **Notes** — `workoutExercise.notes`, rendered read-only via the same
+ *   `NoteText` component `ExerciseCard.tsx`'s live logger card uses (URLs
+ *   stay tappable; no edit affordance here, this screen is read-only).
+ * - **Edit Workout** — navigates to `/workout/${workoutId}/edit`, the M4-05
+ *   edit-modal route (built in parallel, on a different branch, not yet
+ *   present on this one — same "wire the intended route now, the screen
+ *   lands later" seam `HistoryListScreen.tsx`'s M4-06 Calendar button and
+ *   M1-07's `ExerciseBrowseScreen.tsx` already established for a not-yet-
+ *   built sibling task's route).
+ * - **Export CSV (single workout)** — 04 §3.1 names it, but M4-04's own task
+ *   text is explicit: "arrives M5-06 — hide until then." Deliberately
+ *   omitted from the ⋯ menu entirely (no feature flag needed — the item
+ *   simply doesn't exist yet, exactly like `HistoryListScreen.tsx`'s Export
+ *   entry point doesn't exist until M5-06 lands there either).
+ * - **Delete** — confirm (`Alert.alert`, same "Delete {noun}?" / "Delete
+ *   \"{title}\"? This can't be undone." copy `RoutinesHubScreen.tsx`'s own
+ *   `handleDeleteRoutinePress` already established) → `workoutRepository
+ *   .softDelete(workoutId)` (already built, M2/M3 — `05` §3.2's soft-delete
+ *   convention) → `invalidateAfterWorkoutMutation(queryClient,
+ *   exerciseIds)` (the same central M4-02 helper `ActiveWorkoutScreen.tsx`'s
+ *   finish flow already calls — invalidates `['records', exerciseId]` per
+ *   affected exercise plus the broad `['history']`/`['stats']`/`['calendar']`
+ *   prefixes every list/calendar/records surface reads through, satisfying
+ *   02 §15's "PRs/stats/streaks recompute" and 04 §3's "deleting a workout
+ *   updates list/calendar/streak immediately") → `router.back()` (this
+ *   screen no longer has anything to show once its own workout is gone).
  */
 import React, { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ellipsis, History } from 'lucide-react-native';
 import { router } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { ExerciseRepository } from '@/data/exercises/types';
 import type { RoutineRepository } from '@/data/routines/types';
 import type { WorkoutRepository } from '@/data/workouts/types';
-import type { SetType } from '@/domain/enums';
+import type { SetType, WeightUnit } from '@/domain/enums';
 import { computeCurrentRowBuckets, type CurrentRowLike } from '@/domain/previous-values';
+import { recordAwardValue, type HistoricalSet, type RecordAward } from '@/domain/records';
 import { formatCellValue } from '@/domain/set-cell-values';
 import { columnsForExerciseType } from '@/domain/set-table-columns';
 import { formatDuration } from '@/domain/units';
@@ -79,9 +129,13 @@ import {
   type VolumeSetInput,
 } from '@/domain/volume';
 import { useSettingsStore } from '@/features/settings/settings-store';
+import { getRecordsService, invalidateAfterWorkoutMutation } from '@/features/stats/records-service';
 import { selectActiveWorkout, useActiveWorkoutStore } from '@/features/workout/activeWorkoutStore';
+import { NoteText } from '@/features/workout/NoteText';
+import { formatRecordAwardValue, formatRecordTypeLabel } from '@/features/workout/records-provider';
 import { useRestTimerStore } from '@/features/workout/restTimerStore';
 import { RoutineActionsSheet } from '@/features/routines/RoutineActionsSheet';
+import { Card } from '@/ui/Card';
 import { EmptyState } from '@/ui/EmptyState';
 import { SetRow, type SetBadgeKind } from '@/ui/SetRow';
 import { SetTable } from '@/ui/SetTable';
@@ -91,12 +145,33 @@ import { useTheme } from '@/ui/theme-provider';
 import { formatWorkoutDate } from './date-format';
 
 export interface HistoryDetailScreenProps {
-  workoutRepository: Pick<WorkoutRepository, 'getFull'>;
+  /** M4-04: `softDelete` for the ⋯ menu's Delete item. */
+  workoutRepository: Pick<WorkoutRepository, 'getFull' | 'softDelete'>;
   exerciseRepository: Pick<ExerciseRepository, 'get'>;
   /** M3-07: `createFromWorkout` for "Save as Routine," `get` to resolve the routine-name/"(deleted routine)" subtitle. */
   routineRepository: Pick<RoutineRepository, 'createFromWorkout' | 'get'>;
   workoutId: string;
   testID?: string;
+}
+
+/** One exercise's own full-history awards list, keyed by `exerciseId` — the M4-04 per-set trophy source, mirroring `history-list-model.ts`'s identically-shaped `awardsByExerciseId` map (M4-03's own precedent for folding `RecordsService` output into a screen). */
+type AwardsByExerciseId = ReadonlyMap<string, readonly RecordAward[]>;
+
+/** This workout's own (set, record-type) awards for one set, already-formatted for `SetRow`'s `trophyLabel` prop (`src/ui/**` may not import `domain/records.ts` itself, 06 §2) — `null` when the set holds no trophy. Multiple awards on one set join with a newline (`Alert.alert`'s message renders multi-line fine), matching `records-provider.ts`'s own `formatPRBannerMessage` precedent for "combine into one" without duplicating its banner-specific "PR — " phrasing here (this is a read-only historical label, not a live-beaten-record announcement). */
+function trophyLabelForSet(
+  setAwards: readonly RecordAward[],
+  historicalSet: HistoricalSet,
+  weightUnit: WeightUnit,
+): string | null {
+  if (setAwards.length === 0) {
+    return null;
+  }
+  return setAwards
+    .map(
+      (award) =>
+        `${formatRecordTypeLabel(award)} — ${formatRecordAwardValue(award, recordAwardValue(historicalSet, award), weightUnit)}`,
+    )
+    .join('\n');
 }
 
 function badgeKindFor(setType: SetType): SetBadgeKind {
@@ -154,11 +229,65 @@ export function HistoryDetailScreen({
     enabled: routineId != null,
   });
 
-  // -- ⋯ menu (M3-07, 02 §15/04 §2.2) — Save as Routine / Repeat Workout --
+  // M4-04 (04 §5.4, 07 §6): one `RecordsService.getSnapshot(exerciseId).awards`
+  // read per distinct exercise this workout touches — the same per-page
+  // "distinct exercise -> awards" shape `HistoryListScreen.tsx`'s own
+  // `fetchHistoryPage` already established for its "🏆 N PRs" count, reused
+  // here at the single-workout scope for per-set trophy badges instead of a
+  // per-workout count.
+  const awardsQuery = useQuery({
+    queryKey: ['history', 'detail-awards', exerciseIds.join(',')],
+    queryFn: async (): Promise<AwardsByExerciseId> => {
+      const entries = await Promise.all(
+        exerciseIds.map(async (id): Promise<[string, readonly RecordAward[]]> => [
+          id,
+          (await getRecordsService().getSnapshot(id)).awards,
+        ]),
+      );
+      return new Map(entries);
+    },
+    enabled: exerciseIds.length > 0,
+  });
+
+  const queryClient = useQueryClient();
+
+  // -- ⋯ menu (02 §15/04 §2.2/§3.1) — Edit Workout / Repeat Workout / Save as Routine / Delete --
   const [menuVisible, setMenuVisible] = useState(false);
 
   const reportError = (message: string): void => {
     Alert.alert('Something went wrong', message);
+  };
+
+  // M4-04 — wires to the M4-05 edit route (`app/workout/[id]/edit.tsx`,
+  // built in parallel on a different branch, not present on this one yet —
+  // see file header). Nothing else here depends on that route existing.
+  const handleEditWorkout = (): void => {
+    setMenuVisible(false);
+    router.push(`/workout/${workoutId}/edit` as never);
+  };
+
+  // M4-04 (02 §15): confirm -> soft delete -> recompute. `exerciseIds` (this
+  // workout's own distinct exercise ids, already computed above for
+  // `exercisesQuery`/`awardsQuery`) is exactly the set `invalidateAfterWorkoutMutation`
+  // needs to invalidate every affected `['records', exerciseId]` cache plus
+  // the broad `['history']`/`['stats']`/`['calendar']` prefixes (mirrors
+  // `ActiveWorkoutScreen.tsx`'s own finish-flow call to the same helper).
+  const performDelete = (): void => {
+    workoutRepository
+      .softDelete(workoutId)
+      .then(() => invalidateAfterWorkoutMutation(queryClient, exerciseIds))
+      .then(() => {
+        router.back();
+      })
+      .catch(() => reportError('This workout could not be deleted. Please try again.'));
+  };
+
+  const handleDeletePress = (): void => {
+    setMenuVisible(false);
+    Alert.alert('Delete Workout?', `Delete "${workout?.title ?? 'this workout'}"? This can't be undone.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: performDelete },
+    ]);
   };
 
   const handleSaveAsRoutine = (): void => {
@@ -337,14 +466,26 @@ export function HistoryDetailScreen({
             setType: s.setType,
           }));
           const buckets = computeCurrentRowBuckets(currentRows);
+          // M4-04 (04 §5.4): this exercise's own full-history awards, scoped
+          // down to this workout's own sets per-row below — `undefined`
+          // (awardsQuery not yet resolved, or this exercise genuinely has no
+          // history) reads as "no trophies," never a loading-state crash.
+          const exerciseAwards = awardsQuery.data?.get(workoutExercise.exerciseId) ?? [];
 
           return (
-            <View key={workoutExercise.id}>
+            <Card key={workoutExercise.id} testID={`${testID}-exercise-${workoutExercise.id}`}>
               <Text
-                style={[typography.headline, { color: colors.accent.text, marginBottom: spacing['2'] }]}
+                style={[typography.headline, { color: colors.accent.text, marginBottom: spacing['1'] }]}
               >
                 {exercise.name}
               </Text>
+              {workoutExercise.notes ? (
+                <NoteText
+                  testID={`${testID}-notes-${workoutExercise.id}`}
+                  text={workoutExercise.notes}
+                  style={{ marginBottom: spacing['2'] }}
+                />
+              ) : null}
               <SetTable testID={`${testID}-table-${workoutExercise.id}`} columns={columns}>
                 {workoutExercise.sets.map((set, index) => {
                   const bucket = buckets[index]!;
@@ -364,6 +505,29 @@ export function HistoryDetailScreen({
                                 : set.rpe;
                     values[column.key] = formatCellValue(column.kind, canonical, units);
                   }
+
+                  // M4-04 (04 §5.4/§5.2): this exact set's own trophy label,
+                  // if any — filters the exercise's full-history awards down
+                  // to (this workout, this set), formats via the same
+                  // `records-provider.ts` helpers the Save sheet/live banner
+                  // already use (see file header/`trophyLabelForSet`).
+                  const historicalSet: HistoricalSet = {
+                    setId: set.id,
+                    workoutId,
+                    workoutStartTime: workout.startTime,
+                    setOrder: set.position,
+                    exerciseType: exercise.exerciseType,
+                    setType: set.setType,
+                    isCompleted: set.isCompleted,
+                    weightKg: set.weightKg,
+                    reps: set.reps,
+                    durationSeconds: set.durationSeconds,
+                  };
+                  const setAwards = exerciseAwards.filter(
+                    (award) => award.workoutId === workoutId && award.setId === set.id,
+                  );
+                  const trophyLabel = trophyLabelForSet(setAwards, historicalSet, weightUnit);
+
                   return (
                     <SetRow
                       key={set.id}
@@ -376,11 +540,15 @@ export function HistoryDetailScreen({
                       placeholders={{}}
                       previousLabel={null}
                       isCompleted={set.isCompleted}
+                      trophyLabel={trophyLabel}
+                      onTrophyPress={
+                        trophyLabel ? () => Alert.alert('Personal Record', trophyLabel) : undefined
+                      }
                     />
                   );
                 })}
               </SetTable>
-            </View>
+            </Card>
           );
         })}
       </ScrollView>
@@ -390,8 +558,10 @@ export function HistoryDetailScreen({
         visible={menuVisible}
         onDismiss={() => setMenuVisible(false)}
         items={[
-          { key: 'save-as-routine', label: 'Save as Routine', onPress: handleSaveAsRoutine },
+          { key: 'edit-workout', label: 'Edit Workout', onPress: handleEditWorkout },
           { key: 'repeat-workout', label: 'Repeat Workout', onPress: handleRepeatWorkout },
+          { key: 'save-as-routine', label: 'Save as Routine', onPress: handleSaveAsRoutine },
+          { key: 'delete', label: 'Delete', destructive: true, onPress: handleDeletePress },
         ]}
       />
     </View>

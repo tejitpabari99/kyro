@@ -32,7 +32,7 @@ Task count: **12**
 **Acceptance / test gate:** Cards show accurate volume/PR counts (integration with records fixtures); pagination loads correctly; deleting a workout updates the list immediately (04 §3 acceptance). 60 fps validation deferred to M4-11 fixture.
 **Est:** 1 d
 
-### M4-04 — Workout detail: full read-only view with trophies
+### M4-04 — Workout detail: full read-only view with trophies [done]
 **Description:** Complete `workout/[id]` detail per 04 §3.1.
 **How:** Read-only logger layout: meta stats, exercise cards with all sets (type badges, values, RPE), **trophy icon on record-defining sets** (accent.text glyph per 07 §6, record-type label on tap), notes, "(deleted routine)" handling. ⋯ menu: Edit Workout (M4-05) / Repeat Workout (M3-07) / Save as Routine (M3-07) / Export CSV single (arrives M5-06 — hide until then) / Delete (confirm → soft delete → recompute via M4-02).
 **References:** 04 §3.1, §5.4; 02 §15; 07 §6.

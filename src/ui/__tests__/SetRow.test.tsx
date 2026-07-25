@@ -410,6 +410,50 @@ describe('SetRow — readOnly mode (M2-14, 07 §5 read-only SetTable)', () => {
   });
 });
 
+describe('SetRow — trophy badge (M4-04, 04 §5.4/07 §6)', () => {
+  it('renders no trophy affordance when trophyLabel is null/unset, even in readOnly mode', async () => {
+    await render(
+      <ThemeProvider preference="dark">
+        <SetRow {...baseProps({ readOnly: true })} />
+      </ThemeProvider>,
+    );
+    expect(screen.queryByTestId('row-trophy')).toBeNull();
+  });
+
+  it('renders the trophy glyph when trophyLabel is set and readOnly, with the label as its accessibility label', async () => {
+    await render(
+      <ThemeProvider preference="dark">
+        <SetRow {...baseProps({ readOnly: true, trophyLabel: 'Heaviest Weight — 102.5 kg' })} />
+      </ThemeProvider>,
+    );
+    const trophy = screen.getByTestId('row-trophy');
+    expect(trophy).toBeTruthy();
+    expect(trophy.props.accessibilityLabel).toBe('Heaviest Weight — 102.5 kg');
+  });
+
+  it('fires onTrophyPress when the trophy glyph is tapped', async () => {
+    const onTrophyPress = jest.fn();
+    await render(
+      <ThemeProvider preference="dark">
+        <SetRow
+          {...baseProps({ readOnly: true, trophyLabel: 'Most Reps — 12 reps', onTrophyPress })}
+        />
+      </ThemeProvider>,
+    );
+    fireEvent.press(screen.getByTestId('row-trophy'));
+    expect(onTrophyPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('never renders a trophy affordance outside readOnly mode, even if trophyLabel is (incorrectly) supplied', async () => {
+    await render(
+      <ThemeProvider preference="dark">
+        <SetRow {...baseProps({ readOnly: false, trophyLabel: 'Heaviest Weight — 100 kg' })} />
+      </ThemeProvider>,
+    );
+    expect(screen.queryByTestId('row-trophy')).toBeNull();
+  });
+});
+
 describe('SetRow — target mode (M3-04, 04 §2.1)', () => {
   it('omits the ✓ check cell entirely', async () => {
     await render(
