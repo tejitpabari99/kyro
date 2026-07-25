@@ -294,5 +294,56 @@ describe('WorkoutRepositoryImpl — setsForExercise / exerciseHistoryWatermark (
       expect(await repo.setsForExercise(benchId)).toEqual([]);
       expect(await repo.exerciseHistoryWatermark(benchId)).toBe(0);
     });
+
+    // -- M4-02 review fix: deleting a workout that does NOT hold the
+    // per-exercise max `updated_at` must still change the watermark. A
+    // naive `MAX(updated_at) WHERE deleted_at IS NULL` drops the deleted
+    // row out of the aggregate entirely, so if some *other*, still-alive
+    // workout already held a higher `updated_at`, the MAX is unaffected —
+    // the watermark reports the same number before and after even though
+    // `setsForExercise` just lost a workout's worth of sets. A
+    // `RecordsService` cache entry keyed on that unchanged number would
+    // wrongly report a hit and keep serving the deleted workout's sets. --
+
+    it('softDelete() of a non-max-watermark workout still changes the watermark (does not under-invalidate)', async () => {
+      seedCompletedWorkout(driver, 'w-old', benchId, 1_000, [{ weightKg: 100, reps: 5 }], { updatedAt: 10_000 });
+      seedCompletedWorkout(driver, 'w-new', benchId, 2_000, [{ weightKg: 105, reps: 5 }], { updatedAt: 30_000 });
+      const before = await repo.exerciseHistoryWatermark(benchId);
+      expect(before).toBe(30_000);
+
+      // Delete the OLDER workout — 'w-new' still holds the highest
+      // updated_at among surviving rows, so a naive MAX(...)-over-alive-rows
+      // watermark would stay 30_000 here, wrongly reporting "nothing
+      // changed."
+      await repo.softDelete('w-old');
+
+      const after = await repo.exerciseHistoryWatermark(benchId);
+      expect(after).not.toBe(before);
+      expect(await repo.setsForExercise(benchId)).toHaveLength(1);
+      expect((await repo.setsForExercise(benchId))[0]!.workoutId).toBe('w-new');
+    });
+
+    it('a RecordsService-style cache warmed before a non-max-watermark delete does not keep serving the deleted set (end-to-end proof)', async () => {
+      seedCompletedWorkout(driver, 'w-old', benchId, 1_000, [{ weightKg: 100, reps: 5 }], { updatedAt: 10_000 });
+      seedCompletedWorkout(driver, 'w-new', benchId, 2_000, [{ weightKg: 105, reps: 5 }], { updatedAt: 30_000 });
+
+      // Simulate RecordsService's own cache-hit check: warm once, remember
+      // the watermark and the sets it produced.
+      const warmedWatermark = await repo.exerciseHistoryWatermark(benchId);
+      const warmedSets = await repo.setsForExercise(benchId);
+      expect(warmedSets).toHaveLength(2);
+
+      await repo.softDelete('w-old');
+
+      const currentWatermark = await repo.exerciseHistoryWatermark(benchId);
+      // The cache-hit test IS "watermark unchanged" — this must be false
+      // now, or a real RecordsService would skip re-fetching and keep
+      // returning `warmedSets` (which still includes 'w-old's deleted set).
+      expect(currentWatermark).not.toBe(warmedWatermark);
+
+      const freshSets = await repo.setsForExercise(benchId);
+      expect(freshSets).toHaveLength(1);
+      expect(freshSets[0]!.workoutId).toBe('w-new');
+    });
   });
 });

@@ -1210,15 +1210,45 @@ export class WorkoutRepositoryImpl implements WorkoutRepository {
     return rows.map((row, index) => mapHistoricalSetRow(row, index, exerciseType));
   }
 
+  /**
+   * M4-02 review fix: this must be sensitive to *every* completed workout
+   * that ever referenced `exerciseId` being deleted, not just to whichever
+   * one currently happens to hold the per-exercise max `updated_at`. A
+   * naive `MAX(w.updated_at) WHERE deleted_at IS NULL` (the original M4-02
+   * shape) drops a soft-deleted row out of the aggregate entirely — so if
+   * that row wasn't already the max, its `updated_at` bump from
+   * `softDelete` is invisible and the aggregate can return the *exact same
+   * number* before and after the delete, even though `setsForExercise`'s
+   * own result just changed (that workout's sets left history). A
+   * `RecordsService` cache entry keyed on that unchanged watermark would
+   * then wrongly report a hit and keep serving the deleted workout's sets
+   * (proven by a repro test in `__tests__/workout-repository.records.test
+   * .ts` before this fix; see also `records-service.test.ts`'s companion
+   * integration case).
+   *
+   * Fix: aggregate `MAX(updated_at)` over **every** completed workout that
+   * references `exerciseId`, deleted or not (so a delete's own `updated_at`
+   * bump — `softDelete` always sets one — always moves the number), but
+   * report `0` whenever no currently-alive (non-deleted) completed workout
+   * remains, preserving "0 means no history to show" for every existing
+   * caller/test. `aliveCount` and `watermark` are computed in the one
+   * query (`SUM`/`MAX` over the same joined rows) rather than two round
+   * trips.
+   */
   async exerciseHistoryWatermark(exerciseId: string): Promise<number> {
-    const row = this.driver.queryAll<{ watermark: number | null }>(
-      `SELECT MAX(w.updated_at) AS watermark
+    const row = this.driver.queryAll<{ alive_count: number | null; watermark: number | null }>(
+      `SELECT
+         SUM(CASE WHEN w.deleted_at IS NULL THEN 1 ELSE 0 END) AS alive_count,
+         MAX(w.updated_at) AS watermark
        FROM workouts w
        JOIN workout_exercises we ON we.workout_id = w.id
-       WHERE we.exercise_id = ? AND w.state = 'completed' AND w.deleted_at IS NULL`,
+       WHERE we.exercise_id = ? AND w.state = 'completed'`,
       [exerciseId],
     )[0];
-    return row?.watermark ?? 0;
+    if (!row || !row.alive_count) {
+      return 0;
+    }
+    return row.watermark ?? 0;
   }
 
   // ---------------------------------------------------------------------

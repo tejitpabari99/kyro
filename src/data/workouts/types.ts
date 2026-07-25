@@ -352,19 +352,28 @@ export interface WorkoutRepositoryMutators {
    * otherwise expose) — the single cheapest signal
    * `RecordsService` (`src/features/stats/records-service.ts`) needs to
    * answer "has anything that could move this exercise's PRs changed since
-   * I last computed its snapshot": the max `workouts.updated_at` across
-   * every completed, non-deleted workout that references `exerciseId` (`0`
-   * when there is none yet). `workouts.updated_at` is exactly the column
-   * every mutation that can move a PR touches — `finish`, the eventual
-   * M4-05 `update` (edit past workout), `softDelete` — while in-progress
+   * I last computed its snapshot": `0` when no *currently non-deleted*
+   * completed workout references `exerciseId`; otherwise the max
+   * `workouts.updated_at` across **every** completed workout that ever
+   * referenced `exerciseId`, deleted or not (M4-02 review fix — see
+   * `WorkoutRepositoryImpl.exerciseHistoryWatermark`'s own comment for why
+   * a plain `MAX(updated_at) WHERE deleted_at IS NULL` under-invalidates: a
+   * `softDelete` of a workout that never held the per-exercise max
+   * `updated_at` would otherwise leave the watermark completely unchanged
+   * even though that workout's sets just left history — a real stale-cache
+   * bug, not a hypothetical one). `workouts.updated_at` is exactly the
+   * column every mutation that can move a PR touches — `finish`, the
+   * eventual M4-05 `update` (edit past workout), `softDelete` (which always
+   * bumps its own row's `updated_at` too, specifically so its deletion is
+   * never invisible to this aggregate) — while in-progress
    * `sets`/`workout_exercises` mutations on an *active* workout never bump
    * it (05 §3.2's own DDL has no `updated_at` column on either table), and
    * correctly never invalidate anything: an active workout's own sets
    * aren't part of PR history until `finish()` commits them. One indexed
-   * `MAX(...)` query (`idx_we_exercise` + `idx_workouts_start`, 05 §4) —
-   * orders of magnitude cheaper than re-fetching and re-folding every
-   * historical set via {@link setsForExercise}, which is the entire point
-   * of checking this first.
+   * query (`idx_we_exercise` + `idx_workouts_start`, 05 §4) — orders of
+   * magnitude cheaper than re-fetching and re-folding every historical set
+   * via {@link setsForExercise}, which is the entire point of checking this
+   * first.
    */
   exerciseHistoryWatermark(exerciseId: string): Promise<number>;
 }
