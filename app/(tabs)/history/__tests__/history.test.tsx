@@ -85,6 +85,11 @@ jest.mock('@/data/sqlite/boot', () => ({
 jest.mock('@/data/exercises/exercise-repository', () => ({
   ExerciseRepositoryImpl: jest.fn().mockImplementation(() => ({
     get: jest.fn((id: string) => Promise.resolve(id === mockFixtureExercise.id ? mockFixtureExercise : null)),
+    // M4-03: the real `HistoryListScreen` builds its exercise lookup map via
+    // `list({includeArchived: true})`, not a per-row `get` (see that
+    // screen's own header) — `HistoryDetailScreen` still uses `get`, so both
+    // are backed here.
+    list: jest.fn(() => Promise.resolve([mockFixtureExercise])),
   })),
 }));
 
@@ -95,6 +100,9 @@ jest.mock('@/data/workouts/workout-repository', () => ({
     // mock backs *every* construction site, not just the two route files
     // under test, so `getActive` has to resolve (no active workout) or boot
     // itself fails and every route renders `MigrationErrorScreen` instead.
+    // The same instance is also what `configureRecordsService` (M4-02) is
+    // wired with at boot, so `setsForExercise`/`exerciseHistoryWatermark`
+    // have to resolve too, or `HistoryListScreen`'s PR-count read throws.
     getActive: jest.fn(() => Promise.resolve(null)),
     listCompleted: jest.fn(() =>
       Promise.resolve([
@@ -112,6 +120,15 @@ jest.mock('@/data/workouts/workout-repository', () => ({
       ]),
     ),
     getFull: jest.fn((id: string) => Promise.resolve(id === mockFixtureWorkout.id ? mockFixtureWorkout : null)),
+    getExercisesForWorkouts: jest.fn((ids: string[]) => {
+      const map = new Map<string, unknown[]>();
+      for (const id of ids) {
+        map.set(id, id === mockFixtureWorkout.id ? mockFixtureWorkout.exercises : []);
+      }
+      return Promise.resolve(map);
+    }),
+    setsForExercise: jest.fn(() => Promise.resolve([])),
+    exerciseHistoryWatermark: jest.fn(() => Promise.resolve(0)),
   })),
 }));
 

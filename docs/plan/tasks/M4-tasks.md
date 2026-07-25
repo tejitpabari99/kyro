@@ -24,7 +24,7 @@ Task count: **12**
 **Acceptance / test gate:** Integration: create/edit/delete a workout → affected exercise caches invalidated (union of old+new ids on edit, 08 §4.9); watermark cache hit/miss unit tests; live check does not touch the driver (spy).
 **Est:** 1 d
 
-### M4-03 — History tab: cards + pagination
+### M4-03 — History tab: cards + pagination [done]
 **Description:** Replace M2's minimal list with the real History tab.
 **How:** Per 04 §3.1: FlashList + paged Query (20/page, `listCompleted({before,limit})`), card = title, relative date ("Yesterday", "Tue, 15 Jul"), stats strip Duration · Volume · 🏆 N PRs (omit at 0; N = count of (set, record-type) awards from RecordsService), exercise summary lines "3 × Bench Press (Barbell) — best 80kg × 8". Header: Calendar icon → M4-06; `+` menu → Log past workout (M4-05). Summary rows computed in the page query, cached by Query (06 §8).
 **References:** 04 §3.1; 06 §8 (history perf).

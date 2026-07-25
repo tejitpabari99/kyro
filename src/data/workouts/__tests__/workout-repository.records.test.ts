@@ -346,4 +346,69 @@ describe('WorkoutRepositoryImpl — setsForExercise / exerciseHistoryWatermark (
       expect(freshSets[0]!.workoutId).toBe('w-new');
     });
   });
+
+  // -------------------------------------------------------------------
+  // getExercisesForWorkouts (M4-03)
+  // -------------------------------------------------------------------
+  describe('getExercisesForWorkouts', () => {
+    it('returns an empty map for an empty id list', async () => {
+      const result = await repo.getExercisesForWorkouts([]);
+      expect(result.size).toBe(0);
+    });
+
+    it('a workoutId with no workout_exercises rows still gets an [] entry', async () => {
+      insertWorkout(driver, 'w-empty', { startTime: 1_000 });
+
+      const result = await repo.getExercisesForWorkouts(['w-empty']);
+
+      expect(result.get('w-empty')).toEqual([]);
+    });
+
+    it('an unknown workoutId still gets an [] entry (defensive — caller does not have to special-case it)', async () => {
+      const result = await repo.getExercisesForWorkouts(['does-not-exist']);
+      expect(result.get('does-not-exist')).toEqual([]);
+    });
+
+    it('hydrates each workout\'s own exercises + sets, in position order, correctly isolated from a sibling workout', async () => {
+      seedCompletedWorkout(driver, 'w1', benchId, 1_000, [
+        { weightKg: 100, reps: 5 },
+        { weightKg: 105, reps: 3 },
+      ]);
+      seedCompletedWorkout(driver, 'w2', squatId, 2_000, [{ weightKg: 20, reps: 8 }]);
+
+      const result = await repo.getExercisesForWorkouts(['w1', 'w2']);
+
+      const w1Exercises = result.get('w1')!;
+      expect(w1Exercises).toHaveLength(1);
+      expect(w1Exercises[0]!.exerciseId).toBe(benchId);
+      expect(w1Exercises[0]!.sets.map((s) => s.weightKg)).toEqual([100, 105]);
+
+      const w2Exercises = result.get('w2')!;
+      expect(w2Exercises).toHaveLength(1);
+      expect(w2Exercises[0]!.exerciseId).toBe(squatId);
+      expect(w2Exercises[0]!.sets.map((s) => s.weightKg)).toEqual([20]);
+    });
+
+    it('a workout with two workout_exercises occurrences returns both, in position order', async () => {
+      insertWorkout(driver, 'w-multi', { startTime: 1_000 });
+      const we0 = insertWorkoutExercise(driver, 'w-multi', benchId, 0);
+      insertSet(driver, we0, 0, { weightKg: 60, reps: 8 });
+      const we1 = insertWorkoutExercise(driver, 'w-multi', squatId, 1);
+      insertSet(driver, we1, 0, { weightKg: 20, reps: 10 });
+
+      const result = await repo.getExercisesForWorkouts(['w-multi']);
+
+      const exercises = result.get('w-multi')!;
+      expect(exercises.map((e) => e.exerciseId)).toEqual([benchId, squatId]);
+    });
+
+    it('matches getFull\'s own hydration for the same workout (parity check)', async () => {
+      seedCompletedWorkout(driver, 'w1', benchId, 1_000, [{ weightKg: 100, reps: 5 }]);
+
+      const batched = await repo.getExercisesForWorkouts(['w1']);
+      const full = await repo.getFull('w1');
+
+      expect(batched.get('w1')).toEqual(full!.exercises);
+    });
+  });
 });
