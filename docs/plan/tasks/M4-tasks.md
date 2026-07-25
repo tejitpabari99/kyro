@@ -64,7 +64,7 @@ Task count: **12**
 **Acceptance / test gate:** RNTL smoke both themes for all four; tooltip interaction test; gap handling — line connects existing points, no zero-fill (04 §6 chart rule, applies globally).
 **Est:** 1.5 d
 
-### M4-08 — domain/stats-buckets.ts + statsFeed + statistics dashboard
+### M4-08 — domain/stats-buckets.ts + statsFeed + statistics dashboard [done]
 **Description:** Dashboard aggregation logic and the Profile → Statistics screen.
 **How:** Repo `statsFeed(range)`: single ranged query of `(start_time, exercise_id, primary_muscle_group, set fields)` — no N+1 (05 §4). `domain/stats-buckets.ts`: weekly buckets respecting first-day-of-week; monthly switch when range = All and span > 2 y; volume per P7 (reuse M2-04); warm-up inclusion per setting; muscle distribution — primary counts 1, secondaries 0.5 each, ranges 7D/30D/3M/1Y/All. Dashboard (`profile/statistics`): summary tiles (total workouts, volume, time, current streak) + 4 chart cards per 04 §4.1 — workouts/week bars with optional goal line (weekly_goal setting; goal-met accent vs muted), aggregate trend (Duration|Volume|Reps switcher), muscle distribution horizontal bars, sets-per-muscle-group stacked weekly (top-8 + Other). Ranges 3M/1Y/All. Query-cached per range.
 **References:** 04 §4.1–4.2; 05 §4, §6; 08 §4.8 (bucketing cases).

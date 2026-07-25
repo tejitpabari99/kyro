@@ -235,6 +235,36 @@ covered; whether the swipe gesture actually feels responsive, whether the `SWIPE
 scroll anywhere it's embedded, are on-device-only checks deferred to the same physical-device QA
 pass the two precedents above are deferred to.
 
+## Multi-chart-mount RNTL test flakiness within one file (M4-08 finding, 2026-07-25)
+
+`StatisticsScreen.tsx` (M4-08, Profile → Statistics dashboard) mounts 3 real
+`victory-native`/`@shopify/react-native-skia` chart cards (`BarChart` + `LineChart` +
+`StackedBarChart`) simultaneously in one render — heavier than any single M4-07 chart wrapper's
+own test file (each of which mounts only one chart type per test). Empirically, the interaction
+tests that repeatedly re-mount `StatisticsScreen` (range-control re-fetch, metric switcher,
+first-day-of-week reactivity) intermittently failed with zero query calls / missing testIDs when
+run **after** other `it` blocks in the *same* test file — accompanied by React console warnings
+("You seem to have overlapping act() calls, this is not supported", "An update ... was not
+wrapped in act(...)", "The current testing environment is not configured to support act(...)").
+Each individual failing test passed cleanly in isolation (`jest -t "<name>"`, a fresh process),
+and the underlying behavior is independently proven correct by `domain/stats-buckets.ts`'s own
+exhaustive unit suite (`stats-buckets.test.ts`) and `WorkoutRepositoryImpl.statsFeed`'s real-SQLite
+integration suite (`workout-repository.stats.test.ts`) — this is a test-harness-level React
+act()/scheduler interaction under this project's jest-expo + React 19 + `@tanstack/react-query`
+combination, not a functional bug in the screen or its data layer. Root cause not fully isolated
+(a `IS_REACT_ACT_ENVIRONMENT`-adjacent global-scheduler interaction across sequential heavy-Skia
+mounts within one Jest worker/file is the leading theory, per the specific console warnings
+above), but the fix that resolved it reliably was mechanical: splitting the interaction-heavy `it`
+blocks into their own file (`StatisticsScreen.interactions.test.tsx`, separate from
+`StatisticsScreen.test.tsx`'s summary-tile/warm-up-toggle tests) — Jest resets the module registry
+and JS environment per test **file**, not just per test, which sidesteps whatever state
+accumulates within one shared file/process. **Practical guidance for later multi-chart-mount
+screens** (M4-09's per-exercise charts is the obvious next case): keep test files that mount more
+than one heavy chart component per render small, and split interaction/re-render-heavy `it` blocks
+into their own file rather than accumulating many full-screen mounts in one file, before assuming
+a real bug if `waitFor`/testID lookups start failing only when run alongside other tests in the
+same file.
+
 ## Everything else
 
 Every other task — all of M0 through M7 except the six owner-gated tasks listed above — is
