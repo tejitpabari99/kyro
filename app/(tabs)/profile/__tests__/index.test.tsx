@@ -18,6 +18,19 @@ jest.mock('expo-router', () => ({
 }));
 
 describe('ProfileScreen — Settings link + dev-gallery link __DEV__ gate', () => {
+  it('shows the Statistics row (M4-08, every build) and navigates to /profile/statistics on press', async () => {
+    await render(
+      <ThemeProvider>
+        <ProfileScreen />
+      </ThemeProvider>,
+    );
+
+    const statisticsLink = screen.getByTestId('statistics-link');
+    expect(statisticsLink).toBeTruthy();
+    fireEvent.press(statisticsLink);
+    expect(router.push).toHaveBeenCalledWith('/profile/statistics');
+  });
+
   it('shows the Settings row (every build) and navigates to /profile/settings on press', async () => {
     await render(
       <ThemeProvider>

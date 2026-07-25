@@ -276,8 +276,9 @@
  * without re-fetching and re-folding a whole exercise's history just to
  * find out nothing changed.
  */
-import type { ExerciseType, Rpe, SetType } from '@/domain/enums';
+import type { ExerciseType, MuscleGroup, Rpe, SetType } from '@/domain/enums';
 import type { HistoricalSet } from '@/domain/records';
+import type { StatsFeedRow } from '@/domain/stats-buckets';
 import { localDateKey, parseLocalDateKey } from '@/domain/streaks';
 
 import { generateUuid } from '../shared/uuid';
@@ -311,6 +312,7 @@ import type {
   WorkoutUpdateInput,
   WorkoutDateCount,
   WorkoutDatesRange,
+  StatsFeedRange,
 } from './types';
 
 // ---------------------------------------------------------------------------
@@ -457,6 +459,37 @@ function mapHistoricalSetRow(row: HistoricalSetRow, setOrder: number, exerciseTy
     weightKg: row.weight_kg,
     reps: row.reps,
     durationSeconds: row.duration_seconds,
+  };
+}
+
+/** One joined `sets`/`workout_exercises`/`workouts`/`exercises` row for {@link WorkoutRepositoryImpl.statsFeed} (M4-08) — already filtered/ordered by the SQL query itself, one row per `sets` record. `secondary_muscle_groups` stays the raw JSON-array TEXT column (mirrors `ExerciseRepositoryImpl`'s own row shape) — {@link mapStatsFeedRow} JSON-parses it. */
+interface StatsFeedSetRow {
+  set_type: string;
+  weight_kg: number | null;
+  reps: number | null;
+  is_completed: number;
+  workout_id: string;
+  exercise_id: string;
+  workout_start_time: number;
+  workout_end_time: number | null;
+  exercise_type: string;
+  primary_muscle_group: string;
+  secondary_muscle_groups: string;
+}
+
+function mapStatsFeedRow(row: StatsFeedSetRow): StatsFeedRow {
+  return {
+    workoutId: row.workout_id,
+    workoutStartTime: row.workout_start_time,
+    workoutEndTime: row.workout_end_time,
+    exerciseId: row.exercise_id,
+    exerciseType: row.exercise_type as ExerciseType,
+    primaryMuscleGroup: row.primary_muscle_group as MuscleGroup,
+    secondaryMuscleGroups: JSON.parse(row.secondary_muscle_groups) as MuscleGroup[],
+    setType: row.set_type as SetType,
+    weightKg: row.weight_kg,
+    reps: row.reps,
+    isCompleted: row.is_completed === 1,
   };
 }
 
@@ -1356,6 +1389,46 @@ export class WorkoutRepositoryImpl implements WorkoutRepository {
 
     const exerciseType = exerciseRow.exercise_type as ExerciseType;
     return rows.map((row, index) => mapHistoricalSetRow(row, index, exerciseType));
+  }
+
+  /**
+   * M4-08 (`./types.ts`'s own doc comment): the Statistics dashboard's
+   * single ranged feed query — one indexed `sets` -> `workout_exercises`
+   * -> `workouts` -> `exercises` join (`idx_workouts_start`), never a
+   * per-exercise loop, per 05 §4's own "avoid N+1" note. Same inclusive-
+   * start/exclusive-end range convention as `workoutDates` (`>=`/`<`,
+   * omitted bound = no bound on that side).
+   */
+  async statsFeed(range: StatsFeedRange = {}): Promise<StatsFeedRow[]> {
+    const conditions = [`w.state = 'completed'`, `w.deleted_at IS NULL`];
+    const params: unknown[] = [];
+
+    if (range.start !== undefined) {
+      conditions.push('w.start_time >= ?');
+      params.push(range.start);
+    }
+    if (range.end !== undefined) {
+      conditions.push('w.start_time < ?');
+      params.push(range.end);
+    }
+
+    const rows = this.driver.queryAll<StatsFeedSetRow>(
+      `SELECT s.set_type, s.weight_kg, s.reps, s.is_completed,
+              we.workout_id AS workout_id, we.exercise_id AS exercise_id,
+              w.start_time AS workout_start_time, w.end_time AS workout_end_time,
+              e.exercise_type AS exercise_type,
+              e.primary_muscle_group AS primary_muscle_group,
+              e.secondary_muscle_groups AS secondary_muscle_groups
+       FROM sets s
+       JOIN workout_exercises we ON we.id = s.workout_exercise_id
+       JOIN workouts w ON w.id = we.workout_id
+       JOIN exercises e ON e.id = we.exercise_id
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY w.start_time ASC`,
+      params,
+    );
+
+    return rows.map(mapStatsFeedRow);
   }
 
   /**
