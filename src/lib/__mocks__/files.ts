@@ -19,8 +19,6 @@ export const exercisePhotoRelativeDir = jest.fn(
   (exerciseId: string) => `${EXERCISE_PHOTOS_ROOT}/${exerciseId}`,
 );
 
-export const pickFile = jest.fn(async () => null);
-
 export const exercisePhotoDirUri = jest.fn(
   (exerciseId: string) => `file:///mock-documents/photos/exercises/${exerciseId}/`,
 );

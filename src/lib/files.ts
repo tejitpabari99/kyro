@@ -1,25 +1,22 @@
 /**
  * File-picker / filesystem seam (06 §10) — the single mockable boundary
  * between app code and the native filesystem/media packages (08 §5: "...
- * file pickers ... via src/lib/ seams"). Two jobs live in this one file:
+ * file pickers ... via src/lib/ seams"). Custom-exercise photo storage
+ * (M1-09, everything below): `05` §8's on-device convention —
+ * `${documentDirectory}photos/exercises/{exerciseId}/{uuid}.jpg`, DB rows
+ * store the **relative file name only** (never an absolute path — the
+ * documents-dir container path changes across reinstalls/devices, 05 §8) —
+ * plus the `expo-image-picker` library/camera pick and the
+ * `expo-image-manipulator` square-crop re-encode 03 §5's create/edit form
+ * needs.
  *
- *  - `pickFile` (M0-03 stub, still unimplemented): CSV import (M5-07) will
- *    wire this to `expo-document-picker`. `writeFile`'s own M0-03 stub is
- *    **removed** as of M5-06 — CSV export's real file-write landed in
- *    `lib/csv-export-file.ts` instead, a dedicated file for the same reason
- *    `progress-photos.ts` split from this one (see that file's own header):
- *    this file's plain top-level `expo-image-manipulator`/`expo-image-picker`
- *    imports have no jest-expo automock, and `CsvService` is imported by
- *    `SettingsScreen`/`HistoryDetailScreen` at module scope, so routing the
- *    CSV write through here would drag those two unmocked native imports
- *    into every existing test of those two screens.
- *  - Custom-exercise photo storage (M1-09, everything below the stub pair):
- *    `05` §8's on-device convention — `${documentDirectory}photos/exercises/
- *    {exerciseId}/{uuid}.jpg`, DB rows store the **relative file name only**
- *    (never an absolute path — the documents-dir container path changes
- *    across reinstalls/devices, 05 §8) — plus the `expo-image-picker`
- *    library/camera pick and the `expo-image-manipulator` square-crop
- *    re-encode 03 §5's create/edit form needs.
+ * The Hevy CSV import document picker (`pickFile`/`readTextFile`, M5-07)
+ * deliberately does **not** live here — see `lib/hevy-import-file.ts`'s own
+ * header for why routing it through this file (which has two plain
+ * top-level native imports with no jest-expo automock) would drag both into
+ * every test that imports the import service, the same "split for
+ * jest-mockability" reasoning `lib/csv-export-file.ts` (M5-06) already
+ * established for CSV *export*'s own file-write half.
  *
  * `photos/progress/` (M5's progress-photo feature, 05 §8) is reserved here
  * as a bare constant (`PROGRESS_PHOTOS_ROOT`) only — no read/write helpers
@@ -68,16 +65,6 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
-
-export interface PickedFile {
-  uri: string;
-  name: string;
-}
-
-/** TODO(M5-07): wire to `expo-document-picker` `getDocumentAsync`. */
-export async function pickFile(_options?: { type?: string }): Promise<PickedFile | null> {
-  throw new Error('pickFile is not implemented yet — see M5-07 CSV import task.');
-}
 
 // ---------------------------------------------------------------------------
 // Custom exercise photo storage (M1-09, 05 §8)
