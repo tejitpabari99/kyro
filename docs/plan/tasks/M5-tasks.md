@@ -40,7 +40,7 @@ Task count: **11**
 **Acceptance / test gate:** 04 §7 acceptance: every setting persists + applies without restart; first-day change re-buckets calendar/stats (integration); Maestro flow 6 covers the sweep in M5-10.
 **Est:** 1.5 d
 
-### M5-05 — domain/csv-codec.ts: export encoding + golden files
+### M5-05 — domain/csv-codec.ts: export encoding + golden files `[done]`
 **Description:** The RFC-4180 CSV writer producing Hevy's exact 14-column schema.
 **How:** Dependency-free `lib/csv.ts` writer + `domain/csv-codec.ts` encode: exact column order per 05 §7.1; unit-dependent headers (`weight_kg`↔`weight_lbs`, `distance_km`↔`distance_miles`) with converted values (weight ≤ 2 decimals, distance 2); one row per set, completed workouts only, ordered start_time → exercise position → set position; `set_index` 0-based; dates `d MMM yyyy, HH:mm` English month abbreviations, **local time**; empty string nulls; all fields double-quoted; embedded quotes doubled; UTF-8 `\n`; custom_metric NOT exported.
 **References:** 05 §7.1; 00 P11; 08 §4.6.
