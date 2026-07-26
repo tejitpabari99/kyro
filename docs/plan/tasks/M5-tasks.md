@@ -32,7 +32,7 @@ Task count: **11**
 **Acceptance / test gate:** 04 §6 acceptance: photos persist across app updates (relative-path storage verified); compare renders deltas; orphan sweep integration test (both directions) — runs without measurable boot cost.
 **Est:** 1.5 d
 
-### M5-04 — Settings surface completion + About/licenses
+### M5-04 — Settings surface completion + About/licenses `[done]`
 **Description:** All remaining settings groups per 04 §7.
 **How:** General: first day of week (monday/sunday/saturday) with **recompute hooks** — invalidate streaks/stats queries on change; weekly workout goal (feeds M4-08 goal line); theme already done. Notifications: rest-timer notifications toggle (`rest_notifications_enabled`). Data group: entries wiring to M5-06/07/09. About: version, licenses (free-exercise-db credit + OSS licenses), Sentry toggle (`sentry_enabled`), "Export diagnostics" (logger ring buffer from M0-11 via share sheet). Profile tab completion: avatar/name vanity, workout count + streak, shortcut cards (Statistics · Exercises/Archived · Measures · Calendar), recent workouts (3).
 **References:** 04 §7; 06 §9 (diagnostics); 10 §5 (license credit).
