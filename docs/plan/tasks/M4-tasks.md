@@ -88,7 +88,7 @@ Task count: **12**
 **Acceptance / test gate:** 04 §5 acceptance: 102.5 over 100 banners + appears post-save; second identical set no banner; uncheck/re-check re-banners; finish-with-unchecked persists no record. RNTL banner behavior; integration through store.
 **Est:** 1 d
 
-### M4-11 — Synthetic fixtures + performance budgets
+### M4-11 — Synthetic fixtures + performance budgets [done]
 **Description:** Big-data fixtures and the perf gates.
 **How:** Fixture generator in `src/test/fixtures/`: 5-year history (~1000+ workouts, realistic exercise spread) — loadable into the app DB via a dev-only route/script (also reused by M5 import perf + 08 §7 spot-checks). Measure: all stats ranges < 300 ms compute; history scroll 60 fps at 1000 workouts (FlashList config tuning if needed); records computation per exercise acceptable (low-thousands rows, 05 §4). Profile re-renders on dashboard range switches.
 **References:** 09 M4 exit; 05 §4; 06 §8; 08 §7.

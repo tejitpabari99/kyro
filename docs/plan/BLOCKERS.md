@@ -284,6 +284,40 @@ fix (split into a second file) documented above is available if this ever does s
 speculatively splitting an already-green, non-flaky file would be unjustified churn. Noting this
 here so a future task doesn't have to re-derive "was this checked" from scratch.
 
+## History 60 fps scroll + dashboard range-switch re-render profiling (M4-11 finding, 2026-07-26)
+
+M4-11's own brief splits cleanly into a sandbox-testable half and an on-device-only half. The
+testable half is done: `src/test/fixtures/synthetic-history.ts` + `synthetic-history-loader.ts`
+generate/load a 5-year, 1040-workout (~15.8k-set, 8-distinct-`exercise_type`) fixture into a real
+`better-sqlite3` driver, and `src/test/fixtures/__tests__/perf-budgets.test.ts` times the real
+`WorkoutRepositoryImpl.statsFeed`/`domain/stats-buckets.ts` compute (every `DashboardRangeKey`) and
+`WorkoutRepositoryImpl.setsForExercise`/`domain/records.ts` compute (every fixture exercise)
+against the 300 ms budget (06 §8) — all green, see `docs/plan/EXECUTION-LOG.md`'s M4-11 row for the
+actual measured numbers.
+
+What is **not** achievable here, same category as the `CalendarMonth` swipe-gesture-feel and
+drag-reorder-frame-rate findings above (no iOS Simulator/physical device in this sandbox):
+
+- **History-tab scroll at 1000+ workouts actually running at 60 fps.** `FlashList` v2
+  (`@shopify/flash-list@2.3.2`, confirmed via its own `FlashListProps.d.ts`) has no
+  `estimatedItemSize`/`removeClippedSubviews` props at all — both are v1-only concepts, fully
+  automatic in v2 — so there is no static "v1 footgun" config to tune there. What *is* a real,
+  applicable tuning was checked and applied: `HistoryWorkoutCard` (`src/features/history/
+  HistoryWorkoutCard.tsx`) is now `React.memo`-wrapped, and `HistoryListScreen.tsx`'s
+  `handleRowPress` is `useCallback`-stabilized, so an unrelated parent re-render no longer
+  re-renders every visible row. Whether the list actually holds 60 fps against a real finger at
+  1000+ rows can only be measured with a profiler attached to a running device/simulator — deferred
+  to the owner's physical/simulator QA pass.
+- **Dashboard range-switch re-render profiling** (`StatisticsScreen.tsx`, M4-08) — React DevTools
+  Profiler / Flipper-style "what re-rendered and why" traces need a real running app, not a Jest
+  render tree. The *compute* budget behind a range switch (`statsFeed` + full `stats-buckets`
+  suite) is proven under budget by the perf-budget test above; whether React itself re-renders more
+  than necessary on a switch is a separate, on-device-only question, deferred the same way.
+
+`app/dev/load-fixture.tsx` (`__DEV__`-gated, linked from Profile → "Load Fixture Data (DEV)") loads
+this exact fixture into the real on-device database for whoever runs that physical/simulator pass —
+it does the seeding, not the measuring.
+
 ## Everything else
 
 Every other task — all of M0 through M7 except the six owner-gated tasks listed above — is
