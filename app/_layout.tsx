@@ -402,6 +402,14 @@ export default function RootLayout(): React.JSX.Element | null {
                 name="workout/[id]/edit"
                 options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
               />
+              {/* M5-07, 05 §7.2/06 §3: the Hevy CSV import flow — same
+                  cross-tab, fullScreenModal presentation as every route
+                  above (04 §2.1's "cross-tab flows live outside (tabs),
+                  presented as a modal" convention). */}
+              <Stack.Screen
+                name="import/hevy"
+                options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
+              />
             </Stack>
           </ThemeProvider>
         </QueryClientProvider>

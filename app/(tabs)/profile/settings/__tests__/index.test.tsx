@@ -532,12 +532,19 @@ describe('Settings screen — DATA section, Export CSV (M5-06)', () => {
     );
   }
 
-  it('renders an Export CSV row and no Import/Backup rows (M5-07/M5-09 not yet built)', async () => {
+  it('renders Export CSV and Import Hevy CSV rows, but no Backup row (M5-09 not yet built)', async () => {
     await renderSettings();
 
     expect(screen.getByTestId('settings-export-csv-row')).toBeTruthy();
-    expect(screen.queryByText(/import hevy/i)).toBeNull();
+    expect(screen.getByTestId('settings-import-hevy-csv-row')).toBeTruthy();
     expect(screen.queryByText(/backup/i)).toBeNull();
+  });
+
+  it('pressing Import Hevy CSV navigates to /import/hevy (M5-07)', async () => {
+    await renderSettings();
+    fireEvent.press(screen.getByTestId('settings-import-hevy-csv-row'));
+
+    expect(router.push).toHaveBeenCalledWith('/import/hevy');
   });
 
   it('pressing Export CSV calls CsvService.exportAll with the live unit settings, then shares the returned file', async () => {
