@@ -265,6 +265,82 @@ export function formatCsvDateTime(epochMs: number): string {
 }
 
 // ---------------------------------------------------------------------------
+// Date parsing (M5-07, 05 §7.2): the exact inverse of `formatCsvDateTime`,
+// plus a defensive ISO 8601 fallback — see below.
+// ---------------------------------------------------------------------------
+
+/** `MONTH_ABBREVIATIONS[i]` (lowercased) -> `i` — built once, not per call. */
+const MONTH_INDEX_BY_ABBREVIATION: ReadonlyMap<string, number> = new Map(
+  MONTH_ABBREVIATIONS.map((abbreviation, index) => [abbreviation.toLowerCase(), index]),
+);
+
+/** `d MMM yyyy, HH:mm` per {@link formatCsvDateTime} — day 1-2 digits unpadded, 3-letter month (case-insensitive — real-world exports/hand-edited fixtures aren't guaranteed to match this file's own `Jan`/`Feb`/... casing exactly), 4-digit year, comma, zero-padded 24h `HH:mm`. */
+const HEVY_DATE_TIME_PATTERN =
+  /^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4}),\s+(\d{2}):(\d{2})$/;
+
+/**
+ * Parses `raw` (already trimmed of surrounding whitespace by the caller — a
+ * CSV field's own leading/trailing whitespace is not this function's
+ * concern) as a local-time timestamp, trying Hevy's own `d MMM yyyy, HH:mm`
+ * format first (`formatCsvDateTime`'s exact inverse — every value this
+ * app's own encoder ever writes round-trips through this branch) and, only
+ * if that fails to match, ISO 8601 as a defensive fallback (`M5-tasks.md`'s
+ * own M5-07 "How" line names this explicitly: "parse Hevy's date format +
+ * ISO 8601 defensively" — some third-party export tools, or a hand-edited
+ * fixture/CSV, may emit ISO 8601 instead of Hevy's own format). Returns
+ * `null` for anything matching neither shape, or a value that parses
+ * structurally but names an impossible calendar date/time (e.g. `31 Feb
+ * 2026, 08:15`, `3 Jan 2026, 25:61`) — {@link Date}'s own constructor
+ * silently rolls those over into a *different*, valid date instead of
+ * failing (`new Date(2026, 1, 31)` -> "3 Mar 2026"), which would corrupt a
+ * workout's timestamp rather than reject it, so this function re-validates
+ * the constructed {@link Date}'s own fields against what was actually typed
+ * before accepting it.
+ *
+ * ISO 8601 parsing goes through `Date`'s own native parser (`new
+ * Date(raw)`), which is lenient about accepting date-only strings
+ * (`"2026-01-03"`, parsed as UTC midnight per the ISO 8601 spec `Date`
+ * follows) as well as full offset/`Z`-suffixed date-times — appropriate for
+ * a "defensive fallback" whose whole job is tolerating whatever a
+ * differently-shaped export tool emits, not enforcing one exact ISO
+ * variant.
+ */
+export function parseCsvDateTime(raw: string): number | null {
+  const hevyMatch = HEVY_DATE_TIME_PATTERN.exec(raw);
+  if (hevyMatch) {
+    const [, dayStr, monthAbbrev, yearStr, hoursStr, minutesStr] = hevyMatch;
+    const month = MONTH_INDEX_BY_ABBREVIATION.get(monthAbbrev.toLowerCase());
+    if (month === undefined) {
+      return null;
+    }
+    const day = Number(dayStr);
+    const year = Number(yearStr);
+    const hours = Number(hoursStr);
+    const minutes = Number(minutesStr);
+
+    const date = new Date(year, month, day, hours, minutes, 0, 0);
+    // Re-validate: `Date`'s constructor rolls over out-of-range fields
+    // (`day: 31` in a 30-day month, `hours: 25`, ...) into a different,
+    // still-"valid" Date rather than failing — reject anything that didn't
+    // round-trip back to the exact fields typed.
+    const roundTrips =
+      date.getFullYear() === year &&
+      date.getMonth() === month &&
+      date.getDate() === day &&
+      date.getHours() === hours &&
+      date.getMinutes() === minutes;
+    return roundTrips ? date.getTime() : null;
+  }
+
+  // ISO 8601 defensive fallback (see doc comment above).
+  const isoDate = new Date(raw);
+  if (Number.isNaN(isoDate.getTime())) {
+    return null;
+  }
+  return isoDate.getTime();
+}
+
+// ---------------------------------------------------------------------------
 // RFC 4180 field quoting (private, minimal — see file header, "Why this
 // file does NOT import lib/csv.ts")
 // ---------------------------------------------------------------------------
