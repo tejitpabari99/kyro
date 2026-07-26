@@ -20,7 +20,6 @@ export const exercisePhotoRelativeDir = jest.fn(
 );
 
 export const pickFile = jest.fn(async () => null);
-export const writeFile = jest.fn(async () => undefined);
 
 export const exercisePhotoDirUri = jest.fn(
   (exerciseId: string) => `file:///mock-documents/photos/exercises/${exerciseId}/`,
