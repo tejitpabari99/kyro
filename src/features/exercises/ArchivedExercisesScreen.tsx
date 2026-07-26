@@ -18,6 +18,7 @@ import { ArchiveRestore, ChevronLeft } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { Exercise, ExerciseRepository } from '@/data/exercises/types';
 import { DuplicateExerciseNameError } from '@/data/exercises/errors';
@@ -35,6 +36,7 @@ export function ArchivedExercisesScreen({
   testID = 'archived-exercises-screen',
 }: ArchivedExercisesScreenProps): React.JSX.Element {
   const { colors, spacing, typography } = useTheme();
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
 
   const query = useQuery({
@@ -73,7 +75,9 @@ export function ArchivedExercisesScreen({
           flexDirection: 'row',
           alignItems: 'center',
           paddingHorizontal: spacing['4'],
-          paddingTop: spacing['4'],
+          // BUGFIX-01: `insets.top` clears the status bar/notch — see
+          // `app/_layout.tsx`'s header.
+          paddingTop: insets.top + spacing['4'],
           paddingBottom: spacing['2'],
         }}
       >

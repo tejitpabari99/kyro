@@ -10,12 +10,16 @@
  * as floating above whatever's on screen, exactly like `TimerPill`'s own
  * bottom-anchored floating pill — the connected host
  * (`src/features/workout/PRBannerHost.tsx`) just mounts this unconditionally
- * next to `TimerPill`, no layout slot needed. No `react-native-safe-area
- * -context` inset: `GlobalWorkoutBar.tsx`'s own file header already
- * documents why (no `SafeAreaProvider` anywhere in this app yet, confirmed
- * by search; adding one app-wide is out of scope for the task that first
- * needs a top-anchored floating surface) — `TOP_OFFSET` is the same kind of
- * flat, documented approximation that file's `TAB_BAR_HEIGHT_APPROX` is.
+ * next to `TimerPill`, no layout slot needed. Still no `react-native-safe-
+ * area-context` inset as of BUGFIX-01 (which added a `SafeAreaProvider` at
+ * the app root, fixing the separate "content hidden under the status bar"
+ * bug, and switched `GlobalWorkoutBar.tsx`'s own bottom offset over to
+ * `useSafeAreaInsets()` — see that file's header): this banner overlays
+ * `ActiveWorkoutScreen`, which is itself a `fullScreenModal`, so its own
+ * top inset only needs to clear that screen's now-inset-aware header, not
+ * the bare status bar — switching this flat `TOP_OFFSET` over too was left
+ * out of BUGFIX-01's scope (a padding fix for existing screens, not a pass
+ * over every floating overlay) rather than assumed safe unasked.
  *
  * Auto-dismiss (3 s, 07 §5/§8) mirrors `Snackbar`'s own latest-ref timer
  * pattern (see that file's header for the full "why a ref, not a direct

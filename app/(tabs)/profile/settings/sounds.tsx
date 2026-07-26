@@ -19,6 +19,7 @@
  */
 import React from 'react';
 import { ScrollView, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { SoundChoice, VolumeLevel } from '@/data/settings/settings-schema';
 import { useSettingsStore } from '@/features/settings/settings-store';
@@ -41,6 +42,7 @@ const VOLUME_OPTIONS: readonly { value: VolumeLevel; label: string }[] = [
 
 export default function SoundsScreen(): React.JSX.Element {
   const { colors, typography, spacing } = useTheme();
+  const insets = useSafeAreaInsets();
   const sounds = useSettingsStore((state) => state.settings.sounds);
 
   const handleSoundChange = (timer_sound: SoundChoice): void => {
@@ -60,7 +62,12 @@ export default function SoundsScreen(): React.JSX.Element {
     <ScrollView
       testID="settings-sounds-screen"
       style={{ flex: 1, backgroundColor: colors.bg.base }}
-      contentContainerStyle={{ padding: spacing['4'] }}
+      contentContainerStyle={{
+        padding: spacing['4'],
+        // BUGFIX-01: `insets.top` clears the status bar/notch — see
+        // `app/_layout.tsx`'s header.
+        paddingTop: insets.top + spacing['4'],
+      }}
     >
       <Text style={[typography.headline, { color: colors.text.primary, marginBottom: spacing['4'] }]}>
         Sounds

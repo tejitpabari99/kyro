@@ -135,6 +135,7 @@ import { ChevronDown } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { Exercise, ExerciseRepository } from '@/data/exercises/types';
@@ -235,6 +236,7 @@ export function ActiveWorkoutScreen({
   testID = 'active-workout',
 }: ActiveWorkoutScreenProps): React.JSX.Element {
   const { colors, typography, spacing } = useTheme();
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
 
   const workout = useActiveWorkoutStore(selectActiveWorkout);
@@ -996,7 +998,18 @@ export function ActiveWorkoutScreen({
       <GestureDetector gesture={headerSwipeGesture}>
         <View
           testID={`${testID}-header`}
-          style={[styles.header, { paddingHorizontal: spacing['4'], paddingTop: spacing['3'] }]}
+          style={[
+            styles.header,
+            {
+              paddingHorizontal: spacing['4'],
+              // BUGFIX-01: fullScreenModal presentation covers the status
+              // bar too, so `insets.top` is needed on top of the existing
+              // spacing token here just like every other screen's header —
+              // see `app/_layout.tsx`'s header for the `SafeAreaProvider`
+              // this now reads from.
+              paddingTop: insets.top + spacing['3'],
+            },
+          ]}
         >
           <Pressable
             testID={`${testID}-minimize`}

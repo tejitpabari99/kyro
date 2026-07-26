@@ -140,6 +140,7 @@ import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DropProvider } from 'react-native-reanimated-dnd';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { ExerciseRepository } from '@/data/exercises/types';
 import type { RoutineFolder, RoutineRepository, RoutineSummary } from '@/data/routines/types';
@@ -180,6 +181,7 @@ export function RoutinesHubScreen({
   testID = 'routines-hub-screen',
 }: RoutinesHubScreenProps): React.JSX.Element {
   const { colors, spacing, typography } = useTheme();
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const activeWorkout = useActiveWorkoutStore(selectActiveWorkout);
 
@@ -452,7 +454,15 @@ export function RoutinesHubScreen({
         <Text
           style={[
             typography.display,
-            { color: colors.text.primary, paddingHorizontal: spacing['4'], paddingTop: spacing['4'] },
+            {
+              color: colors.text.primary,
+              paddingHorizontal: spacing['4'],
+              // BUGFIX-01: `insets.top` on top of the existing spacing token
+              // so this large title clears the status bar/notch instead of
+              // rendering under it (no `SafeAreaProvider` existed before —
+              // see `app/_layout.tsx`'s header).
+              paddingTop: insets.top + spacing['4'],
+            },
           ]}
         >
           Workout

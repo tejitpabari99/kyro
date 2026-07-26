@@ -50,6 +50,7 @@ import {
   Trophy,
 } from 'lucide-react-native';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ActivityIndicator,
@@ -235,6 +236,7 @@ export function ExerciseDetailScreen({
   testID = 'exercise-detail-screen',
 }: ExerciseDetailScreenProps): React.JSX.Element {
   const { colors, spacing, typography } = useTheme();
+  const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [tab, setTab] = useState<DetailTab>('about');
   const [actionsSheetVisible, setActionsSheetVisible] = useState(false);
@@ -375,7 +377,9 @@ export function ExerciseDetailScreen({
             alignItems: 'center',
             justifyContent: 'space-between',
             paddingHorizontal: spacing['4'],
-            paddingTop: spacing['4'],
+            // BUGFIX-01: `insets.top` clears the status bar/notch — see
+            // `app/_layout.tsx`'s header.
+            paddingTop: insets.top + spacing['4'],
             paddingBottom: spacing['2'],
           }}
         >

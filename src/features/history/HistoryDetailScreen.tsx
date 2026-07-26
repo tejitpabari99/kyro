@@ -111,6 +111,7 @@ import React, { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ellipsis, History } from 'lucide-react-native';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { ExerciseRepository } from '@/data/exercises/types';
@@ -186,6 +187,7 @@ export function HistoryDetailScreen({
   testID = 'history-detail',
 }: HistoryDetailScreenProps): React.JSX.Element {
   const { colors, typography, spacing } = useTheme();
+  const insets = useSafeAreaInsets();
   const weightUnit = useSettingsStore((state) => state.settings.weight_unit);
   const distanceUnit = useSettingsStore((state) => state.settings.distance_unit);
   const rpeEnabled = useSettingsStore((state) => state.settings.rpe_enabled);
@@ -404,7 +406,15 @@ export function HistoryDetailScreen({
 
   return (
     <View testID={testID} style={[styles.container, { backgroundColor: colors.bg.base }]}>
-      <ScrollView contentContainerStyle={{ padding: spacing['4'], gap: spacing['4'] }}>
+      <ScrollView
+        contentContainerStyle={{
+          padding: spacing['4'],
+          // BUGFIX-01: `insets.top` clears the status bar/notch — see
+          // `app/_layout.tsx`'s header.
+          paddingTop: insets.top + spacing['4'],
+          gap: spacing['4'],
+        }}
+      >
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <View style={{ flex: 1 }}>
             <Text style={[typography.title2, { color: colors.text.primary }]}>{workout.title}</Text>

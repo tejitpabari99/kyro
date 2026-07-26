@@ -71,6 +71,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, History } from 'lucide-react-native';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { Exercise, ExerciseRepository } from '@/data/exercises/types';
@@ -120,6 +121,7 @@ export function EditWorkoutScreen({
   testID = 'edit-workout',
 }: EditWorkoutScreenProps): React.JSX.Element {
   const { colors, typography, spacing } = useTheme();
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
 
   // See file header — one independent store instance per screen mount,
@@ -441,7 +443,16 @@ export function EditWorkoutScreen({
         <View testID={testID} style={[styles.container, { backgroundColor: colors.bg.base }]}>
           <View
             testID={`${testID}-header`}
-            style={[styles.header, { paddingHorizontal: spacing['4'], paddingTop: spacing['3'] }]}
+            style={[
+              styles.header,
+              {
+                paddingHorizontal: spacing['4'],
+                // BUGFIX-01: fullScreenModal presentation covers the status
+                // bar too — see `ActiveWorkoutScreen.tsx`'s identical fix /
+                // `app/_layout.tsx`'s header.
+                paddingTop: insets.top + spacing['3'],
+              },
+            ]}
           >
             <Pressable
               testID={`${testID}-back`}

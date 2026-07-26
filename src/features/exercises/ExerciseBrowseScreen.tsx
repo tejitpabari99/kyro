@@ -37,6 +37,7 @@ import { router } from 'expo-router';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   EQUIPMENT_LABELS,
@@ -79,6 +80,7 @@ export function ExerciseBrowseScreen({
   testID = 'exercise-browse-screen',
 }: ExerciseBrowseScreenProps): React.JSX.Element {
   const { colors, spacing, typography } = useTheme();
+  const insets = useSafeAreaInsets();
 
   const [searchInput, setSearchInput] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -179,7 +181,9 @@ export function ExerciseBrowseScreen({
           alignItems: 'center',
           justifyContent: 'space-between',
           paddingHorizontal: spacing['4'],
-          paddingTop: spacing['4'],
+          // BUGFIX-01: `insets.top` clears the status bar/notch — see
+          // `app/_layout.tsx`'s header.
+          paddingTop: insets.top + spacing['4'],
           paddingBottom: spacing['2'],
         }}
       >

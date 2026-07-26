@@ -27,6 +27,7 @@
 import React, { useState } from 'react';
 import { router } from 'expo-router';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useSettingsStore } from '@/features/settings/settings-store';
 import { formatRestSeconds, restTimerSecondsOptions } from '@/features/workout/rest-timer-format';
@@ -68,6 +69,7 @@ function formatDefaultRestSeconds(seconds: number): string {
 
 export default function SettingsScreen(): React.JSX.Element {
   const { colors, typography, spacing } = useTheme();
+  const insets = useSafeAreaInsets();
   const theme = useSettingsStore((state) => state.settings.theme);
   const weightUnit = useSettingsStore((state) => state.settings.weight_unit);
   const defaultRestSeconds = useSettingsStore((state) => state.settings.default_rest_seconds);
@@ -85,7 +87,12 @@ export default function SettingsScreen(): React.JSX.Element {
     <ScrollView
       testID="settings-screen"
       style={[styles.container, { backgroundColor: colors.bg.base }]}
-      contentContainerStyle={{ padding: spacing['4'] }}
+      contentContainerStyle={{
+        padding: spacing['4'],
+        // BUGFIX-01: `insets.top` clears the status bar/notch — see
+        // `app/_layout.tsx`'s header.
+        paddingTop: insets.top + spacing['4'],
+      }}
     >
       <View style={{ marginBottom: spacing['6'] }}>
         <Text

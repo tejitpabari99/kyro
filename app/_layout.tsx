@@ -71,6 +71,35 @@
  *    pre-M0-10 local-state fallback) — acceptable since there is no
  *    settings UI to reach behind a blocking error screen anyway.
  *
+ * --- `GestureHandlerRootView` + `SafeAreaProvider` (BUGFIX-01) ------------
+ * Two infra gaps fixed together since both need to sit outside every screen
+ * in the tree: (1) `GestureDetector` (`Sheet.tsx`/`SetRow.tsx`/
+ * `CalendarMonth.tsx`/`ActiveWorkoutScreen.tsx`) throws "must be used as a
+ * descendant of GestureHandlerRootView" at runtime without this — installed
+ * per react-native-gesture-handler's own docs
+ * (https://docs.swmansion.com/react-native-gesture-handler/docs/fundamentals/installation),
+ * `style={{flex: 1}}`, as the single outermost wrapper so it's an ancestor
+ * of literally everything, including the `error`-gate branch below. (2)
+ * `SafeAreaProvider` — every screen in this app renders `headerShown: false`
+ * (root `<Stack>` below, `(tabs)/_layout.tsx`) plus its own custom header
+ * View starting at the very top of its own layout, so without a
+ * `SafeAreaProvider` ancestor those headers render under the iOS status
+ * bar/notch (confirmed: zero usage of `SafeAreaProvider`/`SafeAreaView`/
+ * `useSafeAreaInsets` anywhere in `app/`/`src/` before this fix — two
+ * existing code comments, `GlobalWorkoutBar.tsx` and `PRBanner.tsx`,
+ * explicitly flagged this as a deliberately deferred gap). Placed *inside*
+ * `GestureHandlerRootView` (order doesn't functionally matter between these
+ * two providers, but nesting it here keeps the outermost wrapper limited to
+ * the one thing that must be first per gesture-handler's own docs).
+ * `initialMetrics={initialWindowMetrics}` (best-effort synchronous first-
+ * frame insets read from the native module's constants, per
+ * `react-native-safe-area-context`'s own documented pattern) avoids an
+ * extra blank frame while the real `onInsetsChange` native event resolves;
+ * consuming screens read live values via `useSafeAreaInsets()`, never a
+ * `SafeAreaView`, since they already build their own header Views with
+ * their own background/padding styles (a padding fix, not a structural
+ * rework) — each just adds `insets.top` to its existing top padding.
+ *
  * --- Foreground rest-timer reconciliation (M2-13) --------------------------
  * 06 §5.4: "On `AppState → active`: ... reconcile timer (fire 'ended while
  * away' state silently)." `useForegroundReconciliation()`
@@ -105,6 +134,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
+import { StyleSheet } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { initialWindowMetrics, SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { seedBundledBuiltinExercises } from '@/data/exercises/seed-builtins';
 import { getAppDriver, runDbBoot } from '@/data/sqlite/boot';
@@ -239,38 +271,50 @@ export default function RootLayout(): React.JSX.Element | null {
 
   if (gate.status === 'error') {
     return (
-      <ThemeProvider>
-        <MigrationErrorScreen error={gate.error} onRetry={retry} />
-      </ThemeProvider>
+      <GestureHandlerRootView style={styles.flex}>
+        <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+          <ThemeProvider>
+            <MigrationErrorScreen error={gate.error} onRetry={retry} />
+          </ThemeProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
     );
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider preference={themePreference} onPreferenceChange={handleThemePreferenceChange}>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen
-            name="workout/active"
-            options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
-          />
-          {/* M3-04, 04 §2.1 / 06 §3: "Full-screen modal" — same presentation
-              as workout/active above. */}
-          <Stack.Screen
-            name="routine/new"
-            options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
-          />
-          <Stack.Screen
-            name="routine/[id]/edit"
-            options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
-          />
-          {/* M4-05, 02 §15: the past-workout editor — same fullScreenModal
-              presentation as every other full-logger-shaped screen above. */}
-          <Stack.Screen
-            name="workout/[id]/edit"
-            options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
-          />
-        </Stack>
-      </ThemeProvider>
-    </QueryClientProvider>
+    <GestureHandlerRootView style={styles.flex}>
+      <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+        <QueryClientProvider client={queryClient}>
+          <ThemeProvider preference={themePreference} onPreferenceChange={handleThemePreferenceChange}>
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen
+                name="workout/active"
+                options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
+              />
+              {/* M3-04, 04 §2.1 / 06 §3: "Full-screen modal" — same presentation
+                  as workout/active above. */}
+              <Stack.Screen
+                name="routine/new"
+                options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
+              />
+              <Stack.Screen
+                name="routine/[id]/edit"
+                options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
+              />
+              {/* M4-05, 02 §15: the past-workout editor — same fullScreenModal
+                  presentation as every other full-logger-shaped screen above. */}
+              <Stack.Screen
+                name="workout/[id]/edit"
+                options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
+              />
+            </Stack>
+          </ThemeProvider>
+        </QueryClientProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
+
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+});

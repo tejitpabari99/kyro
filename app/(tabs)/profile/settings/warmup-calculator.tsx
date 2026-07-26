@@ -31,6 +31,7 @@
  */
 import React, { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Trash2 } from 'lucide-react-native';
 
 import { SETTINGS_DEFAULTS, type WarmupCalcSet } from '@/data/settings/settings-schema';
@@ -83,6 +84,7 @@ const DEFAULT_NEW_ROW: RowDraft = { percentText: '50', repsText: '5' };
 
 export default function WarmupCalculatorScreen(): React.JSX.Element {
   const { colors, typography, spacing, radii } = useTheme();
+  const insets = useSafeAreaInsets();
 
   // Lazy-seeded once from the store's current snapshot (settings are
   // already loaded by boot time every real call site reaches this screen,
@@ -168,7 +170,14 @@ export default function WarmupCalculatorScreen(): React.JSX.Element {
   return (
     <View
       testID="settings-warmup-calc-screen"
-      style={{ flex: 1, backgroundColor: colors.bg.base, padding: spacing['4'] }}
+      style={{
+        flex: 1,
+        backgroundColor: colors.bg.base,
+        padding: spacing['4'],
+        // BUGFIX-01: `insets.top` clears the status bar/notch — see
+        // `app/_layout.tsx`'s header.
+        paddingTop: insets.top + spacing['4'],
+      }}
     >
       <Text style={[typography.headline, { color: colors.text.primary, marginBottom: spacing['2'] }]}>
         Warm-up Calculator

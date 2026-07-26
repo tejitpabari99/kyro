@@ -11,16 +11,23 @@
  * `<Tabs>` (expo-router, wrapping React Navigation's bottom-tabs) doesn't
  * expose its own rendered tab-bar height to a sibling outside the navigator
  * tree — `useBottomTabBarHeight()` only resolves inside a screen actually
- * hosted by that navigator — so this file approximates it with
- * `TAB_BAR_HEIGHT_APPROX`, a flat constant already folding in a typical
- * home-indicator/bottom-safe-area allowance. A real per-device safe-area
- * inset (`react-native-safe-area-context`'s `useSafeAreaInsets`) would be
- * more precise, but nothing in this app is wrapped in a `SafeAreaProvider`
- * yet (confirmed by search — no screen anywhere uses that hook or
- * `SafeAreaView`), and adding that provider app-wide is a real infra change
- * outside this task's own scope; a documented flat approximation here is
- * the reasonable call rather than either crashing (the hook throws with no
- * provider ancestor) or silently wiring in a wider change unasked.
+ * hosted by that navigator — so this file approximates it as
+ * `TAB_BAR_CONTENT_HEIGHT` (the tab bar's own fixed content height, no
+ * safe-area allowance folded in) plus the real per-device bottom inset.
+ *
+ * **Update (BUGFIX-01):** `app/_layout.tsx` now wraps the app root in a
+ * `SafeAreaProvider` (fixing the separate "content hidden under the status
+ * bar" bug), so the flat `TAB_BAR_HEIGHT_APPROX` constant this file used to
+ * document here (a single number guessing *both* the tab bar's content
+ * height *and* a typical home-indicator allowance at once, since no
+ * provider existed to ask for the real one) is no longer the best
+ * available option — `useSafeAreaInsets().bottom` now gives the real
+ * per-device value instead of a guess. Swapped to `TAB_BAR_CONTENT_HEIGHT +
+ * insets.bottom`: on a home-indicator device this comes out equivalent to
+ * the old flat constant (49 + ~34 ≈ 83), and on an older device with no
+ * home indicator (`insets.bottom === 0`) it now correctly floats right
+ * above the 49pt tab bar instead of leaving an unnecessary ~34pt gap below
+ * it.
  *
  * **Two data sources, one visibility gate:**
  *  - `activeWorkoutStore` (`selectActiveWorkout`) — the workout itself
@@ -86,6 +93,7 @@
 import React, { useEffect } from 'react';
 import { Pressable, StyleSheet, Text } from 'react-native';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { formatDuration } from '@/domain/units';
 import { useTheme } from '@/ui/theme-provider';
@@ -96,12 +104,13 @@ import { useRestTimerStore } from './restTimerStore';
 import { useRestTimerTicker } from './useRestTimerTicker';
 import { computeElapsedMs } from './useWorkoutStopwatch';
 
-/** Approximate iOS tab-bar height, home-indicator allowance included — see file header. */
-const TAB_BAR_HEIGHT_APPROX = 83;
+/** Standard iOS tab-bar content height (no safe-area allowance folded in — see file header). */
+const TAB_BAR_CONTENT_HEIGHT = 49;
 const BAR_HEIGHT = 52;
 
 export function GlobalWorkoutBar(): React.JSX.Element | null {
   const { colors, typography, spacing } = useTheme();
+  const insets = useSafeAreaInsets();
 
   const workout = useActiveWorkoutStore(selectActiveWorkout);
   const loggerVisible = useLoggerVisibilityStore((state) => state.visible);
@@ -151,7 +160,7 @@ export function GlobalWorkoutBar(): React.JSX.Element | null {
       style={[
         styles.bar,
         {
-          bottom: TAB_BAR_HEIGHT_APPROX,
+          bottom: TAB_BAR_CONTENT_HEIGHT + insets.bottom,
           height: BAR_HEIGHT,
           backgroundColor: colors.bg.surface,
           borderTopWidth: StyleSheet.hairlineWidth,

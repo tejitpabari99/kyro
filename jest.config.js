@@ -202,6 +202,15 @@ module.exports = {
         // config (M0-06 iconography, 07 §4).
         '^lucide-react-native$':
           '<rootDir>/node_modules/lucide-react-native/dist/cjs/lucide-react-native.js',
+        // BUGFIX-01 (SafeAreaProvider rollout, app/_layout.tsx): redirect to
+        // a hand-rolled mock rather than the package's own shipped
+        // `react-native-safe-area-context/jest/mock.tsx` — see
+        // `jest/safe-area-context-mock.tsx`'s own header for why that file
+        // isn't usable as-is under this repo's pnpm layout. Without *some*
+        // mock, `SafeAreaProvider`'s real implementation blocks every
+        // descendant from rendering under Jest (no native module is linked,
+        // so it never receives the `onInsetsChange` event it's waiting on).
+        '^react-native-safe-area-context$': '<rootDir>/jest/safe-area-context-mock.tsx',
       },
     },
   ],

@@ -58,6 +58,7 @@ import { CalendarDays, History, Plus, TriangleAlert } from 'lucide-react-native'
 import { router } from 'expo-router';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { FlashList } from '@shopify/flash-list';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { Exercise, ExerciseRepository } from '@/data/exercises/types';
 import type { WorkoutRepository, WorkoutSummary } from '@/data/workouts/types';
@@ -146,6 +147,7 @@ export function HistoryListScreen({
   testID = 'history-list',
 }: HistoryListScreenProps): React.JSX.Element {
   const { colors, typography, spacing } = useTheme();
+  const insets = useSafeAreaInsets();
   const weightUnit = useSettingsStore((state) => state.settings.weight_unit);
   const distanceUnit = useSettingsStore((state) => state.settings.distance_unit);
   const warmupInStats = useSettingsStore((state) => state.settings.warmup_in_stats);
@@ -214,7 +216,9 @@ export function HistoryListScreen({
           alignItems: 'center',
           justifyContent: 'space-between',
           paddingHorizontal: spacing['4'],
-          paddingTop: spacing['4'],
+          // BUGFIX-01: `insets.top` clears the status bar/notch — see
+          // `app/_layout.tsx`'s header.
+          paddingTop: insets.top + spacing['4'],
           paddingBottom: spacing['2'],
         }}
       >

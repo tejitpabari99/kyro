@@ -51,6 +51,7 @@ import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { TriangleAlert } from 'lucide-react-native';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 
 import type { WorkoutRepository, WorkoutSummary } from '@/data/workouts/types';
@@ -109,6 +110,7 @@ export function CalendarScreen({
   testID = 'calendar-screen',
 }: CalendarScreenProps): React.JSX.Element {
   const { colors, typography, spacing } = useTheme();
+  const insets = useSafeAreaInsets();
   const firstDayOfWeek = useSettingsStore((state) => state.settings.first_day_of_week);
 
   const [viewMonth, setViewMonth] = useState<ViewMonth>(() => currentViewMonth(new Date()));
@@ -172,7 +174,14 @@ export function CalendarScreen({
 
   return (
     <View testID={testID} style={{ flex: 1, backgroundColor: colors.bg.base }}>
-      <View style={{ paddingHorizontal: spacing['4'], paddingTop: spacing['4'] }}>
+      <View
+        style={{
+          paddingHorizontal: spacing['4'],
+          // BUGFIX-01: `insets.top` clears the status bar/notch — see
+          // `app/_layout.tsx`'s header.
+          paddingTop: insets.top + spacing['4'],
+        }}
+      >
         <Text style={[typography.title2, { color: colors.text.primary }]}>Calendar</Text>
         <Text
           testID={`${testID}-streak`}

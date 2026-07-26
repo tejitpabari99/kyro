@@ -62,6 +62,7 @@
 import React, { useMemo, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { TriangleAlert } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 
 import type { WorkoutRepository } from '@/data/workouts/types';
@@ -154,6 +155,7 @@ export function StatisticsScreen({
   testID = 'statistics-screen',
 }: StatisticsScreenProps): React.JSX.Element {
   const { colors, typography, spacing } = useTheme();
+  const insets = useSafeAreaInsets();
 
   const weightUnit = useSettingsStore((state) => state.settings.weight_unit);
   const warmupInStats = useSettingsStore((state) => state.settings.warmup_in_stats);
@@ -310,7 +312,13 @@ export function StatisticsScreen({
     <ScrollView
       testID={testID}
       style={{ flex: 1, backgroundColor: colors.bg.base }}
-      contentContainerStyle={{ padding: spacing['4'], paddingBottom: spacing['10'] }}
+      contentContainerStyle={{
+        padding: spacing['4'],
+        // BUGFIX-01: `insets.top` clears the status bar/notch — see
+        // `app/_layout.tsx`'s header.
+        paddingTop: insets.top + spacing['4'],
+        paddingBottom: spacing['10'],
+      }}
     >
       <Text style={[typography.title2, { color: colors.text.primary, marginBottom: spacing['4'] }]}>
         Statistics
