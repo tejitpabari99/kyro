@@ -1,0 +1,284 @@
+# M4-12 — E2E flow 4 (08 §6 item 4): custom-exercise lifecycle.
+#
+# create custom (type bodyweight_reps) -> log it -> detail shows
+# history/records -> attempt delete (blocked, referenced) -> archive instead
+# -> still renders in history.
+#
+# ## Environment note (docs/plan/BLOCKERS.md)
+#
+# Authored only — **not executed**. This sandbox has no macOS/Xcode/iOS
+# Simulator/Maestro binary, the same constraint every prior milestone's own
+# flow-authoring pass hit (M2-18 for flows 01/03/07, M3-08 for flow 2 — see
+# each task's own `EXECUTION-LOG.md` row / `docs/qa/M2-checklist.md` §5.1 /
+# `docs/qa/M3-checklist.md` §2). Every testID referenced below was
+# grep-confirmed against the real source at authoring time (table below) —
+# the furthest a flow file's content can be validated without a real
+# rendered app, matching the established method exactly.
+#
+# ## Structure — one phase, no seed needed
+#
+# Unlike flow 1 (M2-18), there is nothing to seed first: a brand-new custom
+# exercise has no history by construction, so "log it" *is* the first-ever
+# entry for this exercise — exactly the real first-time-a-user-logs-a-new-
+# custom-exercise path, not a test-only shortcut.
+#
+# ## Field choices
+#
+# Name: "E2E Custom Curl" — deliberately not a substring of anything in the
+# vendored `assets/exercise-db.json` dataset (confirmed by inspection), so
+# every exact-name search below narrows its list to exactly this one row.
+# Type: `bodyweight_reps` per 08 §6 item 4's own wording. Primary muscle:
+# `biceps` (arbitrary, any of the 20 `MUSCLE_GROUP_VALUES` would do). Logged
+# as **+10 kg x 8 reps** — the exact "bodyweight +10 x 8" pairing 04 §3.3's
+# and §5's own acceptance text uses ("contributes 80 kg volume"), so the
+# volume this flow's history-detail assertion checks for (`"80 kg"`) is the
+# spec's own worked example, not an arbitrary number.
+#
+# ## Why exercise-row selectors here use an `id:` regex, not `text:` (unlike
+# flows 1/2, which tap the vendored dataset's deterministic
+# `exercise-row-<slug>` ids directly)
+#
+# A freshly-created custom exercise's id is a fresh runtime uuid
+# (`ExerciseRepository.create`, confirmed by reading `exercise-repository.ts`
+# directly) — nothing about it is knowable at authoring time the way a
+# vendored dataset row's slug-derived id is. Both places this flow searches
+# for it (the exercise picker sheet, the browse screen) search the exact,
+# just-typed name first, which narrows the list to exactly one row — so
+# `id: "exercise-row-.*"` (a regex, same convention flow 2's
+# `routine-card-.*-start` already uses for a not-yet-known runtime id) taps
+# that one row unambiguously. Tapping by the row's visible title `text:`
+# instead was deliberately avoided: the search `TextInput` immediately above
+# the row also visibly renders that exact same just-typed string as its own
+# value, which would make a `text:`-based tap selector genuinely ambiguous
+# between the two elements.
+#
+# ## Every testID/text selector below, confirmed present in source at
+# authoring time (grep + direct read at authoring time):
+#
+# | testID / selector | Source |
+# |---|---|
+# | "Exercises" / "Workout" / "History" tab labels | `app/(tabs)/_layout.tsx:41,50,59` |
+# | `exercise-browse-screen-create-button`, `-search`, `-empty` | `ExerciseBrowseScreen.tsx:188,203,253` |
+# | `exercise-form-screen(-name-input\|-type-row\|-primary-muscle-row\|-save)` | `ExerciseFormScreen.tsx:389,421,460,328` |
+# | `exercise-form-screen-type-sheet` (+ `-option-bodyweight_reps`) | `ExerciseFormScreen.tsx:544`, `ExerciseTypeSheet.tsx:50,58` |
+# | `exercise-form-screen-primary-muscle-sheet` (+ `-option-biceps`) | `ExerciseFormScreen.tsx:563`, `FilterOptionSheet.tsx:59,82` |
+# | `exercise-detail-screen(-name\|-tabs\|-menu)` | `ExerciseDetailScreen.tsx:445,459,412` |
+# | `exercise-detail-screen-tabs-<value>` (SegmentedControl option) | `SegmentedControl.tsx:68`, `DETAIL_TABS` values `ExerciseDetailScreen.tsx:84-89` |
+# | `exercise-detail-screen-history-card-<workoutId>` (regex — workout id is a fresh uuid) | `ExerciseHistoryTab.tsx:173`, wired as `${testID}-history` from `ExerciseDetailScreen.tsx:478` |
+# | `exercise-detail-screen-charts-chart` | `ExerciseChartsTab.tsx:132`, wired as `${testID}-charts` from `ExerciseDetailScreen.tsx:495` |
+# | `exercise-detail-screen-records-pr-<recordType>`, `-set-records-table`, `-set-record-<bucket>` | `ExerciseRecordsTab.tsx:206,229,243`, wired as `${testID}-records` from `ExerciseDetailScreen.tsx:511` |
+# | `exercise-detail-screen-actions-sheet` (+ `-actions-delete`) | `ExerciseDetailScreen.tsx:524,540` |
+# | "Delete Exercise?" / "Can't Delete This Exercise" Alert copy, "Delete"/"Cancel"/"Archive" buttons | `ExerciseDetailScreen.tsx:344-352` (`handleDeletePress`), `:327-339` (`offerArchiveInstead`) — read verbatim |
+# | `start-empty-workout` | `RoutinesHubScreen.tsx:466` |
+# | `active-workout(-add-exercise\|-finish\|-exercise-picker)` | `ActiveWorkoutScreen.tsx:994,1149,1042,1201` |
+# | `active-workout-exercise-picker(-search\|-confirm)` | confirmed already by flows 1/2's own audit (`ExercisePickerSheet.tsx` via `${testID}-exercise-picker` composition) |
+# | `.*-table-row-0-value-weight$`, `.*-table-row-0-value-reps$`, `.*-table-row-0-check$` | `ExerciseSetTableSection.tsx:280` (`${testID}-row-${index}`) composed with `SetRow.tsx`'s own `-value-${column.key}`/`-check` cell testIDs; `bodyweight_reps`'s own column `key`s are `weight`/`reps` same as `weight_reps` (`domain/set-table-columns.ts:113-117`) — confirmed by reading the switch arm directly, not assumed |
+# | `active-workout-save-sheet(-save)` | confirmed already by flows 1/2's own audit |
+# | `history-detail-stat-volume` | confirmed already by flow 1's own audit |
+# | `history-list` (outer screen container; default `testID`, `:145`) | `HistoryListScreen.tsx:145,209` |
+#
+# `bodyweight_reps`'s eligible record types (`domain/records.ts`'s
+# `eligibilityForExerciseType`, read directly at authoring time):
+# `heaviest_weight`, `best_set_volume`, `most_reps`, `set_record` all true;
+# `best_1rm` false (Epley is `weight_reps`-only) — so the three PR-card
+# testIDs and the set-record-8 bucket asserted below are exactly the set
+# this exercise type can actually earn, not an arbitrary subset.
+appId: com.tejitpabari.kyro
+name: Custom exercise lifecycle
+tags:
+  - smoke
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: allow
+
+# ---------------------------------------------------------------------------
+# Create a custom exercise: bodyweight_reps, primary muscle biceps.
+# ---------------------------------------------------------------------------
+- tapOn:
+    text: "Exercises"
+- assertVisible:
+    id: "exercise-browse-screen-create-button"
+- tapOn:
+    id: "exercise-browse-screen-create-button"
+
+- assertVisible:
+    id: "exercise-form-screen-name-input"
+- tapOn:
+    id: "exercise-form-screen-name-input"
+- inputText: "E2E Custom Curl"
+- hideKeyboard
+
+- tapOn:
+    id: "exercise-form-screen-type-row"
+- assertVisible:
+    id: "exercise-form-screen-type-sheet"
+- tapOn:
+    id: "exercise-form-screen-type-sheet-option-bodyweight_reps"
+
+- tapOn:
+    id: "exercise-form-screen-primary-muscle-row"
+- assertVisible:
+    id: "exercise-form-screen-primary-muscle-sheet"
+- tapOn:
+    id: "exercise-form-screen-primary-muscle-sheet-option-biceps"
+
+- tapOn:
+    id: "exercise-form-screen-save"
+
+# `handleSave` (mode: create) navigates straight to this new exercise's own
+# detail screen (`router.replace`).
+- assertVisible:
+    id: "exercise-detail-screen-name"
+    text: "E2E Custom Curl"
+
+# ---------------------------------------------------------------------------
+# Log it: start an empty workout, add the new custom exercise, +10 kg x 8
+# reps, finish.
+# ---------------------------------------------------------------------------
+- tapOn:
+    text: "Workout"
+- assertVisible:
+    id: "start-empty-workout"
+- tapOn:
+    id: "start-empty-workout"
+- assertVisible:
+    id: "active-workout"
+
+- tapOn:
+    id: "active-workout-add-exercise"
+- assertVisible:
+    id: "active-workout-exercise-picker"
+- tapOn:
+    id: "active-workout-exercise-picker-search"
+- inputText: "E2E Custom Curl"
+# Exact-name search leaves exactly one row on screen — matched by an
+# `exercise-row-.*` id regex (the row's own id is a fresh runtime uuid,
+# `ExerciseRepository.create`, not knowable at authoring time) rather than
+# by its visible title text, which would ambiguously also match the search
+# `TextInput`'s own just-typed value directly above it.
+- tapOn:
+    id: "exercise-row-.*"
+- tapOn:
+    id: "active-workout-exercise-picker-confirm"
+- waitForAnimationToEnd
+
+# +10 kg (added weight) x 8 reps (04 §3.3/§5's own "bodyweight +10x8 = 80 kg
+# volume" worked example).
+- tapOn:
+    id: ".*-table-row-0-value-weight$"
+- inputText: "10"
+- tapOn:
+    id: ".*-table-row-0-value-reps$"
+- inputText: "8"
+- hideKeyboard
+- tapOn:
+    id: ".*-table-row-0-check$"
+- assertVisible:
+    id: "active-workout-timer-pill"
+
+- tapOn:
+    id: "active-workout-finish"
+- assertVisible:
+    id: "active-workout-save-sheet"
+- tapOn:
+    id: "active-workout-save-sheet-save"
+
+# Lands on this workout's own history detail; volume = 10 kg x 8 = 80 kg.
+- assertVisible:
+    id: "history-detail-stat-volume"
+- assertVisible:
+    text: ".*80 kg.*"
+
+# ---------------------------------------------------------------------------
+# Detail shows history/records: back to the exercise's own detail screen,
+# History/Charts/Records tabs all reflect the just-logged set.
+# ---------------------------------------------------------------------------
+- tapOn:
+    text: "Exercises"
+- tapOn:
+    id: "exercise-browse-screen-search"
+- inputText: "E2E Custom Curl"
+# Same `exercise-row-.*` regex tap as the picker above, same reason.
+- tapOn:
+    id: "exercise-row-.*"
+- assertVisible:
+    id: "exercise-detail-screen-name"
+    text: "E2E Custom Curl"
+
+- tapOn:
+    id: "exercise-detail-screen-tabs-history"
+- assertVisible:
+    id: "exercise-detail-screen-history-card-.*"
+
+- tapOn:
+    id: "exercise-detail-screen-tabs-charts"
+- assertVisible:
+    id: "exercise-detail-screen-charts-chart"
+
+- tapOn:
+    id: "exercise-detail-screen-tabs-records"
+- assertVisible:
+    id: "exercise-detail-screen-records-pr-heaviest_weight"
+- assertVisible:
+    id: "exercise-detail-screen-records-pr-best_set_volume"
+- assertVisible:
+    id: "exercise-detail-screen-records-pr-most_reps"
+- assertVisible:
+    id: "exercise-detail-screen-records-set-records-table"
+- assertVisible:
+    id: "exercise-detail-screen-records-set-record-8"
+
+# ---------------------------------------------------------------------------
+# Attempt delete -> blocked (referenced by the workout just saved) -> offers
+# archive -> accept -> archived.
+# ---------------------------------------------------------------------------
+- tapOn:
+    id: "exercise-detail-screen-menu"
+- assertVisible:
+    id: "exercise-detail-screen-actions-sheet"
+- tapOn:
+    id: "exercise-detail-screen-actions-delete"
+
+# Native Alert — matched by visible text, not testID (`ExerciseDetailScreen
+# .tsx`'s `handleDeletePress`, exact copy read verbatim).
+- assertVisible:
+    text: "Delete Exercise?"
+- tapOn:
+    text: "Delete"
+
+# `repository.delete` throws `ExerciseReferencedError` (this exercise is
+# referenced by the workout just saved) -> caught -> `offerArchiveInstead`'s
+# own Alert (exact copy read verbatim from `ExerciseDetailScreen.tsx`).
+- assertVisible:
+    text: "Can't Delete This Exercise"
+- assertVisible:
+    text: ".*Archive it instead?.*"
+- tapOn:
+    text: "Archive"
+
+# `performArchive` succeeds -> `router.back()` -> lands back on the same
+# (still-mounted) Exercises browse screen, its search field still holding
+# "E2E Custom Curl" from earlier — `repository.list()`'s default
+# `includeArchived: false` (`exercise-repository.ts:165`) now excludes the
+# just-archived row, so the same search that found it before now yields zero
+# rows -> the browse screen's own empty state (03 §5: "archived exercises
+# disappear from browse/picker"). Asserting the empty state here rather than
+# `assertNotVisible: text: "E2E Custom Curl"` deliberately avoids a false
+# failure: the search `TextInput` itself still visibly renders that exact
+# string as its own typed value.
+- assertVisible:
+    id: "exercise-browse-screen-empty"
+
+# ---------------------------------------------------------------------------
+# Still renders in History: the workout logged against it earlier is
+# untouched by the archive (03 §5: "still renders in history and old
+# routines").
+# ---------------------------------------------------------------------------
+- tapOn:
+    text: "History"
+- assertVisible:
+    id: "history-list"
+- assertVisible:
+    text: ".*E2E Custom Curl.*"
