@@ -11,6 +11,7 @@ import {
   chartRangeStartMs,
   computeChartSeries,
   type ChartMetric,
+  type ChartRange,
   type ChartSetInput,
 } from '../exercise-charts';
 import type { ExerciseType } from '../enums';
@@ -50,6 +51,12 @@ describe('chartMetricsForExerciseType', () => {
       expect(chartMetricsForExerciseType(exerciseType)).toEqual(metrics);
     });
   }
+
+  it('throws on an unrecognized exercise_type (exhaustiveness guard, defensive against schema drift — M4-12 exit-gate coverage gap closed)', () => {
+    expect(() => chartMetricsForExerciseType('not_a_real_type' as ExerciseType)).toThrow(
+      /unhandled exercise_type/,
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -234,6 +241,18 @@ describe('computeChartSeries', () => {
     it('empty input -> empty series', () => {
       expect(computeChartSeries([], 'heaviest_weight', false)).toEqual([]);
     });
+
+    it('throws on an unrecognized metric (exhaustiveness guard, defensive against schema drift — M4-12 exit-gate coverage gap closed)', () => {
+      // `computeChartSeries` resolves `isBestOfMetric(metric)` once, up
+      // front, before ever looking at `sets` (`exercise-charts.ts`'s own
+      // header) — so a bogus metric throws there regardless of input,
+      // exercising `isBestOfMetric`'s own exhaustiveness guard specifically
+      // (not `candidateValue`'s sibling guard, which this call graph never
+      // reaches with an already-invalid metric).
+      expect(() => computeChartSeries([set()], 'not_a_real_metric' as ChartMetric, false)).toThrow(
+        /unhandled metric/,
+      );
+    });
   });
 });
 
@@ -256,5 +275,9 @@ describe('chartRangeStartMs', () => {
   it("'1Y' is ~365 days before now", () => {
     const start = chartRangeStartMs('1Y', now)!;
     expect(now - start).toBe(365 * 24 * 60 * 60 * 1000);
+  });
+
+  it('throws on an unrecognized range (exhaustiveness guard, defensive against schema drift — M4-12 exit-gate coverage gap closed)', () => {
+    expect(() => chartRangeStartMs('Bogus' as ChartRange, now)).toThrow(/unhandled range/);
   });
 });

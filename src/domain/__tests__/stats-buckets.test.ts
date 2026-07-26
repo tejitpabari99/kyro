@@ -15,6 +15,7 @@ import {
   displayRangeBounds,
   OTHER_MUSCLE_SERIES_KEY,
   rangeQueryBounds,
+  type DashboardRangeKey,
   type StatsFeedRow,
 } from '../stats-buckets';
 
@@ -56,6 +57,18 @@ describe('rangeQueryBounds', () => {
     expect(rangeQueryBounds('3m', now)).toEqual({ start: d(2026, 4, 25, 12, 0).getTime(), end: now.getTime() });
     expect(rangeQueryBounds('1y', now)).toEqual({ start: d(2025, 7, 25, 12, 0).getTime(), end: now.getTime() });
   });
+
+  it('throws on an unrecognized range (exhaustiveness guard, defensive against schema drift — M4-12 exit-gate coverage gap closed)', () => {
+    expect(() => rangeQueryBounds('bogus' as DashboardRangeKey, now)).toThrow(/unhandled range/);
+  });
+
+  it('defaults `now` to the real clock when omitted (M4-12 exit-gate coverage gap closed)', () => {
+    const before = Date.now();
+    const result = rangeQueryBounds('7d');
+    const after = Date.now();
+    expect(result.end).toBeGreaterThanOrEqual(before);
+    expect(result.end).toBeLessThanOrEqual(after);
+  });
 });
 
 describe('displayRangeBounds', () => {
@@ -75,6 +88,14 @@ describe('displayRangeBounds', () => {
 
   it("'all' with no rows collapses to {start: now, end: now} (zero buckets)", () => {
     expect(displayRangeBounds('all', [], now)).toEqual({ start: now.getTime(), end: now.getTime() });
+  });
+
+  it('defaults `now` to the real clock when omitted (M4-12 exit-gate coverage gap closed)', () => {
+    const before = Date.now();
+    const result = displayRangeBounds('7d', []);
+    const after = Date.now();
+    expect(result.end).toBeGreaterThanOrEqual(before);
+    expect(result.end).toBeLessThanOrEqual(after);
   });
 });
 
@@ -144,6 +165,23 @@ describe('chooseTrendGranularity — All-range monthly switch', () => {
   it('empty rows stays weekly', () => {
     expect(chooseTrendGranularity('all', [])).toBe('week');
   });
+
+  it('finds min/max correctly when rows are not pre-sorted (a later array entry is chronologically earliest — M4-12 exit-gate coverage gap closed)', () => {
+    const rows = [
+      // First array element, but only ~1 year before the max below — if the
+      // loop's "a later-processed row beats the running min" branch never
+      // ran (every other fixture in this describe block has rows already
+      // in ascending order, so it never does), `min` would incorrectly
+      // stay pinned to this row and the span would read as <= 2 years.
+      row({ workoutStartTime: d(2025, 6, 1).getTime() }),
+      row({ workoutStartTime: d(2026, 6, 1).getTime() }),
+      // Chronologically earliest, but last in the array.
+      row({ workoutStartTime: d(2020, 1, 1).getTime() }),
+    ];
+    // The true span is 2020 -> 2026 (> 2 years) — only reads as "monthly"
+    // if the unsorted-earliest row was genuinely folded into `min`.
+    expect(chooseTrendGranularity('all', rows)).toBe('month');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -183,6 +221,15 @@ describe('bucketWorkoutsPerWeek', () => {
     expect(bucketWorkoutsPerWeek(rows, bounds, 'monday', 3)[0]!.goalMet).toBe(false);
     expect(bucketWorkoutsPerWeek(rows, bounds, 'monday', null)[0]!.goalMet).toBeUndefined();
     expect(bucketWorkoutsPerWeek(rows, bounds, 'monday')[0]!.goalMet).toBeUndefined();
+  });
+
+  it('a row outside bounds (query returned more than the display range asked for) is filtered out, not counted (M4-12 exit-gate coverage gap closed)', () => {
+    const bounds = { start: d(2026, 1, 5).getTime(), end: d(2026, 1, 5).getTime() };
+    const rows = [
+      row({ workoutId: 'w1', workoutStartTime: d(2026, 1, 5).getTime() }),
+      row({ workoutId: 'w-out-of-range', workoutStartTime: d(2026, 2, 1).getTime() }),
+    ];
+    expect(bucketWorkoutsPerWeek(rows, bounds, 'monday')[0]!.count).toBe(1);
   });
 });
 
@@ -229,6 +276,19 @@ describe('bucketAggregateTrend — volume (04 §4 acceptance: P7 reuse)', () => 
     expect(bucketAggregateTrend(rows, bounds, 'monday', 'week', 'reps', false)[0]!.value).toBe(13);
   });
 
+  it('reps metric treats a null reps value as 0, not a dropped row (M4-12 exit-gate coverage gap closed)', () => {
+    const rows = [row({ reps: 5 }), row({ reps: null })];
+    expect(bucketAggregateTrend(rows, bounds, 'monday', 'week', 'reps', false)[0]!.value).toBe(5);
+  });
+
+  it('volume/reps metrics filter out a row outside bounds (M4-12 exit-gate coverage gap closed)', () => {
+    const rows = [
+      row({ weightKg: 100, reps: 5 }),
+      row({ weightKg: 999, reps: 99, workoutStartTime: d(2026, 2, 1).getTime() }),
+    ];
+    expect(bucketAggregateTrend(rows, bounds, 'monday', 'week', 'volume', false)[0]!.value).toBe(500);
+  });
+
   it('duration metric sums each distinct workout end-start once, never once-per-set', () => {
     const wideBounds = { start: d(2026, 1, 5).getTime(), end: d(2026, 1, 5).getTime() };
     const start = d(2026, 1, 5).getTime();
@@ -238,6 +298,28 @@ describe('bucketAggregateTrend — volume (04 §4 acceptance: P7 reuse)', () => 
       row({ workoutId: 'w1', workoutStartTime: start, workoutEndTime: start + 3_600_000 }),
     ];
     expect(bucketAggregateTrend(rows, wideBounds, 'monday', 'week', 'duration', false)[0]!.value).toBe(3_600);
+  });
+
+  it('duration metric skips a row with a null workoutEndTime (defensive — 05 §6 says statsFeed never actually returns one, M4-12 exit-gate coverage gap closed)', () => {
+    const start = d(2026, 1, 5).getTime();
+    const rows = [
+      row({ workoutId: 'w1', workoutStartTime: start, workoutEndTime: null }),
+      row({ workoutId: 'w2', workoutStartTime: start, workoutEndTime: start + 1_800_000 }),
+    ];
+    expect(bucketAggregateTrend(rows, bounds, 'monday', 'week', 'duration', false)[0]!.value).toBe(1_800);
+  });
+
+  it('duration metric filters out a distinct workout outside bounds (M4-12 exit-gate coverage gap closed)', () => {
+    const start = d(2026, 1, 5).getTime();
+    const rows = [
+      row({ workoutId: 'w1', workoutStartTime: start, workoutEndTime: start + 1_800_000 }),
+      row({
+        workoutId: 'w-out-of-range',
+        workoutStartTime: d(2026, 2, 1).getTime(),
+        workoutEndTime: d(2026, 2, 1).getTime() + 9_999_000,
+      }),
+    ];
+    expect(bucketAggregateTrend(rows, bounds, 'monday', 'week', 'duration', false)[0]!.value).toBe(1_800);
   });
 
   it('gap-fills buckets with 0 for every metric', () => {
@@ -346,6 +428,15 @@ describe('bucketSetsPerMuscleGroupPerWeek — top-8 + Other', () => {
     expect(points[0]!.values).toEqual({});
   });
 
+  it('filters out a row outside bounds (M4-12 exit-gate coverage gap closed)', () => {
+    const rows = [
+      row({ primaryMuscleGroup: 'chest', secondaryMuscleGroups: [] }),
+      row({ primaryMuscleGroup: 'biceps', secondaryMuscleGroups: [], workoutStartTime: d(2026, 2, 1).getTime() }),
+    ];
+    const { points } = bucketSetsPerMuscleGroupPerWeek(rows, bounds, 'monday', false);
+    expect(points[0]!.values).toEqual({ chest: 1 });
+  });
+
   it('an explicit precomputedDistribution (M4-11 perf-budget review fix) produces the identical result as recomputing internally', () => {
     const muscleGroups = [
       'chest', 'shoulders', 'biceps', 'triceps', 'forearms', 'quadriceps', 'hamstrings', 'calves', 'glutes',
@@ -401,5 +492,15 @@ describe('computeSummaryTotals', () => {
   it('bodyweight +10x8 acceptance line holds inside the summary total too', () => {
     const rows = [row({ exerciseType: 'bodyweight_reps', weightKg: 10, reps: 8 })];
     expect(computeSummaryTotals(rows, false).totalVolumeKg).toBe(80);
+  });
+
+  it('a workout with a null workoutEndTime contributes 0 duration, not NaN (defensive — 05 §6 says statsFeed never actually returns one, M4-12 exit-gate coverage gap closed)', () => {
+    const start = d(2026, 1, 5).getTime();
+    const rows = [
+      row({ workoutId: 'w1', workoutStartTime: start, workoutEndTime: null, weightKg: 100, reps: 5 }),
+      row({ workoutId: 'w2', workoutStartTime: start, workoutEndTime: start + 1_800_000, weightKg: 50, reps: 10 }),
+    ];
+    const totals = computeSummaryTotals(rows, false);
+    expect(totals.totalDurationSeconds).toBe(1_800);
   });
 });
