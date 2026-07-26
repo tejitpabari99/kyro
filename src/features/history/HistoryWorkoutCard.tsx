@@ -15,6 +15,18 @@
  * badges, the live banner — uses the `lucide-react-native` `Trophy` glyph
  * in `accent.text` instead; this is the one place the doc calls out the
  * emoji by name).
+ *
+ * **M4-11 perf tuning**: wrapped in `React.memo` — the History tab's
+ * `FlashList` (`HistoryListScreen.tsx`) can carry 1000+ rows (06 §8's
+ * "history 60 fps at 1000+ workouts" budget), and without memoization every
+ * cell re-runs its own render whenever the parent screen re-renders for a
+ * reason that has nothing to do with this particular row (a page fetch
+ * completing, a focus-triggered refetch, an unrelated state update) —
+ * `item`/`onPress` are otherwise-stable references per row (`onPress` is
+ * `useCallback`-stabilized at the call site, `HistoryListScreen.tsx`;
+ * `item` only changes identity when its own page's query data actually
+ * changes), so the default shallow-prop comparison `React.memo` performs
+ * is exactly the right cheap skip check here — no custom comparator needed.
  */
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
@@ -38,7 +50,7 @@ export interface HistoryWorkoutCardProps {
   testID?: string;
 }
 
-export function HistoryWorkoutCard({
+function HistoryWorkoutCardComponent({
   item,
   onPress,
   testID = `history-card-${item.workoutId}`,
@@ -89,3 +101,6 @@ export function HistoryWorkoutCard({
     </Pressable>
   );
 }
+
+/** Memoized export — see file header, "M4-11 perf tuning." */
+export const HistoryWorkoutCard = React.memo(HistoryWorkoutCardComponent);

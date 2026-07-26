@@ -9,10 +9,19 @@
  *
  * Dev-only "Design Gallery" row: the *only* in-app link to `app/dev/
  * gallery.tsx`, rendered exclusively when `__DEV__` — production/TestFlight
- * builds show no way to reach it (M0-08's dev-gallery access guard).
+ * builds show no way to reach it (M0-08's dev-gallery access guard). "Load
+ * Fixture Data" (M4-11) is the same guard, same pattern, linking to
+ * `app/dev/load-fixture.tsx`.
  */
 import React from 'react';
-import { ArchiveRestore, BarChart3, FlaskConical, Settings as SettingsIcon, User } from 'lucide-react-native';
+import {
+  ArchiveRestore,
+  BarChart3,
+  Database,
+  FlaskConical,
+  Settings as SettingsIcon,
+  User,
+} from 'lucide-react-native';
 import { router } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
@@ -63,8 +72,18 @@ export default function ProfileScreen(): React.JSX.Element {
             subtitle="Every src/ui primitive, both themes"
             leading={<FlaskConical size={20} strokeWidth={1.75} color={colors.text.secondary} />}
             chevron
-            hideSeparator
             onPress={() => router.push('/dev/gallery')}
+          />
+        ) : null}
+        {__DEV__ ? (
+          <ListRow
+            testID="dev-load-fixture-link"
+            title="Load Fixture Data (DEV)"
+            subtitle="5-year synthetic history for perf/QA passes"
+            leading={<Database size={20} strokeWidth={1.75} color={colors.text.secondary} />}
+            chevron
+            hideSeparator
+            onPress={() => router.push('/dev/load-fixture')}
           />
         ) : null}
       </View>

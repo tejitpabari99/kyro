@@ -52,7 +52,7 @@
  * code (04 §3's own acceptance line: "Deleting a workout updates list …
  * immediately").
  */
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { CalendarDays, History, Plus } from 'lucide-react-native';
 import { router } from 'expo-router';
@@ -172,9 +172,15 @@ export function HistoryListScreen({
     [historyQuery.data],
   );
 
-  const handleRowPress = (workoutId: string): void => {
+  // `useCallback`-stabilized (M4-11 perf tuning, `HistoryWorkoutCard.tsx`'s
+  // own file header): `HistoryWorkoutCard` is `React.memo`-wrapped
+  // specifically so an unrelated parent re-render doesn't re-render every
+  // visible row at 1000+-workout scale — a fresh `onPress` closure every
+  // render would silently defeat that by always failing `React.memo`'s
+  // shallow-prop check on this one prop.
+  const handleRowPress = useCallback((workoutId: string): void => {
     router.push(`/history/${workoutId}` as never);
-  };
+  }, []);
 
   const handleCalendarPress = (): void => {
     // M4-06 hasn't landed yet — same "wire the intended route, don't build

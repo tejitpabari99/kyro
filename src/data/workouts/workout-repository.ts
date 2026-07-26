@@ -478,7 +478,39 @@ interface StatsFeedSetRow {
   secondary_muscle_groups: string;
 }
 
-function mapStatsFeedRow(row: StatsFeedSetRow): StatsFeedRow {
+/**
+ * M4-11 perf-budget review fix: `statsFeed` is one row **per set**, but
+ * `secondary_muscle_groups` is a property of the row's *exercise*, not of
+ * the individual set — every set of the same exercise repeats the exact
+ * same JSON text. Measured while building M4-11's perf-budget test (a
+ * 5-year/1040-workout/~15.7k-set synthetic fixture, `src/test/fixtures/
+ * synthetic-history.ts`): re-`JSON.parse`-ing that identical string on
+ * every one of those ~15.7k rows (only 9 distinct exercises in the
+ * fixture, so ~15.7k redundant parses of ~9 distinct strings) measured as
+ * a meaningfully-sized slice of the "all" range's total statsFeed cost —
+ * enough to leave uncomfortably little margin under 06 §8's 300 ms budget.
+ * This cache (keyed by the raw JSON text, scoped to one `statsFeed` call)
+ * makes each distinct string parse exactly once and reuses the same parsed
+ * array for every row that repeats it — pure/read-only downstream (every
+ * `domain/stats-buckets.ts` consumer only ever iterates
+ * `secondaryMuscleGroups`, never mutates it), so sharing one array
+ * instance across rows for the same exercise is safe.
+ */
+function parseSecondaryMuscleGroups(
+  raw: string,
+  cache: Map<string, MuscleGroup[]>,
+): MuscleGroup[] {
+  const cached = cache.get(raw);
+  if (cached) return cached;
+  const parsed = JSON.parse(raw) as MuscleGroup[];
+  cache.set(raw, parsed);
+  return parsed;
+}
+
+function mapStatsFeedRow(
+  row: StatsFeedSetRow,
+  secondaryMuscleGroupsCache: Map<string, MuscleGroup[]>,
+): StatsFeedRow {
   return {
     workoutId: row.workout_id,
     workoutStartTime: row.workout_start_time,
@@ -486,7 +518,10 @@ function mapStatsFeedRow(row: StatsFeedSetRow): StatsFeedRow {
     exerciseId: row.exercise_id,
     exerciseType: row.exercise_type as ExerciseType,
     primaryMuscleGroup: row.primary_muscle_group as MuscleGroup,
-    secondaryMuscleGroups: JSON.parse(row.secondary_muscle_groups) as MuscleGroup[],
+    secondaryMuscleGroups: parseSecondaryMuscleGroups(
+      row.secondary_muscle_groups,
+      secondaryMuscleGroupsCache,
+    ),
     setType: row.set_type as SetType,
     weightKg: row.weight_kg,
     reps: row.reps,
@@ -1463,7 +1498,10 @@ export class WorkoutRepositoryImpl implements WorkoutRepository {
       params,
     );
 
-    return rows.map(mapStatsFeedRow);
+    // See `parseSecondaryMuscleGroups`'s own doc comment (M4-11 perf-budget
+    // review fix) — one parse-cache per call, scoped to this one result set.
+    const secondaryMuscleGroupsCache = new Map<string, MuscleGroup[]>();
+    return rows.map((row) => mapStatsFeedRow(row, secondaryMuscleGroupsCache));
   }
 
   /**

@@ -90,6 +90,7 @@
     "test": "jest",
     "build:exercises": "tsx scripts/build-exercise-db.ts",
     "build:exercise-thumbnails": "tsx scripts/generate-exercise-thumbnail-registry.ts",
+    "load-fixture": "tsx scripts/load-fixture.ts",
     "e2e": "maestro test e2e/",
     "e2e:smoke": "maestro test e2e/ --include-tags=smoke",
     "ci": "pnpm run typecheck && pnpm run lint && pnpm test -- --coverage && npx expo-doctor && npx expo export --platform ios"
