@@ -54,6 +54,22 @@
  * "wired directly to `MeasurementRepository.addPhoto`/`photos`/
  * `deletePhoto`" instruction literally rather than staging them behind
  * Save.
+ *
+ * ## Photo capture: shared with M5-03, not a separate implementation
+ *
+ * `pickProgressPhoto` (`@/lib/progress-photo-capture`) and `progressPhotoUri`
+ * (`@/lib/progress-photos`) are the same real, re-encoding (<=2048px q80 JPEG)
+ * implementation M5-03's gallery/pager/compare screens use — this sheet
+ * originally reached a self-contained, non-re-encoding
+ * `measurement-photo-files.ts` (a deliberate placeholder, see that file's own
+ * former header), but a post-merge reconciliation pass replaced it: two
+ * divergent save paths would have meant a photo attached here was stored
+ * full-resolution/unprocessed while every other surface in the app assumes a
+ * re-encoded jpg. `MeasurementRepositoryDeps.savePhotoFile`/`deletePhotoFile`
+ * themselves are still injected at each route's `MeasurementRepositoryImpl`
+ * construction site (`app/(tabs)/profile/measures/{index,[field]}.tsx`), not
+ * imported here directly — this component only ever calls
+ * `repository.addPhoto`/`deletePhoto`, never the deps functions themselves.
  */
 import React, { useState } from 'react';
 import { Image } from 'expo-image';
@@ -65,6 +81,8 @@ import type { MeasurementFields, MeasurementRepository } from '@/data/measuremen
 import { MEASUREMENT_FIELD_KEYS } from '@/data/measurements/types';
 import type { BodyMeasurementUnit } from '@/domain/enums';
 import { localDateKey } from '@/domain/streaks';
+import { pickProgressPhoto, type ProgressPhotoPickSource } from '@/lib/progress-photo-capture';
+import { progressPhotoUri } from '@/lib/progress-photos';
 import { Button } from '@/ui/Button';
 import { NumericInput } from '@/ui/NumericInput';
 import { Sheet } from '@/ui/Sheet';
@@ -77,7 +95,6 @@ import {
   toEditableDisplayValue,
   type MeasurementFieldKey,
 } from './measurement-units';
-import { pickProgressPhoto, progressPhotoUri, type ProgressPhotoPickSource } from './measurement-photo-files';
 
 export interface LogEntrySheetProps {
   visible: boolean;

@@ -2,10 +2,13 @@
  * `LogEntrySheet` tests (M5-02 acceptance gate) — real `MeasurementRepositoryImpl`
  * over an in-memory `better-sqlite3` driver (08 §5: never mock repositories),
  * same convention `AddWarmUpSetsSheet.test.tsx` already establishes for an
- * equivalent sheet. `../measurement-photo-files` (the one native-touching
- * seam this component reaches, `expo-file-system`/`expo-image-picker`
- * transitively) is mocked at the module boundary — same "mock the seam, not
- * the repository" posture `ExerciseDetailScreen.test.tsx` uses for `@/lib/files`.
+ * equivalent sheet. `@/lib/progress-photo-capture`/`@/lib/progress-photos`
+ * (the native-touching seams this component reaches, `expo-file-system`/
+ * `expo-image-manipulator`/`expo-image-picker` transitively — the same real,
+ * re-encoding implementation M5-03's photo screens use, post-merge
+ * reconciliation) are mocked at the module boundary — same "mock the seam,
+ * not the repository" posture `ExerciseDetailScreen.test.tsx` uses for
+ * `@/lib/files`.
  *
  * Covers 04 §6's named acceptance cases this task is responsible for:
  *  - imperial entry stores canonical kg/cm exactly and round-trips display;
@@ -23,13 +26,13 @@ import { openBetterSqlite3Driver } from '@/data/sqlite/driver.better-sqlite3';
 import { migrate } from '@/data/sqlite/migrator';
 import { MeasurementRepositoryImpl } from '@/data/measurements/measurement-repository';
 import { lbToKg } from '@/domain/units';
+import { pickProgressPhoto } from '@/lib/progress-photo-capture';
 import { ThemeProvider } from '@/ui/theme-provider';
 
 import { LogEntrySheet, resolveMeasurementDateKey, type LogEntrySheetProps } from '../LogEntrySheet';
-import { pickProgressPhoto } from '../measurement-photo-files';
 
-jest.mock('../measurement-photo-files', () => ({
-  pickProgressPhoto: jest.fn(),
+jest.mock('@/lib/progress-photo-capture');
+jest.mock('@/lib/progress-photos', () => ({
   progressPhotoUri: (fileName: string) => `file:///mock/${fileName}`,
 }));
 

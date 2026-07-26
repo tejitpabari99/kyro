@@ -9,17 +9,20 @@
  * ## Photo-file deps
  *
  * `MeasurementRepositoryDeps.savePhotoFile`/`deletePhotoFile` (`src/data/
- * measurements/types.ts`) are wired here to the real, minimal (no re-encode)
- * `expo-file-system`-backed implementations in `src/features/measurements/
- * measurement-photo-files.ts` — see that file's own header for why a real
- * (if simple) implementation was wired now rather than left at the
- * identity/no-op defaults: `addPhoto`/`deletePhoto` are this task's
- * (M5-02's) own explicit scope, and the default deps would make an attached
- * photo silently vanish on relaunch (the picker's cache URI doesn't
- * survive), which isn't an acceptable "self-contained and simple" photo
- * feature. M5-03 (progress-photo gallery/compare/orphan-sweep) layers the
- * documented 2048 px/q80 re-encode step on top of the same two functions
- * without this construction site needing to change.
+ * measurements/types.ts`) are wired here to the real, re-encoding (<=2048px
+ * q80 JPEG) `expo-file-system`-backed implementations in
+ * `src/lib/progress-photo-capture.ts`/`src/lib/progress-photos.ts` — the
+ * same functions M5-03's gallery/pager/compare routes construct their own
+ * repository instances with (`app/(tabs)/profile/measures/photos/*.tsx`).
+ * This route originally wired a separate, non-re-encoding
+ * `measurement-photo-files.ts` (a deliberate M5-02-scoped placeholder); a
+ * post-merge reconciliation pass deleted that file and switched this
+ * construction site to the real implementation, since leaving both in place
+ * would have meant a photo attached via this sheet was stored full-
+ * resolution/unprocessed while every other surface in the app assumes a
+ * re-encoded jpg. Left at the identity/no-op defaults instead would mean an
+ * attached photo silently vanishes after the picker's cache URI is
+ * reclaimed — not acceptable either.
  *
  * Reachable only via a direct URL/deep-link for now — the Profile tab's own
  * "Measures" shortcut card is M5-04's job (`docs/plan/tasks/M5-tasks.md`);
@@ -31,10 +34,8 @@ import React, { useMemo } from 'react';
 import { MeasurementRepositoryImpl } from '@/data/measurements/measurement-repository';
 import { getAppDriver } from '@/data/sqlite/boot';
 import { MeasuresHomeScreen } from '@/features/measurements/MeasuresHomeScreen';
-import {
-  deleteProgressPhotoFile,
-  saveProgressPhotoFile,
-} from '@/features/measurements/measurement-photo-files';
+import { saveProgressPhotoFile } from '@/lib/progress-photo-capture';
+import { deleteProgressPhotoFile } from '@/lib/progress-photos';
 
 export default function MeasuresRoute(): React.JSX.Element {
   const repository = useMemo(

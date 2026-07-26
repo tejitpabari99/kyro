@@ -3,9 +3,11 @@
  * `MeasurementRepositoryImpl` over an in-memory `better-sqlite3` driver (08
  * §5: never mock repositories); `expo-router`'s `router.push` mocked the
  * same way `ExerciseBrowseScreen.test.tsx` mocks it for row navigation.
- * `../measurement-photo-files` mocked at the module boundary since this
- * screen mounts `LogEntrySheet` (which reaches that native-touching seam),
- * same posture `LogEntrySheet.test.tsx` establishes.
+ * `@/lib/progress-photo-capture`/`@/lib/progress-photos` mocked at the
+ * module boundary since this screen mounts `LogEntrySheet` (which reaches
+ * those native-touching seams — post-merge reconciliation replaced the
+ * former feature-local `../measurement-photo-files` with the real, shared
+ * implementation), same posture `LogEntrySheet.test.tsx` establishes.
  *
  * Covers: all 17 rows render, latest value + delta + sparkline derive
  * correctly from seeded data (sparse-data acceptance case included), row
@@ -32,8 +34,8 @@ jest.mock('expo-router', () => ({
   router: { push: jest.fn() },
 }));
 
-jest.mock('../measurement-photo-files', () => ({
-  pickProgressPhoto: jest.fn(),
+jest.mock('@/lib/progress-photo-capture');
+jest.mock('@/lib/progress-photos', () => ({
   progressPhotoUri: (fileName: string) => `file:///mock/${fileName}`,
 }));
 

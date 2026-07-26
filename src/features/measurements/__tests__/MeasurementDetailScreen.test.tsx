@@ -2,9 +2,12 @@
  * `MeasurementDetailScreen` tests (M5-02 acceptance gate) — real
  * `MeasurementRepositoryImpl` over an in-memory `better-sqlite3` driver (08
  * §5: never mock repositories). `expo-router`'s `router.back` and
- * `../measurement-photo-files` (this screen mounts `LogEntrySheet` for its
- * edit flow) are mocked at their respective module boundaries, same
- * postures established by the other two screen test files in this suite.
+ * `@/lib/progress-photo-capture`/`@/lib/progress-photos` (this screen mounts
+ * `LogEntrySheet` for its edit flow, which reaches those native-touching
+ * seams — post-merge reconciliation replaced the former feature-local
+ * `../measurement-photo-files` with the real, shared implementation) are
+ * mocked at their respective module boundaries, same postures established by
+ * the other two screen test files in this suite.
  *
  * Covers: not-found branch for an invalid field param, sparse-data chart
  * rendering (no zero-fill — 04 §6 acceptance), reverse-chronological entry
@@ -33,8 +36,8 @@ jest.mock('expo-router', () => ({
   router: { back: jest.fn(), push: jest.fn() },
 }));
 
-jest.mock('../measurement-photo-files', () => ({
-  pickProgressPhoto: jest.fn(),
+jest.mock('@/lib/progress-photo-capture');
+jest.mock('@/lib/progress-photos', () => ({
   progressPhotoUri: (fileName: string) => `file:///mock/${fileName}`,
 }));
 

@@ -16,7 +16,7 @@ Task count: **11**
 **Acceptance / test gate:** Integration: two same-date saves merge (second weight keeps earlier waist — 04 §6 acceptance); clearField; last-field+photos deletion removes entry; series with sparse data; photo file lifecycle.
 **Est:** 1 d
 
-### M5-02 — Measures home, log entry, detail charts
+### M5-02 — Measures home, log entry, detail charts `[done]`
 **Description:** The measurement UI surface.
 **How:** Measures home (Profile → Measures): list of the 17 measurement types with latest value + delta vs previous + 90-day `Sparkline`; `+` FAB → log entry sheet: date picker (default today), all 17 optional numeric fields unit-labeled per body-measurement unit setting (metric kg/cm | imperial lb/in — independent from workout units), photo attach section (M5-03), Save (upsert). Detail per measurement: `LineChart` 3M/1Y/All + reverse-chron entries, edit/delete (delete = clearField). Charts connect existing points only — no interpolation/zero-fill.
 **References:** 04 §6.1; 05 §5 (cm↔in, kg↔lb); 07 §7.
