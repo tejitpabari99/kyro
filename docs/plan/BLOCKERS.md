@@ -265,6 +265,25 @@ into their own file rather than accumulating many full-screen mounts in one file
 a real bug if `waitFor`/testID lookups start failing only when run alongside other tests in the
 same file.
 
+## M4-09 checked against the M4-08 multi-chart-mount flakiness pattern (M4-08/M4-09 batch review, 2026-07-26)
+
+The M4-08 finding above named M4-09's per-exercise charts as "the obvious next case" to watch for
+the same act()/scheduler flakiness. Checked directly: `ExerciseDetailScreen.test.tsx` (13 `it`
+blocks, including a real Charts-tab mount of a `LineChart` with real data) does print the same
+signature console warnings ("You seem to have overlapping act() calls", "An update ... was not
+wrapped in act(...)") when run as a full file — but unlike the M4-08 case, it did **not** reproduce
+as a test failure: run in isolation 3x back-to-back, in combination with
+`StatisticsScreen.test.tsx` + `StatisticsScreen.interactions.test.tsx` 2x, and once inside the full
+`pnpm test` run (164/164 suites, 2148/2148 tests) — 13/13 (or 18/18 combined) passed every time,
+zero flakes observed. Likely reason this file is lower-risk than `StatisticsScreen.tsx`: it never
+mounts more than one heavy chart *type* per render (only the single active `LineChart` on the
+Charts tab, versus `StatisticsScreen`'s 3 simultaneous chart types — `BarChart` + `LineChart` +
+`StackedBarChart` — in one render), and the file's own test count (13) is smaller than the
+combined `StatisticsScreen` suites were before their split. **No action taken** — the mechanical
+fix (split into a second file) documented above is available if this ever does start flaking, but
+speculatively splitting an already-green, non-flaky file would be unjustified churn. Noting this
+here so a future task doesn't have to re-derive "was this checked" from scratch.
+
 ## Everything else
 
 Every other task — all of M0 through M7 except the six owner-gated tasks listed above — is
