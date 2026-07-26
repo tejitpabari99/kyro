@@ -96,7 +96,7 @@ Task count: **12**
 **Acceptance / test gate:** Automated timing test (node) for bucketing/records on the fixture; manual scroll + range-switch numbers recorded in the M4 checklist.
 **Est:** 1 d
 
-### M4-12 — Maestro flow 4 + M4 QA & exit gate
+### M4-12 — Maestro flow 4 + M4 QA & exit gate [done]
 **Description:** Custom-exercise lifecycle E2E and milestone close.
 **How:** Maestro flow 4: create custom (bodyweight_reps) → log it → detail shows history/records → delete → archive path → still renders in history. Manual QA: edit/delete recompute acceptance (02 §15, 04 §5.6) both themes; full 04 §3–5 acceptance sweep. Fix P0/P1 + regression tests; `docs/qa/M4-checklist.md`; tag.
 **References:** 08 §6 flow 4; 09 M4 exit.
