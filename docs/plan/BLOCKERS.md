@@ -360,6 +360,62 @@ non-UTC timezone in a Jest test (not just "prove local vs. UTC getters are used"
 per-file `testEnvironmentOptions` timezone config or a `TZ=`-prefixed separate `test:tz` script —
 neither exists yet.
 
+## Pre-existing uncommitted EAS/Sentry-CLI scaffolding found on the working tree (M5-01/M5-05 batch review, 2026-07-26)
+
+While independently reviewing M5-01/M5-05 (unrelated to either task's actual content), the working
+tree at the start of the review already carried uncommitted changes with no obvious authorship in
+this session's own history: `app.json` and `package.json` modified, `pnpm-lock.yaml` modified (3
+lines), and two new untracked files, `.easignore` and `eas.json`. None of this touches
+`src/data/measurements/**` or `src/domain/csv-codec.ts`/`src/lib/csv.ts` — it is orthogonal to the
+M5-01/M5-05 review — so rather than either committing it under a review-fix commit or discarding it
+outright (it may be real in-progress work from another session on this machine), it has been
+preserved off the working tree via:
+
+```
+git stash push -u -m "pre-existing uncommitted EAS/package changes found during M5-01/M5-05 review, cause unconfirmed"
+```
+
+Stash ref: `stash@{0}` (SHA `f1f2c18249f196a431723e06ccd7bd78f530274e` at the time of stashing — recover
+with `git stash show -p f1f2c18249f196a431723e06ccd7bd78f530274e` or `git stash pop` if it's still at
+index 0; if other stashes accumulate before this is triaged, look it up by that SHA rather than by
+index).
+
+**What's in it, file by file:**
+- `app.json`: adds `ios.infoPlist.ITSAppUsesNonExemptEncryption: false`; adds
+  `android.permissions` (`RECORD_AUDIO`, `MODIFY_AUDIO_SETTINGS`, `FOREGROUND_SERVICE`,
+  `FOREGROUND_SERVICE_MEDIA_PLAYBACK`); adds a top-level `extra: {router: {}, eas: {projectId:
+  "5ab26155-4329-404b-8905-a19fd206e5b3"}}` and `owner: "tejitpabari99"`.
+- `package.json` / `pnpm-lock.yaml`: adds `@sentry/cli@^2.58.4` as a devDependency (lockfile diff is
+  exactly the corresponding 3-line entry — nothing else touched).
+- `eas.json` (untracked, new): a `build`/`submit` profile config — `development` build sets
+  `SENTRY_DISABLE_AUTO_UPLOAD: "true"`, `preview` is internal-distribution, `production` has
+  `autoIncrement: true` and an empty `submit.production` block.
+- `.easignore` (untracked, new): excludes `.expo/`, `dist/`, `web-build/`, `coverage/`,
+  `*.tsbuildinfo`, `.DS_Store`, the 102 MB local-only `data/` source dataset (`scripts/build-
+  exercise-db.ts`'s input, already-committed output is what actually bundles), and `docs/`/`e2e/` —
+  each exclusion has an explicit inline comment explaining *why* it's excluded.
+
+**Best guess at cause:** this reads as deliberate, if incomplete, EAS-build + Sentry-release
+configuration work — not an accidental side effect of a `pnpm install`/`expo-doctor` run. Reasoning:
+(1) `eas.json`'s content is a real, considered profile config (the `SENTRY_DISABLE_AUTO_UPLOAD` env
+var in particular implies someone was mid-way through wiring the Sentry EAS build plugin, not just
+running `eas build:configure`'s bare default scaffold); (2) `.easignore`'s exclusion list and its
+per-line comments are hand-written prose in this repo's own established comment style, not
+boilerplate a CLI would generate; (3) `@sentry/cli` was added as an explicit, intentional
+`pnpm add -D` (a single clean lockfile entry, not a transitive/incidental bump); (4) `app.json`'s
+`extra.eas.projectId`/`owner` fields are exactly `eas init`'s own signature output, but paired with
+the encryption-export and audio/foreground-service permission additions, which look like preparation
+for a real build (in-app audio for rest-timer sounds, per `05` §3.5's `sounds` settings key) rather
+than scaffold noise. Net: this looks like real in-progress work from a separate session/agent on this
+shared machine (likely EAS build setup + Sentry release wiring, adjacent to M5-04's `sentry_enabled`
+setting and M0-11's diagnostics scope) that was left mid-stream, not a byproduct of anything M5-01 or
+M5-05 did. **Not verified against any task doc claiming this scope** — flagging for triage, not
+concluding it's safe to keep or discard.
+
+**Action needed:** whoever owns EAS/Sentry setup should `git stash show -p f1f2c182...` (or `git
+stash list` if the index has shifted), decide whether to `git stash pop` and finish/commit it, or
+drop it if it's stale/superseded. Left untouched by this review beyond stashing it.
+
 ## Everything else
 
 Every other task — all of M0 through M7 except the six owner-gated tasks listed above — is
