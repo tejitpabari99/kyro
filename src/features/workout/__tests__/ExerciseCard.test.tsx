@@ -20,6 +20,7 @@ import { openBetterSqlite3Driver } from '@/data/sqlite/driver.better-sqlite3';
 import type { SqliteDriver } from '@/data/sqlite/driver';
 import { migrate } from '@/data/sqlite/migrator';
 import { WorkoutRepositoryImpl } from '@/data/workouts/workout-repository';
+import { configureRecordsService } from '@/features/stats/records-service';
 import { ThemeProvider } from '@/ui/theme-provider';
 
 import { ExerciseCard, type ExerciseCardProps } from '../ExerciseCard';
@@ -133,6 +134,71 @@ describe('ExerciseCard — chrome (02 §3)', () => {
         'Incline Bench Press',
       ),
     );
+  });
+
+  it('M4-09: opening the detail sheet mid-workout (real History/Charts/Records data) never mutates the active workout', async () => {
+    // 03 §3's own named acceptance line: "Detail opened as sheet mid-workout
+    // does not disturb the active workout." Regression coverage for a gap
+    // M4-09 itself never closed — neither `ExerciseDetailScreen.test.tsx`
+    // (standalone, no `activeWorkoutStore` in scope) nor this file's own
+    // pre-existing detail-sheet test (`workoutRepository` left `undefined`,
+    // so the sheet's tabs never got real data) actually drove the new
+    // History/Charts/Records tabs while a real workout was active.
+    const fixture = await setup();
+    configureRecordsService(fixture.workoutRepo);
+
+    // A prior, already-finished performance of the same exercise so the
+    // sheet's tabs have real content to render (not just an empty state).
+    const priorWorkoutId = useActiveWorkoutStore.getState().workout!.id;
+    const priorExerciseSetId = useActiveWorkoutStore.getState().workout!.exercises[0]!.sets[0]!.id;
+    await useActiveWorkoutStore.getState().updateSet(priorExerciseSetId, { weightKg: 100, reps: 5 });
+    await useActiveWorkoutStore.getState().setCompleted(priorExerciseSetId, true);
+    await useActiveWorkoutStore.getState().finish({ endTime: Date.now() });
+
+    // The workout actually active during the test — a fresh one, with its
+    // own distinct set for the same exercise.
+    await useActiveWorkoutStore.getState().startEmpty({ title: 'Today', startTime: Date.now() });
+    const [added] = await useActiveWorkoutStore.getState().addExercises([{ exerciseId: fixture.exercise.id }]);
+    const activeWorkoutId = useActiveWorkoutStore.getState().workout!.id;
+    const activeSetId = added!.sets[0]!.id;
+    await useActiveWorkoutStore.getState().updateSet(activeSetId, { weightKg: 60, reps: 12 });
+
+    await renderCard({ ...fixture, workoutExerciseId: added!.id }, { workoutRepository: fixture.workoutRepo });
+
+    await fireEvent.press(screen.getByTestId('card-name'));
+    await waitFor(() => expect(screen.getByTestId('card-detail-sheet')).toBeTruthy());
+
+    // Drive real content through History, Charts, and Records — proves the
+    // sheet is wired to the real repository/records service, not just its
+    // pre-M4-09 empty-state fallback.
+    await fireEvent.press(screen.getByTestId('card-detail-sheet-content-tabs-history'));
+    await waitFor(() =>
+      expect(
+        screen.getByTestId(`card-detail-sheet-content-history-card-${priorWorkoutId}`),
+      ).toBeTruthy(),
+    );
+
+    await fireEvent.press(screen.getByTestId('card-detail-sheet-content-tabs-records'));
+    await waitFor(() =>
+      expect(screen.getByTestId('card-detail-sheet-content-records-pr-heaviest_weight')).toBeTruthy(),
+    );
+
+    await fireEvent.press(screen.getByTestId('card-detail-sheet-content-tabs-charts'));
+    await waitFor(() => expect(screen.getByTestId('card-detail-sheet-content-charts')).toBeTruthy());
+
+    // The currently-active workout must be completely untouched: still
+    // active, same id, and its own (not the finished workout's) set data
+    // unchanged — browsing another exercise's whole history/records/charts
+    // must never bleed into or clear the real in-progress session.
+    const workout = useActiveWorkoutStore.getState().workout;
+    expect(workout).not.toBeNull();
+    expect(workout!.id).toBe(activeWorkoutId);
+    const liveSet = workout!.exercises
+      .flatMap((exercise) => exercise.sets)
+      .find((set) => set.id === activeSetId);
+    expect(liveSet?.weightKg).toBe(60);
+    expect(liveSet?.reps).toBe(12);
+    expect(liveSet?.isCompleted).toBe(false);
   });
 
   it('"+ Add Set" appends a bare normal row to the store/DB', async () => {
