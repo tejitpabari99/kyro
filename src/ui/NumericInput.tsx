@@ -28,7 +28,7 @@
  * accessory bar and don't need focus tracking.
  */
 import React from 'react';
-import { TextInput, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
+import { TextInput, type StyleProp, type TextStyle } from 'react-native';
 
 import { useTheme } from './theme-provider';
 
@@ -47,7 +47,23 @@ export interface NumericInputProps {
   placeholder?: string;
   autoFocus?: boolean;
   disabled?: boolean;
-  style?: StyleProp<ViewStyle>;
+  /**
+   * `TextStyle`, not `ViewStyle` — this ultimately lands on the underlying
+   * `TextInput`'s own `style` prop (below), which requires `TextStyle`.
+   * Previously typed as `StyleProp<ViewStyle>`, which is a real type error
+   * (`ViewStyle` is not assignable to `TextStyle`) that `tsc` only surfaces
+   * once `expo-env.d.ts`/`.expo/types` exist — i.e. after the CI pipeline's
+   * own later `expo-doctor`/`expo export` steps have run at least once in a
+   * given checkout, which pulls in `expo/types`'s `react-native-web.d.ts`
+   * ambient shim (adds a loose `userSelect: string` to `ViewStyle`, which
+   * conflicts with `TextStyle`'s own, stricter, pre-existing `userSelect`
+   * literal-union). A *second* `pnpm run ci` run in the same checkout would
+   * therefore fail at the typecheck step — found and fixed in the M4
+   * milestone-wide review (`EXECUTION-LOG.md`'s `M4 | reviewed` row) by
+   * re-running the gate twice from the same sandbox, the same "don't just
+   * trust one green run" discipline that review's own mechanics required.
+   */
+  style?: StyleProp<TextStyle>;
   testID?: string;
   accessibilityLabel?: string;
 }
