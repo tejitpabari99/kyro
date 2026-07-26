@@ -21,6 +21,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import React from 'react';
+import { Alert } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { openBetterSqlite3Driver } from '@/data/sqlite/driver.better-sqlite3';
@@ -51,6 +52,21 @@ jest.mock('expo-router', () => ({
 // count alone, the same "mock the seam, assert it was called" convention
 // `router.push` above already uses.
 jest.mock('@/lib/diagnostics-export');
+
+// M5-06: "Export CSV" constructs its `CsvService` via `getAppDriver()`
+// lazily, at press-time (see `index.tsx`'s own comment on `handleExportCsv`
+// for why) — this suite's every other test renders `SettingsScreen` against
+// a self-constructed in-memory driver that never calls the real
+// `runDbBoot()`, so `getAppDriver()` would throw if actually invoked; none
+// of those pre-existing tests ever press Export CSV, so this mock only
+// matters for the dedicated "DATA section" describe block below, which
+// configures `createCsvService`'s return value per-test.
+jest.mock('@/data/sqlite/boot', () => ({ getAppDriver: jest.fn() }));
+jest.mock('@/features/data-transfer/csv-service', () => ({ createCsvService: jest.fn() }));
+// M5-06: same "mock the seam, assert it was called" convention as
+// `diagnostics-export` above — `lib/share-file.ts`'s own header explains why
+// `expo-sharing` itself is never mocked directly in screen tests.
+jest.mock('@/lib/share-file', () => ({ shareFile: jest.fn().mockResolvedValue(undefined) }));
 
 // The screen imports the app-wide `useSettingsStore` singleton directly
 // (matching every other app-code consumer, e.g. `app/_layout.tsx`) — mocked
@@ -482,6 +498,99 @@ describe('Settings screen — General/Notifications/About (M5-04, 04 §7)', () =
     expect(relaunchStore.getState().settings.weekly_goal).toBe(5);
     expect(relaunchStore.getState().settings.rest_notifications_enabled).toBe(false);
     expect(relaunchStore.getState().settings.sentry_enabled).toBe(false);
+  });
+});
+
+describe('Settings screen — DATA section, Export CSV (M5-06)', () => {
+  let driver: SqliteDriver;
+  let queryClient: QueryClient;
+
+  beforeEach(async () => {
+    driver = openBetterSqlite3Driver(':memory:');
+    migrate(driver);
+    queryClient = newQueryClient();
+
+    const { useSettingsStore } = jest.requireMock('@/features/settings/settings-store') as {
+      useSettingsStore: ReturnType<typeof createSettingsStore>;
+    };
+    await useSettingsStore.getState().load(new SettingsRepository(driver));
+
+    jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    driver.close();
+  });
+
+  async function renderSettings() {
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <SettingsScreen />
+        </ThemeProvider>
+      </QueryClientProvider>,
+    );
+  }
+
+  it('renders an Export CSV row and no Import/Backup rows (M5-07/M5-09 not yet built)', async () => {
+    await renderSettings();
+
+    expect(screen.getByTestId('settings-export-csv-row')).toBeTruthy();
+    expect(screen.queryByText(/import hevy/i)).toBeNull();
+    expect(screen.queryByText(/backup/i)).toBeNull();
+  });
+
+  it('pressing Export CSV calls CsvService.exportAll with the live unit settings, then shares the returned file', async () => {
+    const { useSettingsStore } = jest.requireMock('@/features/settings/settings-store') as {
+      useSettingsStore: ReturnType<typeof createSettingsStore>;
+    };
+    await useSettingsStore.getState().setSetting('weight_unit', 'lbs');
+    await useSettingsStore.getState().setSetting('distance_unit', 'miles');
+
+    const exportAll = jest
+      .fn()
+      .mockResolvedValue({ uri: 'file:///mock-cache/kyro_workouts.csv', fileName: 'kyro_workouts.csv' });
+    const { createCsvService } = jest.requireMock('@/features/data-transfer/csv-service') as {
+      createCsvService: jest.Mock;
+    };
+    createCsvService.mockReturnValue({ exportAll });
+    const { shareFile } = jest.requireMock('@/lib/share-file') as { shareFile: jest.Mock };
+
+    await renderSettings();
+    fireEvent.press(screen.getByTestId('settings-export-csv-row'));
+
+    await waitFor(() =>
+      expect(exportAll).toHaveBeenCalledWith({ weightUnit: 'lbs', distanceUnit: 'miles' }),
+    );
+    await waitFor(() =>
+      expect(shareFile).toHaveBeenCalledWith(
+        'file:///mock-cache/kyro_workouts.csv',
+        expect.objectContaining({ mimeType: 'text/csv' }),
+      ),
+    );
+  });
+
+  it('surfaces an alert and clears the loading state when export rejects, without an unhandled rejection', async () => {
+    const exportAll = jest.fn().mockRejectedValue(new Error('disk full'));
+    const { createCsvService } = jest.requireMock('@/features/data-transfer/csv-service') as {
+      createCsvService: jest.Mock;
+    };
+    createCsvService.mockReturnValue({ exportAll });
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+
+    await renderSettings();
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('settings-export-csv-row'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(alertSpy).toHaveBeenCalledWith('Export Failed', expect.any(String));
+    // The row's subtitle reverts from "Exporting..." (not stuck loading)
+    // once the failure is handled.
+    expect(screen.queryByText('Exporting…')).toBeNull();
+
+    alertSpy.mockRestore();
   });
 });
 

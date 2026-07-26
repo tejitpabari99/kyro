@@ -46,19 +46,48 @@
  * own dependency order). A settings row that navigates to a route that
  * doesn't exist would 404/throw — a real bug, not a stub worth shipping.
  * See `docs/plan/EXECUTION-LOG.md`'s M5-04 row for the full reasoning.
+ *
+ * ## M5-06 addition: DATA section — Export CSV only
+ *
+ * Adds the DATA group M5-04's own comment (just above, left unchanged as
+ * the historical record) reserved for whoever built M5-06/07/09 next. Only
+ * "Export CSV" lands here — `CsvService.exportAll()`
+ * (`features/data-transfer/csv-service.ts`) writes every completed workout
+ * to `kyro_workouts.csv` in the cache directory per the *live*
+ * `weight_unit`/`distance_unit` settings, then `lib/share-file.ts`'s
+ * `shareFile` opens the OS share sheet on it. "Import Hevy CSV"/"Backup &
+ * Restore" stay out (M5-07/M5-09's own not-yet-built routes) — same
+ * "no dead row pointing at a route that doesn't exist" reasoning M5-04's own
+ * comment already gives, applied narrowly now that only one of the three
+ * rows actually has a real destination.
+ *
+ * `exportingCsv` covers the three real failure/edge modes a physical device
+ * can hit that a dev-machine smoke test can't: zero workouts (handled
+ * upstream by `encodeWorkoutsCsv`'s own header-only-CSV fallback — this
+ * screen never special-cases it), a full-disk cache-write failure, and the
+ * user dismissing the share sheet without picking a destination (`shareFile`
+ * itself can't distinguish "shared" from "dismissed," so this row simply
+ * never claims either outcome — it only ever reports "started" -> "done" or
+ * "failed"). Every rejected promise in the chain is caught and turned into
+ * an `Alert`, never left to reject unhandled.
  */
 import React, { useState } from 'react';
 import { router } from 'expo-router';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 
+import { ExerciseRepositoryImpl } from '@/data/exercises/exercise-repository';
+import { getAppDriver } from '@/data/sqlite/boot';
+import { WorkoutRepositoryImpl } from '@/data/workouts/workout-repository';
 import type { FirstDayOfWeek } from '@/domain/enums';
+import { createCsvService } from '@/features/data-transfer/csv-service';
 import { invalidateWeekBoundaryQueries } from '@/features/settings/recompute-hooks';
 import { useSettingsStore } from '@/features/settings/settings-store';
 import { formatRestSeconds, restTimerSecondsOptions } from '@/features/workout/rest-timer-format';
 import { getAppVersion } from '@/lib/app-info';
 import { shareDiagnostics } from '@/lib/diagnostics-export';
+import { shareFile } from '@/lib/share-file';
 import { ListRow } from '@/ui/ListRow';
 import { SegmentedControl } from '@/ui/SegmentedControl';
 import { SettingsToggleRow } from '@/ui/SettingsToggleRow';
@@ -126,6 +155,7 @@ export default function SettingsScreen(): React.JSX.Element {
   const queryClient = useQueryClient();
   const theme = useSettingsStore((state) => state.settings.theme);
   const weightUnit = useSettingsStore((state) => state.settings.weight_unit);
+  const distanceUnit = useSettingsStore((state) => state.settings.distance_unit);
   const firstDayOfWeek = useSettingsStore((state) => state.settings.first_day_of_week);
   const weeklyGoal = useSettingsStore((state) => state.settings.weekly_goal);
   const defaultRestSeconds = useSettingsStore((state) => state.settings.default_rest_seconds);
@@ -143,6 +173,47 @@ export default function SettingsScreen(): React.JSX.Element {
 
   const [restTimerSheetVisible, setRestTimerSheetVisible] = useState(false);
   const [weeklyGoalSheetVisible, setWeeklyGoalSheetVisible] = useState(false);
+  const [exportingCsv, setExportingCsv] = useState(false);
+
+  // M5-06 (05 §7.1's export surfaces): write `kyro_workouts.csv` to the
+  // cache directory per the *live* unit settings, then open the OS share
+  // sheet on it. `CsvService` is constructed here, lazily, at press-time —
+  // deliberately **not** a top-level `useMemo` — this route has no separate
+  // feature-component/route split (unlike `HistoryDetailScreen`, which
+  // receives `csvService` as a prop from its own thin route wrapper), and
+  // this screen's own existing test suite renders it against a
+  // self-constructed in-memory driver that never calls `runDbBoot()` — a
+  // top-level `getAppDriver()` call would throw on every one of those
+  // renders, not just the ones that press this row. Constructing it inside
+  // the handler means `getAppDriver()` only ever runs when a user actually
+  // presses Export CSV. Every failure mode (zero-workout header-only CSV is
+  // not a failure — `encodeWorkoutsCsv` handles that upstream; a full-disk
+  // write, sharing unavailable, or any other rejection) is caught here so
+  // this row never leaves an unhandled promise rejection or a stuck
+  // "Exporting..." state.
+  const handleExportCsv = (): void => {
+    if (exportingCsv) return;
+    setExportingCsv(true);
+    const csvService = createCsvService({
+      workoutRepository: new WorkoutRepositoryImpl(getAppDriver()),
+      exerciseRepository: new ExerciseRepositoryImpl(getAppDriver()),
+    });
+    csvService
+      .exportAll({ weightUnit, distanceUnit })
+      .then(({ uri }) =>
+        shareFile(uri, {
+          mimeType: 'text/csv',
+          UTI: 'public.comma-separated-values-text',
+          dialogTitle: 'Export Workouts',
+        }),
+      )
+      .catch(() => {
+        Alert.alert('Export Failed', 'Could not export your workout history. Please try again.');
+      })
+      .finally(() => {
+        setExportingCsv(false);
+      });
+  };
 
   /**
    * M5-04, `M5-tasks.md`'s own M5-04 "How" line: "first day of week ... with
@@ -379,15 +450,31 @@ export default function SettingsScreen(): React.JSX.Element {
       </View>
 
       {/*
-        Data (Export CSV / Import Hevy CSV / Backup & Restore) is
-        deliberately NOT rendered here — M5-06/M5-07/M5-09 (the tasks that
-        would build those flows) haven't landed on this branch yet. A
-        settings row that `router.push`es to a route that doesn't exist
-        would 404/throw, which is a real bug, not a stub worth shipping
-        early. See `docs/plan/EXECUTION-LOG.md`'s M5-04 row for the full
-        reasoning — whoever builds M5-06/M5-07/M5-09 next should add a
-        "DATA" section here, following this same section-header pattern.
+        M5-06: Export CSV only. Import Hevy CSV / Backup & Restore still
+        omitted — M5-07/M5-09's own not-yet-built routes, same "no dead row"
+        reasoning the comment above (M5-04's original one, left unchanged as
+        the historical record) already established.
       */}
+      <Text
+        style={[
+          typography.footnote,
+          { color: colors.text.secondary, marginBottom: spacing['2'], marginTop: spacing['6'] },
+        ]}
+      >
+        DATA
+      </Text>
+      <View style={{ borderRadius: 12, overflow: 'hidden', backgroundColor: colors.bg.surface }}>
+        <ListRow
+          testID="settings-export-csv-row"
+          title="Export CSV"
+          subtitle={
+            exportingCsv ? 'Exporting…' : 'Export your full workout history as a CSV file'
+          }
+          disabled={exportingCsv}
+          hideSeparator
+          onPress={handleExportCsv}
+        />
+      </View>
 
       <Text
         style={[

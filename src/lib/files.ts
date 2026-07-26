@@ -3,9 +3,16 @@
  * between app code and the native filesystem/media packages (08 §5: "...
  * file pickers ... via src/lib/ seams"). Two jobs live in this one file:
  *
- *  - `pickFile`/`writeFile` (M0-03 stub, still unimplemented): CSV
- *    import/export (M5) will wire these to `expo-document-picker`/
- *    `expo-file-system`.
+ *  - `pickFile` (M0-03 stub, still unimplemented): CSV import (M5-07) will
+ *    wire this to `expo-document-picker`. `writeFile`'s own M0-03 stub is
+ *    **removed** as of M5-06 — CSV export's real file-write landed in
+ *    `lib/csv-export-file.ts` instead, a dedicated file for the same reason
+ *    `progress-photos.ts` split from this one (see that file's own header):
+ *    this file's plain top-level `expo-image-manipulator`/`expo-image-picker`
+ *    imports have no jest-expo automock, and `CsvService` is imported by
+ *    `SettingsScreen`/`HistoryDetailScreen` at module scope, so routing the
+ *    CSV write through here would drag those two unmocked native imports
+ *    into every existing test of those two screens.
  *  - Custom-exercise photo storage (M1-09, everything below the stub pair):
  *    `05` §8's on-device convention — `${documentDirectory}photos/exercises/
  *    {exerciseId}/{uuid}.jpg`, DB rows store the **relative file name only**
@@ -67,14 +74,9 @@ export interface PickedFile {
   name: string;
 }
 
-/** TODO(M5): wire to `expo-document-picker` `getDocumentAsync`. */
+/** TODO(M5-07): wire to `expo-document-picker` `getDocumentAsync`. */
 export async function pickFile(_options?: { type?: string }): Promise<PickedFile | null> {
-  throw new Error('pickFile is not implemented yet — see M5 CSV import tasks.');
-}
-
-/** TODO(M5): wire to `expo-file-system` for writing the exported CSV. */
-export async function writeFile(_uri: string, _contents: string): Promise<void> {
-  throw new Error('writeFile is not implemented yet — see M5 CSV export tasks.');
+  throw new Error('pickFile is not implemented yet — see M5-07 CSV import task.');
 }
 
 // ---------------------------------------------------------------------------
