@@ -462,6 +462,54 @@ actual stuck test. Running with `--forceExit` (or simply waiting well past 100s)
 "hang" and reveals the real, already-decided pass/fail outcome — don't mistake this for a genuine
 infinite loop before checking that first.
 
+## Worktree started behind the *local* `users/tejitpabari/init` tip, not just `origin/...` (M5-04 finding, 2026-07-26)
+
+The isolated git worktree assigned for M5-04 was checked out on its own branch
+(`worktree-agent-a96312a3dfe226c0f`) at `f131f97` ("Initial Plan and Task docs") — the same
+early-ancestor-only-`docs/` state the M5-05 finding above already documents for a different
+worktree. `git merge --ff-only origin/users/tejitpabari/init` (the fix that finding recommends)
+fast-forwarded cleanly to `6d13825` ("Getting first build working") — but that left M5-02 and
+M5-03 (already merged into the *local* `users/tejitpabari/init` branch checked out in the shared
+`/root/projects/kyro` worktree) missing entirely, because **`origin/users/tejitpabari/init` is
+itself stale relative to the local branch** — nothing in this session had pushed the M5-02/M5-03
+merge commits to the remote yet. Discovered by re-checking `git log HEAD..users/tejitpabari/init
+--oneline` (the local branch ref, reachable from any worktree sharing the same `.git`, even though
+it's checked out elsewhere and can't be checked out a second time) after the first fast-forward
+still left `app/(tabs)/profile/measures/` and `src/features/measurements/` missing — 11 more
+commits behind the *local* ref. A second `git merge --ff-only users/tejitpabari/init` (no `origin/`
+prefix) closed the gap cleanly (still a pure fast-forward, zero divergent commits). **Lesson for
+future agents hitting the M5-05-documented stale-worktree pattern**: fast-forward against the
+local branch ref first (`git merge --ff-only <branch>`, no `origin/` prefix) — it can be, and here
+was, ahead of `origin/<branch>` when other work in the same session hasn't been pushed yet; only
+fall back to the `origin/`-prefixed ref if the local one doesn't exist in this worktree's object
+database for some reason.
+
+## `ProfileScreen.test.tsx` act()-accumulation flakiness once the dev-row press assertions were added (M5-04 finding, 2026-07-26)
+
+Same category the M4-08/M5-03 findings above document (`docs/plan/BLOCKERS.md`'s "Multi-chart-
+mount RNTL test flakiness" and "A precise, reproducible root cause..." entries): once the
+`ProfileScreen` test file reached 16 `it` blocks across 6 `describe` groups (adding two
+`fireEvent.press` assertions to the dev-only-rows test, closing a coverage gap, was what tipped it
+over), the very last test in the file (`'renders in dark theme'`) started failing 100% of the time
+with a `findByTestId` timeout — despite passing cleanly in isolation (`jest -t`) every time. Checked
+the M5-03 finding's specific diagnostic first (a bail-out `setState` returning the same reference,
+followed immediately by a synchronous, non-`waitFor` assertion) — doesn't obviously apply here: the
+new assertions added were two back-to-back `fireEvent.press` calls against a mocked `router.push`
+(no React state update involved in either press at all), not a state-bail-out pattern. So this
+looks like the more general, not-fully-root-caused "many sequential renders accumulate scheduler
+state within one file" category the M4-08 finding names, not a fresh instance of the M5-03
+diagnostic. **Fix, same mechanical one as both precedents**: split into `ProfileScreen.test.tsx`
+(header/avatar-name + workout-count/streak + both-themes, 7 tests) and
+`ProfileScreen.interactions.test.tsx` (shortcut cards + recent workouts + dev-only rows, 9 tests) —
+confirmed stable across 5 repeated full-suite runs post-split, 0 flakes. Also separately confirmed,
+while first debugging this same file before the split was applied, an unrelated **real bug** in the
+test file itself (not a flake): a `fireEvent.changeText`/`fireEvent(..., 'blur')` pair that calls
+through to `useSettingsStore.getState().setSetting(...)` must be wrapped in `await act(async () =>
+{...})`, not fired bare — otherwise the write's promise resolution races the test's own `waitFor`
+assertion and the settings-store write is lost (observed as `Received: ""` instead of the just-typed
+name, 100% reproducible, not flaky) with console warnings ("update ... not wrapped in act(...)").
+Noting both fixes here since a future settings-writing screen test is likely to hit one or both.
+
 ## Everything else
 
 Every other task — all of M0 through M7 except the six owner-gated tasks listed above — is
