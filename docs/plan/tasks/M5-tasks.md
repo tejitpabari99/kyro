@@ -8,7 +8,7 @@ Task count: **11**
 
 ---
 
-### M5-01 — MeasurementRepository + integration suite
+### M5-01 — MeasurementRepository + integration suite [done]
 **Description:** Date-keyed measurement storage with merge-upsert and series queries.
 **How:** Per 05 §6/§3.4: `upsert(date, fields)` merges non-null fields into the `'YYYY-MM-DD'`-keyed row; `clearField(date, field)` explicit per-field clear; empty rows (all fields null, no photos) removed; `list(range?)`, `series(field, range)` (sorted points, gaps preserved), `addPhoto(date, sourceUri)` (creates the measurement row if absent — FK), `photos(range?)`, `deletePhoto` (removes file too). Canonical units kg/cm; conversion at boundary via M1-02.
 **References:** 05 §3.4, §6, §8; 04 §6.1.
