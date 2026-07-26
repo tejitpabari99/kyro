@@ -114,12 +114,20 @@
  *
  * --- Sentry init (M0-11), deferred past first frame -----------------------
  * 06 §5.1/§8: "After first frame (never gating boot)". The
- * `requestAnimationFrame` callback below fires after this component's
- * first commit — regardless of `gate.status` — and only then calls
- * `initSentry()` (`src/lib/sentry.ts`), which itself no-ops entirely when
+ * `requestAnimationFrame` callback below only calls `initSentry()`
+ * (`src/lib/sentry.ts`), which itself no-ops entirely when
  * `EXPO_PUBLIC_SENTRY_DSN` is unset (true today — no owner DSN exists yet,
- * O-05 provides the real one by M6). This is deliberately independent of
- * the DB-ready gate: Sentry must never block or be blocked by boot.
+ * O-05 provides the real one by M6) — it never blocks or gates boot either
+ * way, `initSentry()` itself is synchronous and cannot fail/await anything.
+ * The effect's own scheduling **is** now gated on `gate.status === 'ready'`
+ * (M5-04 fix, see that effect's own comment) purely so the `sentry_enabled`
+ * check it does before calling `initSentry()` reads the real loaded
+ * setting rather than the pre-load default — that is a correctness
+ * dependency on settings having loaded, not a "Sentry must wait for boot"
+ * policy change; `gate.status === 'ready'` already implies settings have
+ * loaded (this file's own boot-step ordering above), and by that point the
+ * DB-ready gate has already stopped blocking anything, so nothing about
+ * this waits any longer than boot itself already takes.
  *
  * --- Progress-photo orphan sweep (M5-03), deferred past first frame -------
  * 05 §8: "an orphan sweep runs on app start (files without DB rows ->
@@ -268,28 +276,37 @@ export default function RootLayout(): React.JSX.Element | null {
   }, []);
 
   // Sentry init, deferred past first frame (see file header) — never
-  // gated on `gate.status`, never awaited, never blocks boot.
-  //
-  // M5-04: gated on `sentry_enabled` (`src/lib/sentry.ts`'s own TODO at
-  // `initSentry`'s doc comment named this exact call site). Read via
-  // `useSettingsStore.getState()` inside the RAF callback rather than the
-  // reactive `themePreference`-style selector above — this effect's `[]` dep
-  // array means it only ever fires once per mount, so a *later* toggle of
-  // `sentry_enabled` intentionally does not tear down/re-init Sentry; it only
-  // changes what the *next* app launch's first RAF callback sees. That is a
-  // genuine, documented next-launch-only exception (see the Settings
-  // screen's own subtitle on this toggle, and this task's EXECUTION-LOG row)
-  // — `Sentry.init`/`Sentry.close()` mid-session is not a supported flip this
-  // SDK exposes cleanly, and boot-time-only settings already have precedent
-  // in this codebase (nothing else reads `sentry_enabled` at all otherwise).
+  // blocks boot, but (M5-04 fix, found in M5-04 review) *does* need to wait
+  // for `gate.status === 'ready'` before reading `sentry_enabled`, not just
+  // "past first frame": this component's very first commit happens while
+  // `gate.status` is still `'pending'` (native splash still up), which is
+  // long before `runDbBoot()` -> seed -> `useSettingsStore.load()` resolves
+  // (real SQLite I/O across the native bridge — reliably slower than one
+  // `requestAnimationFrame` tick). The original `[]`-dep effect fired its
+  // RAF on that first commit unconditionally, so `useSettingsStore
+  // .getState().settings.sentry_enabled` was read while the store still
+  // held its pre-load `SETTINGS_DEFAULTS` seed (`sentry_enabled: true`) —
+  // meaning a user who had disabled and persisted the toggle would
+  // silently get Sentry re-initialized on every single cold start, the
+  // opposite of the "next-launch-only" behavior this was meant to honor.
+  // Keying the effect on `gate.status` instead means the RAF now only
+  // schedules once settings have actually finished loading from disk, so
+  // the flag it reads is the real persisted value. `Sentry.init`/
+  // `Sentry.close()` mid-session still isn't a supported flip (a *later*
+  // in-session toggle still only affects the next launch, per the
+  // Settings screen's own subtitle on this control) — this only fixes
+  // which value the next launch's check itself sees.
   useEffect(() => {
+    if (gate.status !== 'ready') {
+      return undefined;
+    }
     const frame = requestAnimationFrame(() => {
       if (useSettingsStore.getState().settings.sentry_enabled) {
         initSentry();
       }
     });
     return () => cancelAnimationFrame(frame);
-  }, []);
+  }, [gate.status]);
 
   // M2-11 (06 §6.4): "`lib/sound.ts` preloads timer/check chimes" — same
   // "deferred past first frame, never gates boot" posture as Sentry init
