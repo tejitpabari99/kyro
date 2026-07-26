@@ -113,8 +113,14 @@ describe('M4-11 perf budgets — synthetic 5-year fixture (node, real better-sql
     bucketAggregateTrend(rows, displayBounds, 'monday', granularity, 'duration', true);
     bucketAggregateTrend(rows, displayBounds, 'monday', granularity, 'volume', true);
     bucketAggregateTrend(rows, displayBounds, 'monday', granularity, 'reps', true);
-    computeMuscleDistribution(rows, true);
-    bucketSetsPerMuscleGroupPerWeek(rows, displayBounds, 'monday', true);
+    // Computed once, shared with bucketSetsPerMuscleGroupPerWeek below (both
+    // read the same `(rows, true)` distribution here — a real dashboard
+    // render with dashboardRange === muscleRange would too) — see that
+    // function's own "M4-11 perf-budget review fix" doc comment
+    // (domain/stats-buckets.ts) for why a second full pass over 15.7k rows
+    // was redundant and worth avoiding at this range's scale.
+    const muscleDistribution = computeMuscleDistribution(rows, true);
+    bucketSetsPerMuscleGroupPerWeek(rows, displayBounds, 'monday', true, muscleDistribution);
     computeSummaryTotals(rows, true);
 
     const elapsedMs = performance.now() - startedAt;

@@ -512,14 +512,29 @@ export interface MuscleWeekSeries {
  * weighted contribution, then re-walks `rows` bucketing each eligible set's
  * own primary/secondary contributions into either its own top-8 key or
  * {@link OTHER_MUSCLE_SERIES_KEY}.
+ *
+ * M4-11 perf-budget review fix: top-8 selection needs exactly
+ * {@link computeMuscleDistribution}'s own whole-range totals (file header,
+ * "Muscle-group weighting") — computed here internally by default, but a
+ * caller that has *already* computed the identical `(rows, warmupInStats)`
+ * distribution for its own muscle-distribution card (`StatisticsScreen.tsx`
+ * does exactly this whenever `dashboardRange === muscleRange`, and the
+ * `perf-budgets.test.ts` "all"-range case always does, per its own doc
+ * comment's "one query+compute unit per range") can pass it in via
+ * `precomputedDistribution` to skip a second full `O(rows)` pass — measured
+ * as a double-digit-ms redundant cost at the 15.7k-row "all"-range scale,
+ * enough to leave that range's 06 §8 300 ms budget uncomfortably tight.
+ * Optional and backward compatible: omitted (or the ranges/warmup flag
+ * genuinely differ), this recomputes exactly as before.
  */
 export function bucketSetsPerMuscleGroupPerWeek(
   rows: readonly StatsFeedRow[],
   bounds: { start: number; end: number },
   firstDayOfWeek: FirstDayOfWeek,
   warmupInStats: boolean,
+  precomputedDistribution?: readonly MuscleWeight[],
 ): MuscleWeekSeries {
-  const totals = computeMuscleDistribution(rows, warmupInStats);
+  const totals = precomputedDistribution ?? computeMuscleDistribution(rows, warmupInStats);
   const topMuscleGroups = totals.slice(0, STACKED_MUSCLE_TOP_N).map((entry) => entry.muscleGroup);
   const topSet = new Set<MuscleGroup>(topMuscleGroups);
 

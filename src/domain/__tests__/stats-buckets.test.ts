@@ -345,6 +345,34 @@ describe('bucketSetsPerMuscleGroupPerWeek — top-8 + Other', () => {
     const { points } = bucketSetsPerMuscleGroupPerWeek(rows, bounds, 'monday', false);
     expect(points[0]!.values).toEqual({});
   });
+
+  it('an explicit precomputedDistribution (M4-11 perf-budget review fix) produces the identical result as recomputing internally', () => {
+    const muscleGroups = [
+      'chest', 'shoulders', 'biceps', 'triceps', 'forearms', 'quadriceps', 'hamstrings', 'calves', 'glutes',
+    ] as const;
+    const rows = muscleGroups.flatMap((muscleGroup, index) =>
+      Array.from({ length: muscleGroups.length - index }, () => row({ primaryMuscleGroup: muscleGroup, secondaryMuscleGroups: [] })),
+    );
+
+    const recomputed = bucketSetsPerMuscleGroupPerWeek(rows, bounds, 'monday', false);
+    const precomputed = bucketSetsPerMuscleGroupPerWeek(
+      rows,
+      bounds,
+      'monday',
+      false,
+      computeMuscleDistribution(rows, false),
+    );
+
+    expect(precomputed).toEqual(recomputed);
+  });
+
+  it('a mismatched precomputedDistribution is trusted verbatim for top-8 selection (caller contract, not re-derived)', () => {
+    const rows = [row({ primaryMuscleGroup: 'chest', secondaryMuscleGroups: [] })];
+    const { topMuscleGroups } = bucketSetsPerMuscleGroupPerWeek(rows, bounds, 'monday', false, [
+      { muscleGroup: 'quadriceps', weight: 99 },
+    ]);
+    expect(topMuscleGroups).toEqual(['quadriceps']);
+  });
 });
 
 // ---------------------------------------------------------------------------
