@@ -318,6 +318,48 @@ drag-reorder-frame-rate findings above (no iOS Simulator/physical device in this
 this exact fixture into the real on-device database for whoever runs that physical/simulator pass —
 it does the seeding, not the measuring.
 
+## Worktree started behind `users/tejitpabari/init`'s tip (M5-05 finding, 2026-07-26)
+
+The isolated git worktree assigned for M5-05 (`worktree-agent-a898c7e6646e15a5f`) was checked out at
+`f131f97` ("Initial Plan and Task docs") — an early ancestor commit containing only `docs/`, with no
+`src/`, `package.json`, `node_modules`, or any of the M0-M4 code the task references (`domain/stats-
+buckets.ts`, `domain/units.ts`, `src/data/workouts/types.ts`, etc. were all unreadable at that
+commit). `git merge-base --is-ancestor f131f97 0394324` confirmed the worktree's branch tip is a
+strict ancestor of `users/tejitpabari/init`'s own tip (`0394324`, the M4-reviewed state), so a plain
+`git merge --ff-only users/tejitpabari/init` inside the worktree fast-forwarded it cleanly to
+`0394324` with no divergent commits to reconcile (the worktree branch had zero commits of its own
+yet). `pnpm install --frozen-lockfile` then populated `node_modules` (also absent pre-merge).
+Recorded here per this task's own instruction to work around environment blockers rather than stop;
+future agents landing in a freshly-created worktree that appears to be missing the application
+source entirely should check `git log --oneline -3` / `ls` first — it may just need the same
+fast-forward, not a from-scratch bootstrap.
+
+## `process.env.TZ` mid-test reassignment does not work under this repo's Jest setup (M5-05 finding, 2026-07-26)
+
+Tried, for `domain/csv-codec.ts`'s "local time, not UTC" date-formatting requirement (05 §7.1), the
+obvious approach: reassign `process.env.TZ` inside a test (even as the literal first statement of a
+brand-new test file, before any other code touches `Date`/`Intl`) and assert the formatter's output
+changes accordingly. Empirically this has **no effect** under `jest` (`node` project, `testEnvironment:
+'node'`) — a minimal probe test (`process.env.TZ = 'America/New_York'` as the file's first line,
+then `new Date(Date.UTC(2026,0,3,2,0)).getHours()`) still returned the UTC hour, not the NY one.
+A bare `node -e` script doing the exact same reassignment-before-first-Date-use *does* work (verified
+separately) — so this isn't "Node doesn't support it" in general, it's that Jest's own runtime
+(module registry setup, coverage instrumentation, or jest-circus internals) already touches
+`Date`/`Intl` before user test code runs, and V8's ICU timezone resolution appears to cache the
+process's timezone on first use for the rest of the process lifetime, making a later reassignment a
+no-op. No `TZ=... jest ...`-at-invocation config exists in this repo (`package.json`'s `test`/`ci`
+scripts don't set it), and adding one was out of scope for a single task's test file. Grepped: no
+existing test in this codebase (`domain/streaks.ts`'s included) relies on a non-ambient TZ — they
+all just trust the environment's own timezone (confirmed UTC on this machine via `date`/
+`Intl.DateTimeFormat().resolvedOptions().timeZone`). **Workaround used**: `domain/__tests__/csv-
+codec.test.ts`'s local-vs-UTC coverage instead spies on `Date.prototype`'s local getters
+(`getDate`/`getMonth`/`getFullYear`/`getHours`/`getMinutes`) and asserts the `getUTC*` family is
+never called — an environment-independent way to prove the implementation reads local time, since
+the TZ-reassignment approach can't be made to work reliably here. Future tasks that need a genuinely
+non-UTC timezone in a Jest test (not just "prove local vs. UTC getters are used") will need either a
+per-file `testEnvironmentOptions` timezone config or a `TZ=`-prefixed separate `test:tz` script —
+neither exists yet.
+
 ## Everything else
 
 Every other task — all of M0 through M7 except the six owner-gated tasks listed above — is
