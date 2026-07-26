@@ -17,6 +17,11 @@
  * screen's new ⋯ menu needs `createFromWorkout` ("Save as Routine") and
  * `get` (the routine-name/"(deleted routine)" subtitle), mirroring
  * `app/workout/active.tsx`'s own `RoutineRepositoryImpl` construction.
+ *
+ * M5-06 addition: also constructs a `CsvService` (`createCsvService`,
+ * `features/data-transfer/csv-service.ts`) reusing this same
+ * `workoutRepository`/`exerciseRepository` instances — the ⋯ menu's newly
+ * un-hidden "Export CSV" item.
  */
 import React, { useMemo } from 'react';
 import { useLocalSearchParams } from 'expo-router';
@@ -25,6 +30,7 @@ import { ExerciseRepositoryImpl } from '@/data/exercises/exercise-repository';
 import { RoutineRepositoryImpl } from '@/data/routines/routine-repository';
 import { getAppDriver } from '@/data/sqlite/boot';
 import { WorkoutRepositoryImpl } from '@/data/workouts/workout-repository';
+import { createCsvService } from '@/features/data-transfer/csv-service';
 import { HistoryDetailScreen } from '@/features/history/HistoryDetailScreen';
 
 export default function HistoryDetailRoute(): React.JSX.Element {
@@ -32,6 +38,10 @@ export default function HistoryDetailRoute(): React.JSX.Element {
   const workoutRepository = useMemo(() => new WorkoutRepositoryImpl(getAppDriver()), []);
   const exerciseRepository = useMemo(() => new ExerciseRepositoryImpl(getAppDriver()), []);
   const routineRepository = useMemo(() => new RoutineRepositoryImpl(getAppDriver()), []);
+  const csvService = useMemo(
+    () => createCsvService({ workoutRepository, exerciseRepository }),
+    [workoutRepository, exerciseRepository],
+  );
 
   return (
     <HistoryDetailScreen
@@ -39,6 +49,7 @@ export default function HistoryDetailRoute(): React.JSX.Element {
       workoutRepository={workoutRepository}
       exerciseRepository={exerciseRepository}
       routineRepository={routineRepository}
+      csvService={csvService}
     />
   );
 }

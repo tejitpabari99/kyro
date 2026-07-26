@@ -89,11 +89,18 @@
  *   lands later" seam `HistoryListScreen.tsx`'s M4-06 Calendar button and
  *   M1-07's `ExerciseBrowseScreen.tsx` already established for a not-yet-
  *   built sibling task's route).
- * - **Export CSV (single workout)** — 04 §3.1 names it, but M4-04's own task
- *   text is explicit: "arrives M5-06 — hide until then." Deliberately
- *   omitted from the ⋯ menu entirely (no feature flag needed — the item
- *   simply doesn't exist yet, exactly like `HistoryListScreen.tsx`'s Export
- *   entry point doesn't exist until M5-06 lands there either).
+ * - **Export CSV (single workout)** — 04 §3.1 names it; M4-04's own task
+ *   text said "arrives M5-06 — hide until then." This task un-hides it:
+ *   `csvService.exportWorkout(workoutId, units)`
+ *   (`features/data-transfer/csv-service.ts`, injected the same
+ *   `Pick<CsvServiceApi, 'exportWorkout'>` way every other repository prop
+ *   here is narrowed) writes just this workout's own rows to
+ *   `kyro_workout_{date}.csv` in the cache directory per the *live*
+ *   `weight_unit`/`distance_unit` settings, then `lib/share-file.ts`'s
+ *   `shareFile` opens the OS share sheet on it. Failure (a full-disk write,
+ *   sharing unavailable) surfaces through the same `reportError` alert
+ *   `handleSaveAsRoutine`/`performDelete` already use, never an unhandled
+ *   rejection.
  * - **Delete** — confirm (`Alert.alert`, same "Delete {noun}?" / "Delete
  *   \"{title}\"? This can't be undone." copy `RoutinesHubScreen.tsx`'s own
  *   `handleDeleteRoutinePress` already established) → `workoutRepository
@@ -129,6 +136,7 @@ import {
   totalVolumeKg,
   type VolumeSetInput,
 } from '@/domain/volume';
+import type { CsvServiceApi } from '@/features/data-transfer/csv-service';
 import { useSettingsStore } from '@/features/settings/settings-store';
 import { getRecordsService, invalidateAfterWorkoutMutation } from '@/features/stats/records-service';
 import { selectActiveWorkout, useActiveWorkoutStore } from '@/features/workout/activeWorkoutStore';
@@ -136,6 +144,7 @@ import { NoteText } from '@/features/workout/NoteText';
 import { formatRecordAwardValue, formatRecordTypeLabel } from '@/features/workout/records-provider';
 import { useRestTimerStore } from '@/features/workout/restTimerStore';
 import { RoutineActionsSheet } from '@/features/routines/RoutineActionsSheet';
+import { shareFile } from '@/lib/share-file';
 import { Card } from '@/ui/Card';
 import { EmptyState } from '@/ui/EmptyState';
 import { SetRow, type SetBadgeKind } from '@/ui/SetRow';
@@ -151,6 +160,8 @@ export interface HistoryDetailScreenProps {
   exerciseRepository: Pick<ExerciseRepository, 'get'>;
   /** M3-07: `createFromWorkout` for "Save as Routine," `get` to resolve the routine-name/"(deleted routine)" subtitle. */
   routineRepository: Pick<RoutineRepository, 'createFromWorkout' | 'get'>;
+  /** M5-06: the ⋯ menu's "Export CSV" item. */
+  csvService: Pick<CsvServiceApi, 'exportWorkout'>;
   workoutId: string;
   testID?: string;
 }
@@ -183,6 +194,7 @@ export function HistoryDetailScreen({
   workoutRepository,
   exerciseRepository,
   routineRepository,
+  csvService,
   workoutId,
   testID = 'history-detail',
 }: HistoryDetailScreenProps): React.JSX.Element {
@@ -300,6 +312,26 @@ export function HistoryDetailScreen({
         router.push(`/routine/${routine.id}/edit` as never);
       })
       .catch(() => reportError('This workout could not be saved as a routine. Please try again.'));
+  };
+
+  // M5-06 (04 §3.1): un-hides the ⋯ menu's "Export CSV" item — writes just
+  // this workout's own rows to `kyro_workout_{date}.csv` in the cache
+  // directory per the live unit settings, then opens the OS share sheet.
+  // Same catch-and-alert posture as `handleSaveAsRoutine`/`performDelete`
+  // above — no unhandled rejection on a full-disk write or an unavailable
+  // share sheet.
+  const handleExportCsv = (): void => {
+    setMenuVisible(false);
+    csvService
+      .exportWorkout(workoutId, { weightUnit, distanceUnit })
+      .then(({ uri }) =>
+        shareFile(uri, {
+          mimeType: 'text/csv',
+          UTI: 'public.comma-separated-values-text',
+          dialogTitle: 'Export Workout',
+        }),
+      )
+      .catch(() => reportError('This workout could not be exported. Please try again.'));
   };
 
   // Same one-active-workout Resume/Discard-and-start-new gate every other
@@ -571,6 +603,7 @@ export function HistoryDetailScreen({
           { key: 'edit-workout', label: 'Edit Workout', onPress: handleEditWorkout },
           { key: 'repeat-workout', label: 'Repeat Workout', onPress: handleRepeatWorkout },
           { key: 'save-as-routine', label: 'Save as Routine', onPress: handleSaveAsRoutine },
+          { key: 'export-csv', label: 'Export CSV', onPress: handleExportCsv },
           { key: 'delete', label: 'Delete', destructive: true, onPress: handleDeletePress },
         ]}
       />

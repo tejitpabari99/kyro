@@ -27,9 +27,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Exercise, ExerciseRepository } from '@/data/exercises/types';
 import type { RoutineRepository, RoutineSummary } from '@/data/routines/types';
 import type { WorkoutFull, WorkoutRepository } from '@/data/workouts/types';
+import type { CsvServiceApi } from '@/features/data-transfer/csv-service';
 import { useActiveWorkoutStore } from '@/features/workout/activeWorkoutStore';
 import { useSettingsStore } from '@/features/settings/settings-store';
 import { configureRecordsService, invalidateAfterWorkoutMutation } from '@/features/stats/records-service';
+import { shareFile } from '@/lib/share-file';
 import { ThemeProvider, type ThemePreference } from '@/ui/theme-provider';
 
 import { HistoryDetailScreen } from '../HistoryDetailScreen';
@@ -49,6 +51,15 @@ jest.mock('expo-router', () => ({
 // notification (`useRestTimerStore.getState().skip()`) — same native seam
 // `RoutinesHubScreen.test.tsx` mocks for the identical reason.
 jest.mock('@/lib/notifications');
+
+// M5-06: `HistoryDetailScreen` calls `lib/share-file.ts`'s `shareFile`
+// (never `expo-sharing` directly, per that file's own header) for the ⋯
+// menu's newly un-hidden "Export CSV" item — mocked at this seam so these
+// tests assert the screen's own behavior (which URI it passes) without
+// touching the real native module.
+jest.mock('@/lib/share-file', () => ({
+  shareFile: jest.fn().mockResolvedValue(undefined),
+}));
 
 // M4-04: `invalidateAfterWorkoutMutation` is spied (real implementation
 // otherwise, `getSnapshot`/`configureRecordsService`/etc. all stay real) so
@@ -188,6 +199,15 @@ function defaultRoutineRepository(): Pick<RoutineRepository, 'createFromWorkout'
   };
 }
 
+/** Default `CsvService` fixture (M5-06) — `exportWorkout` unused by every test that isn't specifically exercising the ⋯ menu's "Export CSV" item, overridable per-test below. */
+function defaultCsvService(): Pick<CsvServiceApi, 'exportWorkout'> {
+  return {
+    exportWorkout: async () => {
+      throw new Error('not used in this test');
+    },
+  };
+}
+
 /**
  * M4-04: `softDelete` is optional here and defaulted to a no-op stub — every
  * pre-M4-04 test constructs its own `workoutRepository` fixture as `Pick<...,
@@ -201,6 +221,7 @@ async function renderScreen(
   routineRepository: Pick<RoutineRepository, 'createFromWorkout' | 'get'> = defaultRoutineRepository(),
   workoutId = 'w-1',
   theme: ThemePreference = 'dark',
+  csvService: Pick<CsvServiceApi, 'exportWorkout'> = defaultCsvService(),
 ) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { gcTime: 0, retry: false } } });
   const fullWorkoutRepository: Pick<WorkoutRepository, 'getFull' | 'softDelete'> = {
@@ -216,6 +237,7 @@ async function renderScreen(
           workoutRepository={fullWorkoutRepository}
           exerciseRepository={exerciseRepository}
           routineRepository={routineRepository}
+          csvService={csvService}
         />
       </ThemeProvider>
     </QueryClientProvider>,
@@ -792,8 +814,8 @@ describe('HistoryDetailScreen — ⋯ Delete (M4-04, 02 §15)', () => {
   });
 });
 
-describe('HistoryDetailScreen — Export CSV hidden until M5-06 (04 §3.1)', () => {
-  it('does not show an Export CSV item in the ⋯ menu', async () => {
+describe('HistoryDetailScreen — ⋯ Export CSV (M5-06, 04 §3.1)', () => {
+  it('shows an Export CSV item in the ⋯ menu', async () => {
     const full = makeWorkoutFull();
     const workoutRepository: Pick<WorkoutRepository, 'getFull'> = { getFull: async () => full };
     const exerciseRepository: Pick<ExerciseRepository, 'get'> = {
@@ -806,7 +828,68 @@ describe('HistoryDetailScreen — Export CSV hidden until M5-06 (04 §3.1)', () 
     await fireEvent.press(screen.getByTestId('detail-menu-button'));
     await waitFor(() => expect(screen.getByTestId('detail-actions-sheet-delete')).toBeTruthy());
 
-    expect(screen.queryByText(/export csv/i)).toBeNull();
+    expect(screen.getByText(/export csv/i)).toBeTruthy();
+  });
+
+  it('exports this workout via CsvService.exportWorkout and opens the share sheet with the returned URI, using the live unit settings', async () => {
+    const full = makeWorkoutFull();
+    const workoutRepository: Pick<WorkoutRepository, 'getFull'> = { getFull: async () => full };
+    const exerciseRepository: Pick<ExerciseRepository, 'get'> = {
+      get: async (id) => (id === 'ex-1' ? makeExercise() : null),
+    };
+    const exportWorkout = jest
+      .fn()
+      .mockResolvedValue({ uri: 'file:///mock-cache/kyro_workout_2026-01-01.csv', fileName: 'kyro_workout_2026-01-01.csv' });
+    useSettingsStore.setState((state) => ({
+      settings: { ...state.settings, weight_unit: 'lbs', distance_unit: 'miles' },
+    }));
+
+    await renderScreen(
+      workoutRepository,
+      exerciseRepository,
+      defaultRoutineRepository(),
+      'w-1',
+      'dark',
+      { exportWorkout },
+    );
+    await waitFor(() => expect(screen.getByText('Morning Workout')).toBeTruthy());
+
+    await fireEvent.press(screen.getByTestId('detail-menu-button'));
+    await fireEvent.press(await screen.findByTestId('detail-actions-sheet-export-csv'));
+
+    expect(exportWorkout).toHaveBeenCalledWith('w-1', { weightUnit: 'lbs', distanceUnit: 'miles' });
+    await waitFor(() =>
+      expect(shareFile).toHaveBeenCalledWith(
+        'file:///mock-cache/kyro_workout_2026-01-01.csv',
+        expect.objectContaining({ mimeType: 'text/csv' }),
+      ),
+    );
+  });
+
+  it('surfaces an error alert when the export rejects, without leaving an unhandled rejection', async () => {
+    const full = makeWorkoutFull();
+    const workoutRepository: Pick<WorkoutRepository, 'getFull'> = { getFull: async () => full };
+    const exerciseRepository: Pick<ExerciseRepository, 'get'> = {
+      get: async (id) => (id === 'ex-1' ? makeExercise() : null),
+    };
+    const exportWorkout = jest.fn().mockRejectedValue(new Error('disk full'));
+
+    await renderScreen(
+      workoutRepository,
+      exerciseRepository,
+      defaultRoutineRepository(),
+      'w-1',
+      'dark',
+      { exportWorkout },
+    );
+    await waitFor(() => expect(screen.getByText('Morning Workout')).toBeTruthy());
+
+    await fireEvent.press(screen.getByTestId('detail-menu-button'));
+    await fireEvent.press(await screen.findByTestId('detail-actions-sheet-export-csv'));
+
+    await waitFor(() =>
+      expect(Alert.alert).toHaveBeenCalledWith('Something went wrong', expect.any(String)),
+    );
   });
 });
 

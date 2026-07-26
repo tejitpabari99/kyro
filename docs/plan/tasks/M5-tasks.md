@@ -48,7 +48,7 @@ Task count: **11**
 **Acceptance / test gate:** Golden-file tests: fixture DB → byte-exact expected CSV, kg AND lbs variants; quote/comma/newline escaping cases; date formatting incl. single-digit days.
 **Est:** 1 d
 
-### M5-06 — CSV export UI (all + single workout)
+### M5-06 — CSV export UI (all + single workout) `[done]`
 **Description:** `CsvService.exportAll/exportWorkout` + share-sheet surfaces.
 **How:** Settings → Data → Export CSV → writes `kyro_workouts.csv` to cache, opens iOS share sheet (expo-sharing); single-workout export from workout detail ⋯ (un-hide the M4-04 menu item). Export uses current unit settings for headers/values.
 **References:** 05 §7.1 (surfaces); 04 §3.1 (detail menu).
