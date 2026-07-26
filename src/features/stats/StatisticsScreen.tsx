@@ -61,6 +61,7 @@
  */
 import React, { useMemo, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
+import { TriangleAlert } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
 
 import type { WorkoutRepository } from '@/data/workouts/types';
@@ -86,7 +87,9 @@ import { formatDuration } from '@/domain/units';
 import { formatVolumeDisplay } from '@/domain/volume';
 import { useSettingsStore } from '@/features/settings/settings-store';
 import { BarChart, LineChart, StackedBarChart, type BarChartPoint, type StackedBarSeries } from '@/ui/charts';
+import { Button } from '@/ui/Button';
 import { Card } from '@/ui/Card';
+import { EmptyState } from '@/ui/EmptyState';
 import { SegmentedControl } from '@/ui/SegmentedControl';
 import { StatTile } from '@/ui/StatColumn';
 import { useTheme } from '@/ui/theme-provider';
@@ -272,6 +275,36 @@ export function StatisticsScreen({
     { key: OTHER_MUSCLE_SERIES_KEY, label: 'Other', color: colors.text.tertiary },
   ];
   const stackedData = muscleStack.points.map((point) => ({ x: point.bucketStart, values: point.values }));
+
+  // 06 §9: repository/query errors are never silently swallowed as an
+  // empty/zero dashboard — a genuine `statsFeed`/`workoutDates` failure
+  // (e.g. SQLite error) surfaces as a retryable error state instead of
+  // rendering every tile/chart as if history were genuinely empty (found
+  // in the M4 milestone-wide review; see EXECUTION-LOG.md's `M4 | reviewed`
+  // row).
+  const hasError =
+    summaryQuery.isError || workoutDatesQuery.isError || dashboardFeedQuery.isError || muscleFeedQuery.isError;
+  const handleRetry = (): void => {
+    if (summaryQuery.isError) void summaryQuery.refetch();
+    if (workoutDatesQuery.isError) void workoutDatesQuery.refetch();
+    if (dashboardFeedQuery.isError) void dashboardFeedQuery.refetch();
+    if (muscleFeedQuery.isError) void muscleFeedQuery.refetch();
+  };
+
+  if (hasError) {
+    return (
+      <View testID={testID} style={{ flex: 1, backgroundColor: colors.bg.base }}>
+        <EmptyState
+          testID={`${testID}-error`}
+          icon={<TriangleAlert size={40} strokeWidth={1.75} color={colors.semantic.danger} />}
+          title="Couldn't load statistics"
+          caption="Something went wrong loading your workout history."
+          cta={<Button label="Retry" variant="tonal" onPress={handleRetry} testID={`${testID}-retry`} />}
+          style={{ flex: 1, justifyContent: 'center' }}
+        />
+      </View>
+    );
+  }
 
   return (
     <ScrollView

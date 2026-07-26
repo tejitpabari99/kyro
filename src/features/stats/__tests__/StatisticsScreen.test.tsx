@@ -15,7 +15,7 @@
  * so each file's `StatisticsScreen`/TanStack Query/React-act() state starts
  * genuinely fresh rather than accumulating within one shared process.
  */
-import { act, render, screen, waitFor, within } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -122,6 +122,25 @@ describe('StatisticsScreen — summary tiles', () => {
     expect(within(screen.getByTestId('stats-screen-tile-volume')).getByText('0 kg')).toBeTruthy();
     expect(within(screen.getByTestId('stats-screen-tile-time')).getByText('0:00')).toBeTruthy();
     expect(within(screen.getByTestId('stats-screen-tile-streak')).getByText('0 wks')).toBeTruthy();
+  });
+});
+
+describe('StatisticsScreen — query error (found in M4 milestone-wide review: a genuine statsFeed failure was previously swallowed and rendered as an indistinguishable "0 workouts / 0 kg" brand-new-user dashboard, with no error/retry affordance — 06 §9: repository errors are never silently swallowed)', () => {
+  it('shows a retryable error state instead of every tile/chart reading zero when statsFeed rejects', async () => {
+    const statsFeed = jest.fn().mockRejectedValue(new Error('disk full'));
+    const workoutRepository = makeRepository({ statsFeed });
+
+    await renderScreen(workoutRepository);
+
+    await waitFor(() => expect(screen.getByTestId('stats-screen-error')).toBeTruthy(), WAIT_OPTS);
+    expect(screen.getByText("Couldn't load statistics")).toBeTruthy();
+    expect(screen.queryByTestId('stats-screen-tile-workouts')).toBeNull();
+
+    statsFeed.mockResolvedValue([]);
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('stats-screen-retry'));
+    });
+    await waitFor(() => expect(screen.getByTestId('stats-screen-tile-workouts')).toBeTruthy(), WAIT_OPTS);
   });
 });
 

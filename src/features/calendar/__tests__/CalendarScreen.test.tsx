@@ -91,6 +91,28 @@ describe('CalendarScreen — smoke render', () => {
   });
 });
 
+describe('CalendarScreen — query error (found in M4 milestone-wide review: a genuine workoutDates failure was previously swallowed and rendered as if history were empty — a blank-looking grid and a misleading "No active streak yet" — with no error/retry affordance)', () => {
+  it('shows a retryable error state instead of the month grid, and "—" instead of a possibly-false streak, when workoutDates rejects', async () => {
+    const workoutDates = jest.fn().mockRejectedValue(new Error('disk full'));
+    const workoutRepository: Pick<WorkoutRepository, 'workoutDates' | 'workoutsForDate'> = {
+      workoutDates,
+      workoutsForDate: async () => [],
+    };
+
+    await renderScreen(workoutRepository);
+
+    await waitFor(() => expect(screen.getByTestId('calendar-screen-error')).toBeTruthy());
+    expect(screen.getByText("Couldn't load calendar")).toBeTruthy();
+    expect(screen.queryByTestId('calendar-screen-month')).toBeNull();
+    expect(screen.getByTestId('calendar-screen-streak')).toHaveTextContent('—');
+    expect(screen.queryByText('No active streak yet')).toBeNull();
+
+    workoutDates.mockResolvedValue([]);
+    fireEvent.press(screen.getByTestId('calendar-screen-retry'));
+    await waitFor(() => expect(screen.getByTestId('calendar-screen-month')).toBeTruthy());
+  });
+});
+
 describe('CalendarScreen — month pager', () => {
   it('pressing the next-month chevron re-queries workoutDates and advances the label', async () => {
     const workoutDates = jest.fn(async () => [] as WorkoutDateCount[]);

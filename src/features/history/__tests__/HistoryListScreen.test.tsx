@@ -138,6 +138,27 @@ describe('HistoryListScreen — empty state', () => {
   });
 });
 
+describe('HistoryListScreen — query error (found in M4 milestone-wide review: a genuine listCompleted failure was previously swallowed and rendered as a blank list, never the misleading "No workouts logged yet" empty state nor any error/retry affordance)', () => {
+  it('shows a retryable error state, not the empty state or a blank list, when listCompleted rejects', async () => {
+    const listCompleted = jest.fn().mockRejectedValueOnce(new Error('disk full'));
+    const workoutRepository: Pick<WorkoutRepository, 'listCompleted' | 'getExercisesForWorkouts'> = {
+      listCompleted,
+      getExercisesForWorkouts: async () => new Map(),
+    };
+    const exerciseRepository: Pick<ExerciseRepository, 'list'> = { list: async () => [] };
+
+    await renderScreen(workoutRepository, exerciseRepository);
+
+    await waitFor(() => expect(screen.getByTestId('history-error')).toBeTruthy());
+    expect(screen.queryByText('No workouts logged yet')).toBeNull();
+    expect(screen.getByText("Couldn't load history")).toBeTruthy();
+
+    listCompleted.mockResolvedValueOnce([]);
+    fireEvent.press(screen.getByTestId('history-retry'));
+    await waitFor(() => expect(screen.getByText('No workouts logged yet')).toBeTruthy());
+  });
+});
+
 describe('HistoryListScreen — populated list (04 §3.1 acceptance: accurate volume/PR counts)', () => {
   it('renders a card with title, volume, and PR count from RecordsService', async () => {
     const summary = makeSummary();

@@ -49,6 +49,7 @@
  */
 import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
+import { TriangleAlert } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 
@@ -57,6 +58,7 @@ import { computeWeekStreak, parseLocalDateKey } from '@/domain/streaks';
 import { useSettingsStore } from '@/features/settings/settings-store';
 import { Button } from '@/ui/Button';
 import { CalendarMonth, type CalendarMonthDayCell } from '@/ui/CalendarMonth';
+import { EmptyState } from '@/ui/EmptyState';
 import { ListRow } from '@/ui/ListRow';
 import { Sheet } from '@/ui/Sheet';
 import { useTheme } from '@/ui/theme-provider';
@@ -176,20 +178,38 @@ export function CalendarScreen({
           testID={`${testID}-streak`}
           style={[typography.subhead, { color: colors.text.secondary, marginTop: spacing['1'] }]}
         >
-          {formatStreakLabel(streakWeeks)}
+          {streakQuery.isError ? '—' : formatStreakLabel(streakWeeks)}
         </Text>
       </View>
 
-      <CalendarMonth
-        testID={`${testID}-month`}
-        monthLabel={formatMonthLabel(viewMonth.year, viewMonth.month)}
-        weekdayLabels={weekdayLabels(firstDayOfWeek)}
-        weeks={weeks}
-        onPrevMonth={handlePrevMonth}
-        onNextMonth={handleNextMonth}
-        onDayPress={handleDayPress}
-        style={{ paddingHorizontal: spacing['4'], marginTop: spacing['5'] }}
-      />
+      {monthQuery.isError ? (
+        <EmptyState
+          testID={`${testID}-error`}
+          icon={<TriangleAlert size={40} strokeWidth={1.75} color={colors.semantic.danger} />}
+          title="Couldn't load calendar"
+          caption="Something went wrong loading your workout history."
+          cta={
+            <Button
+              label="Retry"
+              variant="tonal"
+              onPress={() => void monthQuery.refetch()}
+              testID={`${testID}-retry`}
+            />
+          }
+          style={{ paddingHorizontal: spacing['4'], marginTop: spacing['5'] }}
+        />
+      ) : (
+        <CalendarMonth
+          testID={`${testID}-month`}
+          monthLabel={formatMonthLabel(viewMonth.year, viewMonth.month)}
+          weekdayLabels={weekdayLabels(firstDayOfWeek)}
+          weeks={weeks}
+          onPrevMonth={handlePrevMonth}
+          onNextMonth={handleNextMonth}
+          onDayPress={handleDayPress}
+          style={{ paddingHorizontal: spacing['4'], marginTop: spacing['5'] }}
+        />
+      )}
 
       <Sheet
         testID={`${testID}-day-sheet`}

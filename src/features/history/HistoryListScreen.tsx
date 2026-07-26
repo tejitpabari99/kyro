@@ -54,7 +54,7 @@
  */
 import React, { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
-import { CalendarDays, History, Plus } from 'lucide-react-native';
+import { CalendarDays, History, Plus, TriangleAlert } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { FlashList } from '@shopify/flash-list';
@@ -64,6 +64,7 @@ import type { WorkoutRepository, WorkoutSummary } from '@/data/workouts/types';
 import { getRecordsService } from '@/features/stats/records-service';
 import { useSettingsStore } from '@/features/settings/settings-store';
 import { RoutineActionsSheet } from '@/features/routines/RoutineActionsSheet';
+import { Button } from '@/ui/Button';
 import { EmptyState } from '@/ui/EmptyState';
 import { useTheme } from '@/ui/theme-provider';
 
@@ -244,6 +245,21 @@ export function HistoryListScreen({
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <ActivityIndicator color={colors.accent.primary} />
         </View>
+      ) : historyQuery.isError ? (
+        <EmptyState
+          testID={`${testID}-error`}
+          icon={<TriangleAlert size={40} strokeWidth={1.75} color={colors.semantic.danger} />}
+          title="Couldn't load history"
+          caption="Something went wrong loading your workouts."
+          cta={
+            <Button
+              label="Retry"
+              variant="tonal"
+              onPress={() => void historyQuery.refetch()}
+              testID={`${testID}-retry`}
+            />
+          }
+        />
       ) : showEmptyState ? (
         <EmptyState
           testID={`${testID}-empty`}
