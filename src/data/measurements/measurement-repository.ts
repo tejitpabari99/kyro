@@ -152,6 +152,7 @@ function buildDateRangeWhere(
 }
 
 const DEFAULT_SAVE_PHOTO_FILE: NonNullable<MeasurementRepositoryDeps['savePhotoFile']> = async (
+  _id,
   _date,
   sourceUri,
 ) => sourceUri;
@@ -204,16 +205,24 @@ export class MeasurementRepositoryImpl implements MeasurementRepository {
 
   async clearField(date: string, field: keyof MeasurementFields): Promise<void> {
     const column = MEASUREMENT_FIELD_COLUMNS[field];
-    const result = this.driver.execute(
-      `UPDATE body_measurements SET ${column} = NULL, updated_at = ? WHERE date = ?`,
-      [Date.now(), date],
-    );
-    if (result.changes === 0) {
-      // No row for this date — idempotent no-op (`./types.ts`'s doc
-      // comment on this method).
-      return;
-    }
-    this.pruneRowIfEmpty(date);
+    // Wrapped in one transaction — the UPDATE and `pruneRowIfEmpty`'s own
+    // conditional DELETE are two write statements together implementing one
+    // logical operation, the same "multi-write mutation gets one
+    // transaction" convention `WorkoutRepositoryImpl` uses throughout and
+    // this file's own `addPhoto` already follows (found in review: this
+    // method and `deletePhoto` were the two places that didn't, previously).
+    this.driver.transaction(() => {
+      const result = this.driver.execute(
+        `UPDATE body_measurements SET ${column} = NULL, updated_at = ? WHERE date = ?`,
+        [Date.now(), date],
+      );
+      if (result.changes === 0) {
+        // No row for this date — idempotent no-op (`./types.ts`'s doc
+        // comment on this method).
+        return;
+      }
+      this.pruneRowIfEmpty(date);
+    });
   }
 
   async list(range: MeasurementDateRange = {}): Promise<BodyMeasurement[]> {
@@ -242,7 +251,11 @@ export class MeasurementRepositoryImpl implements MeasurementRepository {
 
   async addPhoto(date: string, sourceUri: string): Promise<ProgressPhoto> {
     const id = await generateUuid();
-    const fileName = await this.savePhotoFile(date, sourceUri);
+    // `id` generated first so it can be handed to `savePhotoFile` — the real
+    // implementation names the file after it (05 §3.4: "id ... also the
+    // file basename"); see `MeasurementRepositoryDeps.savePhotoFile`'s doc
+    // comment in `./types.ts` for the full rationale (found in review).
+    const fileName = await this.savePhotoFile(id, date, sourceUri);
     const now = Date.now();
 
     this.driver.transaction(() => {
@@ -281,10 +294,19 @@ export class MeasurementRepositoryImpl implements MeasurementRepository {
 
     // File deleted before the DB row (this file's header, "Photo file
     // lifecycle") — idempotent per `MeasurementRepositoryDeps.deletePhotoFile`'s
-    // own contract, so a retry after a partial failure is always safe.
+    // own contract, so a retry after a partial failure is always safe. The
+    // async file op happens outside `driver.transaction` (its callback must
+    // be synchronous, same convention `addPhoto`/`WorkoutRepositoryImpl`
+    // follow); the two DB writes that remain (the photo DELETE and
+    // `pruneRowIfEmpty`'s own conditional DELETE) are wrapped together in
+    // one transaction — found in review: this previously ran as two
+    // unwrapped statements, inconsistent with `addPhoto`'s own convention in
+    // this same file.
     await this.deletePhotoFile(row.file_name);
-    this.driver.execute(`DELETE FROM progress_photos WHERE id = ?`, [id]);
-    this.pruneRowIfEmpty(row.date);
+    this.driver.transaction(() => {
+      this.driver.execute(`DELETE FROM progress_photos WHERE id = ?`, [id]);
+      this.pruneRowIfEmpty(row.date);
+    });
   }
 
   // -------------------------------------------------------------------

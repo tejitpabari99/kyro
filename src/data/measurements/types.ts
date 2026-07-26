@@ -148,16 +148,26 @@ export interface MeasurementRepositoryDeps {
    * Copies/moves the picked `sourceUri` into permanent photo storage (05 §8:
    * `photos/progress/{uuid}.jpg`) and returns the **relative file name**
    * `addPhoto` stores in `progress_photos.file_name` — never an absolute
-   * path (05 §8's "DB stores relative file names only" rule). Defaults to
-   * an identity pass-through (`sourceUri` is returned unchanged, treated as
-   * already being the final relative file name) — enough for repository
+   * path (05 §8's "DB stores relative file names only" rule). `id` is the
+   * `progress_photos.id` `addPhoto` already generated for this photo *before*
+   * calling this hook — 05 §3.4's own DDL comment on `progress_photos.id`
+   * ("uuid; also the file basename") is a real invariant the real
+   * implementation must satisfy by naming the file after `id` (e.g.
+   * `${id}.jpg`), not by minting a second, unrelated uuid the way
+   * `saveExercisePhoto`'s internal-uuid-generation shape does for exercise
+   * images (`src/lib/files.ts`) — exercise images have no such id-equals-
+   * basename invariant to preserve, so that precedent doesn't apply here.
+   * Without `id` in this signature, a real implementation would have no way
+   * to honor the schema's own documented invariant (found in review — the
+   * original signature omitted `id` entirely). Defaults to an identity
+   * pass-through (`sourceUri` is returned unchanged, treated as already
+   * being the final relative file name, `id` unused) — enough for repository
    * tests/fixtures that pre-stage a file and pass its relative name
    * directly; production callers (M5-03) inject the real crop/resize/copy
    * implementation once `src/lib/files.ts` grows a progress-photo save
-   * helper (mirrors `saveExercisePhoto`'s existing shape for custom
-   * exercise images).
+   * helper.
    */
-  savePhotoFile?: (date: string, sourceUri: string) => Promise<string>;
+  savePhotoFile?: (id: string, date: string, sourceUri: string) => Promise<string>;
   /**
    * Deletes one stored photo file by its relative file name. Defaults to a
    * no-op — nothing to delete when no real file lifecycle is wired (plain

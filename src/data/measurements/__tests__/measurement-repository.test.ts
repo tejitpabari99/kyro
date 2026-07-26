@@ -37,7 +37,12 @@ function fakeFileDeps(): {
 } {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kyro-progress-photos-'));
   const deps: Required<MeasurementRepositoryDeps> = {
-    savePhotoFile: async (_date, sourceUri) => {
+    // Ignores `id` and keys the fake file off `sourceUri` instead — kept
+    // deliberately distinct from `id` so existing fileName assertions below
+    // (`'picked-source.jpg'` etc.) stay meaningful; the dedicated
+    // "passes id to savePhotoFile" test below is what actually exercises the
+    // `id` argument's wiring.
+    savePhotoFile: async (_id, _date, sourceUri) => {
       const fileName = `${sourceUri}.jpg`;
       fs.writeFileSync(path.join(dir, fileName), 'fake-jpeg-bytes');
       return fileName;
@@ -263,6 +268,23 @@ describe('MeasurementRepositoryImpl (better-sqlite3 integration, M5-01)', () => 
       expect(photos).toEqual([photo]);
     });
 
+    it('[regression — found in review] passes the newly generated id to savePhotoFile, so a real implementation can name the file after it (05 §3.4: "id ... also the file basename")', async () => {
+      const received: { id: string; date: string; sourceUri: string }[] = [];
+      const deps: MeasurementRepositoryDeps = {
+        savePhotoFile: async (id, date, sourceUri) => {
+          received.push({ id, date, sourceUri });
+          return `${id}.jpg`; // A real implementation names the file after `id` — this is only possible if `id` is passed in.
+        },
+      };
+      const photoRepo = new MeasurementRepositoryImpl(driver, deps);
+
+      const photo = await photoRepo.addPhoto('2026-01-01', 'src-uri');
+
+      expect(received).toHaveLength(1);
+      expect(received[0]).toEqual({ id: photo.id, date: '2026-01-01', sourceUri: 'src-uri' });
+      expect(photo.fileName).toBe(`${photo.id}.jpg`);
+    });
+
     it('addPhoto does not duplicate the measurement row when one already exists for that date', async () => {
       const { deps } = fakeFileDeps();
       const photoRepo = new MeasurementRepositoryImpl(driver, deps);
@@ -366,6 +388,37 @@ describe('MeasurementRepositoryImpl (better-sqlite3 integration, M5-01)', () => 
 
       await expect(repo.deletePhoto(photo.id)).resolves.toBeUndefined();
       expect(await repo.photos()).toEqual([]);
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // Transaction wrapping (found in review — `clearField`/`deletePhoto`
+  // previously ran their multi-write sequences as two unwrapped statements,
+  // inconsistent with `addPhoto`'s own transaction in this same file and
+  // with `WorkoutRepositoryImpl`'s established "one multi-write mutation,
+  // one transaction" convention).
+  // -------------------------------------------------------------------
+  describe('multi-write mutations run inside one driver.transaction', () => {
+    it('clearField wraps its UPDATE + row-prune in one transaction', async () => {
+      await repo.upsert('2026-01-01', { weightKg: 80 });
+      const transactionSpy = jest.spyOn(driver, 'transaction');
+
+      await repo.clearField('2026-01-01', 'weightKg');
+
+      expect(transactionSpy).toHaveBeenCalledTimes(1);
+      expect(await repo.list()).toEqual([]); // still correct: last field cleared -> row pruned
+    });
+
+    it('deletePhoto wraps its DELETE + row-prune in one transaction (the async file delete stays outside it)', async () => {
+      const { deps } = fakeFileDeps();
+      const photoRepo = new MeasurementRepositoryImpl(driver, deps);
+      const photo = await photoRepo.addPhoto('2026-01-01', 'src-1'); // photo-only row, no fields
+      const transactionSpy = jest.spyOn(driver, 'transaction');
+
+      await photoRepo.deletePhoto(photo.id);
+
+      expect(transactionSpy).toHaveBeenCalledTimes(1);
+      expect(await photoRepo.list()).toEqual([]); // still correct: last photo removed -> row pruned
     });
   });
 });
