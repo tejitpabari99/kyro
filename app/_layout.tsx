@@ -121,6 +121,24 @@
  * O-05 provides the real one by M6). This is deliberately independent of
  * the DB-ready gate: Sentry must never block or be blocked by boot.
  *
+ * --- Progress-photo orphan sweep (M5-03), deferred past first frame -------
+ * 05 §8: "an orphan sweep runs on app start (files without DB rows ->
+ * delete; rows without files -> placeholder render + warning log)." Wired
+ * as its own `requestAnimationFrame`-deferred `useEffect`, same posture as
+ * Sentry init / `preloadChimes` right above/below it: never gates the
+ * DB-ready splash gate, never awaited by the boot promise chain steps 1-3
+ * share. This task's own acceptance wording is "runs without measurable
+ * boot cost" — deferring it past first frame is what makes that true
+ * structurally (it cannot add to time-to-first-tab, being scheduled after
+ * that frame has already committed), on top of `photo-orphan-sweep.ts`'s
+ * own cheap per-item work (one directory listing + one DB query + a handful
+ * of file-exists checks — see that file's integration test for a timed
+ * assertion on a representative small photo set). Failures are swallowed
+ * (breadcrumb + Sentry capture only, same posture the rest-timer restore
+ * above already uses) — a missed sweep pass is a minor, recoverable gap
+ * (one more stale orphan file, or one more not-yet-flagged missing-file row
+ * until the next launch), never a data-integrity risk.
+ *
  * --- `workout/active`'s fullScreenModal presentation (M2-05) --------------
  * 06 §3: "workout/active.tsx # ACTIVE LOGGER — fullScreenModal,
  * slide-from-bottom". Every other route gets the `<Stack>`'s own
@@ -139,15 +157,22 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { initialWindowMetrics, SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { seedBundledBuiltinExercises } from '@/data/exercises/seed-builtins';
+import { MeasurementRepositoryImpl } from '@/data/measurements/measurement-repository';
 import { getAppDriver, runDbBoot } from '@/data/sqlite/boot';
 import { SettingsRepository } from '@/data/settings/settings-repository';
 import { WorkoutRepositoryImpl } from '@/data/workouts/workout-repository';
+import { sweepOrphanProgressPhotos } from '@/features/measurements/photo-orphan-sweep';
 import { useSettingsStore } from '@/features/settings/settings-store';
 import { configureRecordsService } from '@/features/stats/records-service';
 import { useActiveWorkoutStore } from '@/features/workout/activeWorkoutStore';
 import { useRestTimerStore } from '@/features/workout/restTimerStore';
 import { useForegroundReconciliation } from '@/features/workout/useForegroundReconciliation';
 import { openExpoKvStore } from '@/lib/kv-store.expo';
+import {
+  deleteProgressPhotoFile,
+  listProgressPhotoFileNames,
+  progressPhotoFileExists,
+} from '@/lib/progress-photos';
 import { captureError, initSentry, recordBreadcrumb } from '@/lib/sentry';
 import { preloadChimes } from '@/lib/sound';
 import { MigrationErrorScreen } from '@/ui/MigrationErrorScreen';
@@ -259,6 +284,44 @@ export default function RootLayout(): React.JSX.Element | null {
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
       preloadChimes();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  // (M5-03, 05 §8) Progress-photo orphan sweep — "files without DB rows ->
+  // delete; rows without files -> placeholder + warning, runs on app
+  // start." Same "deferred past first frame, never gates boot" posture as
+  // Sentry init / `preloadChimes` above: this is boot-cost-sensitive per
+  // this task's own acceptance wording ("runs without measurable boot
+  // cost"), and nothing downstream of the DB-ready gate depends on it
+  // having finished (a stale orphan file or an as-yet-unflagged missing-file
+  // row is harmless for exactly one more sweep). `MeasurementRepositoryImpl`
+  // constructed with no deps here — this pass only ever calls `.photos()`
+  // (read-only), never `addPhoto`/`deletePhoto`, so the save/delete file
+  // hooks are irrelevant to it. Errors are swallowed (breadcrumb + Sentry
+  // capture only) for the same reason the rest-timer restore above is: a
+  // failed sweep is a minor, recoverable gap (worst case, one more stale
+  // orphan file or unflagged missing-file row until the next launch), never
+  // a data-integrity risk that should escalate to the blocking error screen.
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const repository = new MeasurementRepositoryImpl(getAppDriver());
+      sweepOrphanProgressPhotos(repository, {
+        listPhotoFileNames: listProgressPhotoFileNames,
+        fileExists: progressPhotoFileExists,
+        deleteOrphanFile: deleteProgressPhotoFile,
+        onMissingFile: (photo) => {
+          recordBreadcrumb('measurements.photoOrphanSweep.missingFile');
+          captureError(
+            new Error(
+              `Progress photo "${photo.id}" (date ${photo.date}) has a database row but its file is missing on disk.`,
+            ),
+          );
+        },
+      }).catch((error: unknown) => {
+        recordBreadcrumb('measurements.photoOrphanSweep.failed');
+        captureError(error instanceof Error ? error : new Error(String(error)));
+      });
     });
     return () => cancelAnimationFrame(frame);
   }, []);

@@ -24,7 +24,7 @@ Task count: **11**
 **Acceptance / test gate:** 04 §6 acceptance: imperial entry stores canonical exactly and round-trips display; sparse-data charts render correctly; RNTL smoke both themes; unit-setting independence verified.
 **Est:** 1.5 d
 
-### M5-03 — Progress photos: gallery, compare, orphan sweep
+### M5-03 — Progress photos: gallery, compare, orphan sweep `[done]`
 **Description:** Photo capture/storage, gallery grid, side-by-side compare, and the startup orphan sweep.
 **How:** Camera/library via expo-image-picker; re-encode ≤ 2048 px q80 (expo-image-manipulator) to `photos/progress/{uuid}.jpg` (relative names in DB). Gallery: Photos tab within Measures, grid by date; tap → full-screen pager with date + that date's weight overlay. Compare: select two → side-by-side with dates + weight/measurement deltas. Delete with confirm. Orphan sweep on app start (05 §8): files without rows → delete; rows without files → placeholder + warning log. Photos excluded from CSV; included in backup (M5-09).
 **References:** 04 §6.2; 05 §8.

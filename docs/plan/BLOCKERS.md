@@ -416,6 +416,52 @@ concluding it's safe to keep or discard.
 stash list` if the index has shifted), decide whether to `git stash pop` and finish/commit it, or
 drop it if it's stale/superseded. Left untouched by this review beyond stashing it.
 
+## A precise, reproducible root cause for the M4-08 "overlapping act() calls" pattern (M5-03 finding, 2026-07-26)
+
+The M4-08 finding above (this file) documents the "tests fail only when run after others in the
+same file, printing 'overlapping act() calls' warnings" symptom as a not-fully-isolated
+React-19/jest-expo/react-query scheduler interaction. Building `PhotoGalleryScreen.test.tsx`
+(M5-03) hit the exact same symptom and this time it **was** isolated to one precise, reproducible
+trigger — worth recording since it gives a concrete diagnostic to check first before assuming an
+unfixable environment flake:
+
+A `setState` updater that **bails out by returning the same array/object reference** (React's
+documented "skip this render" optimization — e.g. `PhotoGalleryScreen.handleThumbnailPress`
+returning `current` unchanged when a selection is already at its cap) followed **immediately**,
+with no intervening `await waitFor(...)`/`await screen.findBy...`, by another `fireEvent.press`
+that itself triggers a *real* state update, corrupts rendering in a **later, unrelated test** in
+the same file (not the test that did this — that one still passes). Confirmed via a from-scratch
+minimal-repro file, bisecting test-by-test: the failure only appeared once a synchronous
+`expect(...)` (not `await waitFor(...)`) was placed directly after the bail-out press, before the
+next press. **Fix**: wrap the assertion right after any such no-op-risking press in `await
+waitFor(...)` instead of a bare synchronous `expect`, e.g.:
+```ts
+fireEvent.press(await screen.findByTestId('thumb-2')); // a no-op selection past a cap
+await waitFor(() => expect(screen.queryByTestId('thumb-selected-2')).toBeNull());
+fireEvent.press(screen.getByTestId('compare-button')); // next interaction, now safe
+```
+This resolved the M5-03 file's 3 downstream test failures completely (7/7 green, confirmed
+stable across repeated runs). Two unrelated near-misses ruled out in the same investigation,
+worth naming so the next person doesn't re-chase them: (1) `jest.requireActual('react-native')`
+inside a test body is **not** the cause (confirmed by removing it — failure persisted identically)
+though it's still avoided in the final test file in favor of a plain top-level `import { Alert }
+from 'react-native'` + scoped `jest.spyOn`/`.mockRestore()`, matching this repo's existing
+`ArchivedExercisesScreen.test.tsx` convention; (2) a blanket `afterEach(() => jest.restoreAllMocks())`
+is actively **harmful** here, not a fix — it reverts jest-expo's own internal `jest.spyOn` calls
+(Dimensions/Appearance/etc. that make the RN host work under Jest at all), breaking every render
+after the first test that uses it; scope any `Alert.alert`/similar spy restore to that one specific
+spy instead (`let alertSpy; afterEach(() => alertSpy?.mockRestore())`), never a global restore.
+
+Also unrelated to the flakiness itself but hit in the same investigation, worth a general note:
+`npx jest <file>` with a `-t <pattern>` filter or `--runInBand` intermittently appeared to "hang"
+in this sandboxed environment with zero output for 100+ seconds — in every case this turned out to
+be jest simply not self-exiting after a **real, already-reported PASS** (a dangling open handle,
+most likely `@tanstack/query-core`'s `notifyManager` batching `setTimeout`, confirmed via
+`--forceExit`'s "Force exiting Jest" notice appearing right after a clean PASS summary), not an
+actual stuck test. Running with `--forceExit` (or simply waiting well past 100s) resolves the
+"hang" and reveals the real, already-decided pass/fail outcome — don't mistake this for a genuine
+infinite loop before checking that first.
+
 ## Everything else
 
 Every other task — all of M0 through M7 except the six owner-gated tasks listed above — is
