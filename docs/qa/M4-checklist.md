@@ -276,9 +276,12 @@ specifically-named test — same "point at the actual test, don't just assert" d
 ### §4 — Statistics
 
 - **"Bodyweight pull-up +10 kg × 8 contributes 80 kg volume; assisted and reps-only contribute
-  0."** `domain/__tests__/stats-buckets.test.ts:201` ("bodyweight_reps +10kg x 8 reps
-  contributes 80 kg volume") and `:207` ("bodyweight_assisted_reps and reps_only contribute 0
-  volume") — the `describe` block's own header cites 04 §4 by name.
+  0."** `domain/__tests__/stats-buckets.test.ts:243` ("bodyweight_reps +10kg x 8 reps
+  contributes 80 kg volume") and `:249` ("bodyweight_assisted_reps and reps_only contribute 0
+  volume") — the `describe` block's own header cites 04 §4 by name. (Line numbers corrected in
+  the M4 milestone-wide review — the M4-12 pass's own `05fdbf8` coverage-gap commit inserted
+  tests earlier in this same file, shifting these two by 42 lines; the cited test content itself
+  was already accurate.)
   `StatisticsScreen.test.tsx`'s summary-tile test independently re-confirms the same shape at
   the UI-integration layer (`:88`).
 - **"Warm-up toggle flips dashboard numbers live but never changes Records tabs."** Live-flip
@@ -451,3 +454,212 @@ checklist carried forward — not new gaps introduced here.
 P0/P1 open. Tagged `v0.4.0-m4` (annotated, not pushed, mirroring M2/M3's own `v0.2.0-m2`/
 `v0.3.0-m3` — see `git tag -l -n5 v0.3.0-m3` for the precedent this follows). Working tree
 clean after all commits.
+
+## 8. Independent milestone-wide review (post-close, per the current one-review-per-milestone process)
+
+A separate reviewing agent independently re-verified M4 as a whole against `docs/plan/tasks/
+M4-tasks.md` and the referenced PRD sections, prioritizing **M4-12 itself** — the only artifact
+in the milestone that had never been reviewed by anyone other than its own author (every one of
+M4-01 through M4-11 already carries its own individual `reviewed` `EXECUTION-LOG.md` row; M4-12,
+like M2-19 and M3-08 before it, only ever had a plain `done` row — confirmed by grepping
+`EXECUTION-LOG.md` for `M2-19`/`M3-08` and finding neither has an individual `reviewed` row of
+its own, only the milestone-wide `M2`/`M3` rows do). Mirrors `M2-checklist.md`'s/`M3-checklist
+.md`'s own §8 in scope/format — a from-scratch re-verification, not a re-litigation of §1-7
+above. Verified at commit `bd01e90` (tip of `users/tejitpabari/init` at the start of this pass).
+Fixes landed during this pass: `b6cf882`, `cca9a32` (see §8.2).
+
+### 8.1 — What was re-verified
+
+- **`pnpm run ci` re-run fresh, independently, twice** (once as a clean baseline before any
+  edits, once again after this pass's own fixes): both green end to end. Baseline: **165 suites
+  / 2178 tests**, matching §3/§6.1's own reported numbers exactly (not just trusted) — all four
+  active coverage thresholds held, `expo-doctor` 21/21, `expo export --platform ios` succeeded
+  (`dist/` 48 MB). Final (with this pass's own two fixes + 3 new regression tests): **165 suites
+  / 2181 tests**, same thresholds held (`src/domain/**` 99.52/97.91, `src/data/**` 99.11/94.80,
+  `src/features/workout/**` 97.06/88.92, global 96.72/88.66 — recomputed independently from this
+  run's own `coverage-final.json`, not copied from §3's numbers), `expo-doctor` 21/21, `expo
+  export` succeeded (`dist/` 48 MB, unchanged).
+- **Full independent re-verification of Maestro flow 4** (`e2e/flows/04-custom-exercise-
+  lifecycle.yaml`), the highest-priority never-reviewed artifact: every single testID/text
+  selector in the flow's own audit table was independently re-grepped and read against real
+  source at this review's own time — not trusted from the table itself. Checked, file:line
+  exact: tab labels (`app/(tabs)/_layout.tsx`), `ExerciseBrowseScreen.tsx`'s create/search/empty
+  testIDs, `ExerciseFormScreen.tsx`'s name/type/primary-muscle/save testIDs and its type/muscle
+  sheets, `ExerciseTypeSheet.tsx`'s/`FilterOptionSheet.tsx`'s own `-option-<value>` composition,
+  `EXERCISE_TYPE_OPTIONS`/`MUSCLE_GROUP_VALUES` actually containing `bodyweight_reps`/`biceps`,
+  `ExerciseDetailScreen.tsx`'s name/tabs/menu/actions-sheet/actions-delete testIDs and its
+  `DETAIL_TABS` array plus the exact "Delete Exercise?"/"Can't Delete This Exercise"/"Archive it
+  instead?" Alert copy, `SegmentedControl.tsx`'s `${testID}-${option.value}` composition,
+  `ExerciseHistoryTab.tsx`/`ExerciseChartsTab.tsx`/`ExerciseRecordsTab.tsx`'s own card/chart/pr/
+  set-record testIDs, `RoutinesHubScreen.tsx`'s `start-empty-workout`, `ActiveWorkoutScreen.tsx`'s
+  add-exercise/finish/exercise-picker/timer-pill testIDs, `ExerciseSetTableSection.tsx`'s/
+  `SetRow.tsx`'s row/value/check testID composition and `bodyweight_reps`'s `weight`/`reps`
+  column keys (`domain/set-table-columns.ts`), `ExerciseRow.tsx`'s `exercise-row-${id}` id,
+  `HistoryDetailScreen.tsx`'s `-stat-volume`, `HistoryListScreen.tsx`'s `history-list` default
+  testID, and `exercise-repository.ts:165`'s `includeArchived` default. **Zero discrepancies
+  found** — every claim in the flow's own header audit table is accurate.
+- **Hand-verification of all 14 new coverage-gap regression tests** (`05fdbf8`): opened both
+  diffs directly. Every new test asserts something specific and real (an exact thrown-error
+  message via a regex, or an exact expected numeric value) — none is coverage theater that pokes
+  a branch without a meaningful assertion. Confirmed real gaps existed before these tests
+  (exhaustiveness guards on `chartMetricsForExerciseType`/`computeChartSeries`/`chartRangeStartMs`
+  /`rangeQueryBounds`, `now`-default-arg branches, an out-of-sorted-order min-tracking branch in
+  `chooseTrendGranularity`, and several out-of-bounds-row-filtering/null-field-handling branches
+  in `bucketWorkoutsPerWeek`/`bucketAggregateTrend`/`bucketSetsPerMuscleGroupPerWeek`/
+  `computeSummaryTotals`).
+- **08 §4.1's 13-case hard-gate table re-verified against the real test file**, not the
+  checklist's own citations: opened `records.test.ts`/`epley.test.ts` directly and read all 13
+  `describe` blocks' own bodies (not just their titles) against 08 §4.1's literal spec text —
+  every case's actual assertions (exact values: 116.67 Est. 1RM, 500 volume, the `10+`-bucket
+  boundary at reps 10 vs 11, the W1/W2/W3 trophy-attribution sequence and its edit-reflow,
+  kg-tolerance 0.001) match the spec verbatim, not just a correctly-named suite.
+- **Sample re-verification of the `02` §15 and `04` §3-5 acceptance-box tables**: opened every
+  cited test file directly (not trusting the table's own citations) —
+  `records-service.integration.test.ts` (real `better-sqlite3` integration, raise/lower/delete-PR
+  cases), `workout-repository.update.test.ts`/`EditWorkoutScreen.test.tsx` (edit-doesn't-corrupt-
+  active-invariant), `HistoryDetailScreen.test.tsx` (trophy badges + both-theme smoke, exact line
+  numbers 604/618/642/716/813-814 all confirmed accurate), `HistoryListScreen.test.tsx` (volume/
+  PR-count/pagination, lines 142/185/204/267 all confirmed accurate), `CalendarScreen.test.tsx`
+  (169/170 confirmed accurate), `streaks.test.ts` (35/96/117/192 confirmed accurate),
+  `StatisticsScreen.test.tsx` (88/114/129 confirmed accurate). **One real citation drift found**:
+  `stats-buckets.test.ts:201`/`:207` (cited for the bodyweight +10×8 volume tests) had drifted to
+  `:243`/`:249` — `05fdbf8`'s own earlier coverage-gap commit inserted 14 tests earlier in that
+  same file, shifting these two down by 42 lines; the cited test *content* itself was already
+  accurate, only the line numbers were stale. Fixed directly in the checklist (§6, no separate
+  commit).
+- **Full independent code read, `domain/records.ts` + `domain/epley.ts` (M4-01, the 08 §4.1
+  hard-gate owner)**: every eligibility branch, the kg-tolerance comparisons, the 11-bucket
+  Set Records scheme, and the Epley bounds (reps=1 short-circuit, reps>10 exclusion) read correct
+  and match their own extensive doc comments and 04 §5.1's table verbatim. No issue found.
+- **Full independent code read, `domain/streaks.ts` + `CalendarScreen.tsx` (M4-06)**: hand-traced
+  `computeWeekStreak`'s grace-week/gap-break logic against 04 §3.2's own prose for several
+  first-day-of-week scenarios. (One apparent discrepancy surfaced mid-trace turned out to be this
+  reviewing pass's own transcription error while re-deriving the "re-buckets" test's expected
+  value by hand, not a real bug — confirmed by writing a throwaway debug test that called the
+  real `computeWeekStreak` directly: it returns `2` for that scenario, exactly matching the test
+  file's own actual `.toBe(2)` assertion. Recorded here for transparency about the review's own
+  process, not because a bug was found.) No real issue found in `streaks.ts` or the calendar
+  screen.
+- **Cross-cutting integration sweep — the full PR journey traced through real code, not
+  assumed**: log a PR set → finish (`ActiveWorkoutScreen.tsx` calls `invalidateAfterWorkoutMutation`)
+  → History card shows the PR count (`HistoryListScreen.tsx`'s `['history']`-prefixed query) →
+  workout detail shows the trophy (`HistoryDetailScreen.tsx`) → exercise detail's Records tab
+  reflects it (`['records', exerciseId]`, invalidated by the same helper) → Statistics dashboard's
+  aggregate reflects it (`['stats']`, same helper) → edit the workout to lower that set's weight
+  (`EditWorkoutScreen.tsx`, also calls the same helper) → trophy reassigns everywhere. Grepped
+  every call site of `invalidateAfterWorkoutMutation` (`records-service.ts`) and confirmed all
+  four real mutation entry points call it (`ActiveWorkoutScreen.tsx`, `EditWorkoutScreen.tsx`,
+  `HistoryDetailScreen.tsx`, and `records-service.ts` itself), and that its own body invalidates
+  all four relevant prefixes (`['records', exerciseId]`, `['history']`, `['stats']`,
+  `['calendar']`) in one place — every seam in this journey is genuinely wired, not just claimed.
+- **Robustness / error-handling / edge-case sweep** (per this pass's own stated priority): empty
+  history (0 workouts) on the Statistics dashboard and Calendar screen — both non-crashing,
+  already covered by existing tests (`StatisticsScreen.test.tsx`'s brand-new-user-zero-tiles
+  case, `CalendarScreen.test.tsx`'s empty-`workoutDates` smoke render). Query-error handling for
+  `statsFeed`/`workoutDates`/`listCompleted` — **found and fixed, see §8.2**. Rapid check/uncheck
+  PR-banner race: `RecordsServiceApi.evaluateLive` is fully synchronous (an in-memory `Map` peek,
+  no DB call, no await), and its caller (`ConnectedSetRow.tsx`) re-derives `currentWorkout`/
+  `sessionCheckedSets` fresh from `workoutStore.getState()` on every check event — no
+  stale-closure or debounce-needed race exists structurally; confirmed by reading the full call
+  site, not assumed safe by pattern. Direct-repository-call sweep across `src/features/history/**`
+  , `src/features/calendar/**`, `src/features/stats/**`, `src/features/exercises/**`: every call
+  site is either inside a Query `queryFn` or an explicit `.catch()`/try-catch chain (`EditWorkout
+  Screen.tsx`'s `loadForEdit` chain confirmed `.catch((error) => captureError(error))`) — no
+  unwrapped direct repository call found, no sibling of the M1/M2/M3 unhandled-rejection bug
+  shape.
+- **M4-02 through M4-11's already-`reviewed` claims re-confirmed via the fresh full-suite run**
+  above rather than a full re-read (per this task's own instructions) — 165 suites / 2181 tests
+  green end to end, no regression introduced by later M4 work.
+
+### 8.2 — Found and fixed
+
+Two real gaps found, each its own commit with regression tests:
+
+1. **A latent, real type error in `src/ui/NumericInput.tsx` that silently breaks `tsc` on any
+   *second* `pnpm run ci` run in the same checkout (`b6cf882`).** `NumericInputProps.style`
+   was typed `StyleProp<ViewStyle>` but is passed straight into the underlying `<TextInput
+   style={[...]}>`, which requires `StyleProp<TextStyle>` — a real, pre-existing type mismatch
+   (nothing to do with any M4 task; `NumericInput.tsx` is pre-M4 UI-kit code). It was invisible
+   in every prior CI run for a specific, reproducible reason: `expo/types/react-native-web.d.ts`
+   (referenced transitively via `expo-env.d.ts`, itself only generated by `expo-doctor`/`expo
+   export` — i.e. by `pnpm run ci`'s *own later steps*) unconditionally augments `ViewStyle` with
+   a loose `userSelect?: string` for web-platform CSS support, which collides with `TextStyle`'s
+   own, stricter, pre-existing `userSelect` literal-union type. In a virgin checkout, `pnpm run
+   ci`'s first step (`typecheck`) always runs *before* `expo-env.d.ts` exists yet, so the very
+   first typecheck in any fresh sandbox never sees this conflict — but every *subsequent*
+   invocation (once `expo-env.d.ts` has been generated by that first run's own `expo-doctor`/
+   `expo export` steps) does, and fails. This review's own mechanics (re-running the gate twice)
+   is exactly what surfaced it: found by chasing an unexplained `tsc` failure that appeared only
+   after the baseline `pnpm run ci` had already run once, bisected by selectively removing/
+   restoring `.expo`/`expo-env.d.ts` until the exact ambient-declaration source was identified.
+   Fixed by narrowing `NumericInputProps.style` to `StyleProp<TextStyle>` (the semantically
+   correct type for what it actually feeds) — no behavior change, confirmed by the existing
+   `NumericInput.test.tsx` suite (14/14 still green) and a clean project-wide `tsc --noEmit`
+   with `expo-env.d.ts`/`.expo/types` present. No new jest test needed or added — the regression
+   protection *is* the CI gate's own typecheck step, which this review's second full `pnpm run
+   ci` invocation (§8.1) now proves stays green.
+2. **`HistoryListScreen.tsx`/`CalendarScreen.tsx`/`StatisticsScreen.tsx` silently swallowed a
+   genuine query error as if history were empty, with no error indication or retry
+   (`cca9a32`).** None of the three screens checked `isError` on their primary data queries
+   (`listCompleted`/`workoutDates`/`statsFeed`) — a real repository failure (SQLite error, disk
+   full) rendered identically to "the user has zero history": `HistoryListScreen` fell through
+   to a completely blank `FlashList` (its own `showEmptyState` computation already excluded the
+   error case, so neither the empty-state message nor anything else rendered); `CalendarScreen`
+   rendered a normal-looking, all-empty grid and a "No active streak yet" label indistinguishable
+   from a genuinely new user; `StatisticsScreen` rendered every tile as `0`/`0 kg`/`0:00`/`0 wks`
+   and every chart empty — the same shape, arguably worse, since "0 workouts" reads as a
+   confident (if wrong) number rather than an obvious blank. None of this is what 06 §9's
+   "repository errors ... never swallow" contract calls for, and it diverges from this
+   codebase's own already-established, already-working convention for exactly this situation
+   (`ExerciseBrowseScreen.tsx`'s `allQuery.isError` branch: a dedicated `EmptyState` with a
+   "Retry" CTA calling `refetch()`, pre-dating M4). Fixed by adding the identical `isError` +
+   `EmptyState` + `Retry` pattern to all three screens (`CalendarScreen.tsx` additionally reads
+   `streakQuery.isError` to show `'—'` instead of a possibly-false streak number rather than
+   replacing the whole screen, since the streak header and the month grid are backed by two
+   independent queries). Three new regression tests (one per screen, in each screen's own test
+   file): each rejects the relevant repository call, asserts the error state renders (not the
+   empty state, not a blank list, not misleading zeros), then asserts a successful retry recovers
+   normal rendering.
+
+Both are P2 per 08 §8's bug bar (no data loss, no crash, no *normal-path* wrong number — but a
+real, reachable "silently wrong" UI state and, for item 1, a real CI-gate reproducibility defect)
+— fixed anyway per this task's own disposition (P2 fixed when cheap and directly in scope, the
+same posture M2's/M3's own §8 passes used).
+
+**Found but intentionally not fixed, flagged for a future pass** (same shape as item 2 above, but
+judged out of this pass's proportionate scope): `HistoryDetailScreen.tsx`'s `workoutQuery` shows
+"Workout not found / This workout may have been deleted" on *any* `getFull` failure, not only a
+genuine deletion; `ExerciseDetailScreen.tsx`'s `historyQuery`/`recordsQuery` (unlike that same
+screen's own top-level exercise-fetch `query`, which already has a real `isError` branch) have no
+error state of their own. Extending the item-2 fix to every remaining read-query surface in the
+app would have gone well beyond "cheap, directly in scope" for one milestone-wide pass — noted
+here plainly, the same "real gap, next pass's call" disposition M3-checklist.md's own §8.1 used
+for the M2-side `removeExercise` superset-dissolution gap it found but left alone.
+
+### 8.3 — Reviewed, no further issues found
+
+Every other area read in §8.1 above — the Maestro flow 4 audit table (zero discrepancies against
+real source), all 14 new coverage-gap regression tests (real assertions, not coverage theater),
+the 08 §4.1 hard-gate table (all 13 cases' actual bodies match spec verbatim), the sampled 02 §15
+/ 04 §3-5 citations (all accurate save the one line-number drift fixed directly), `domain/
+records.ts`/`domain/epley.ts`, `domain/streaks.ts`/`CalendarScreen.tsx`, the cross-cutting PR-
+journey invalidation chain, and the rapid-check-uncheck/direct-repository-call robustness
+checks — matches its own spec/claim with no further data-integrity, crash-safety, incorrect-
+calculation, race-condition, unhandled-rejection, or re-render-discipline bug found beyond the
+two items in §8.2 and the two flagged-but-unfixed items noted above.
+
+### 8.4 — Verdict
+
+**Unchanged: M4 milestone exit criteria met, zero P0/P1 open**, now confirmed by a second,
+independent reviewing pass rather than resting on §1-7's own self-report. Two real gaps were
+found and fixed within this pass, each with regression tests (or, for the type-only fix, the CI
+gate's own typecheck step as the regression protection) — one a latent CI-gate reproducibility
+defect pre-dating M4 entirely (`NumericInput.tsx`), one a cross-cutting robustness gap spanning
+three M4 screens (M4-03/M4-06/M4-08) that no single task's own review could have caught, exactly
+the kind of finding this milestone-wide pass exists to surface. `pnpm run ci` is green end to end
+after this pass's changes (165 suites / 2181 tests, all four active coverage thresholds held,
+21/21 `expo-doctor`, clean `expo export`) — re-run fresh twice, both times, per this task's own
+mechanics. M4 remains ready for M5 to build on top of. The `v0.4.0-m4` tag is left exactly where
+M4-12 placed it (this pass's own fix commits land on top of it, mirroring M2's/M3's own §8
+precedent: `git merge-base --is-ancestor <fix-sha> v0.3.0-m3` returns false for both of M3's own
+§8 fix commits, confirming the tag-stays-put convention independently rather than assuming it).
