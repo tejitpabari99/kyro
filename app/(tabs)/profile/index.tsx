@@ -1,106 +1,23 @@
 /**
- * Profile tab placeholder (M0-08, +M0-10's Settings link, +M4-08's
- * Statistics link) — statistics, measures, settings hub (06 §3). Real
- * screen lands in later milestones; for now the functional rows are
- * Statistics (M4-08's dashboard, `profile/statistics`), Settings (M0-10's
- * minimal theme + weight-unit screen at `profile/settings/`), and Archived
- * Exercises (M1-10, 03 §5 / 04 §7's "Profile → Exercises → Archived"
- * shortcut).
- *
- * Dev-only "Design Gallery" row: the *only* in-app link to `app/dev/
- * gallery.tsx`, rendered exclusively when `__DEV__` — production/TestFlight
- * builds show no way to reach it (M0-08's dev-gallery access guard). "Load
- * Fixture Data" (M4-11) is the same guard, same pattern, linking to
- * `app/dev/load-fixture.tsx`.
+ * Profile tab route (M0-08 placeholder, completed M5-04) — wires the real
+ * `WorkoutRepositoryImpl`/`ExerciseRepositoryImpl` into
+ * `src/features/profile/ProfileScreen.tsx`, which now holds all of this
+ * screen's actual data/layout — the established "feature component owns
+ * data + layout, route file only wires real deps" split
+ * (`HistoryScreen`/M2-14, `ProfileStatisticsRoute`/M4-08).
  */
-import React from 'react';
-import {
-  ArchiveRestore,
-  BarChart3,
-  Database,
-  FlaskConical,
-  Settings as SettingsIcon,
-  User,
-} from 'lucide-react-native';
-import { router } from 'expo-router';
-import { StyleSheet, View } from 'react-native';
+import React, { useMemo } from 'react';
 
-import { EmptyState } from '@/ui/EmptyState';
-import { ListRow } from '@/ui/ListRow';
-import { useTheme } from '@/ui/theme-provider';
+import { ExerciseRepositoryImpl } from '@/data/exercises/exercise-repository';
+import { getAppDriver } from '@/data/sqlite/boot';
+import { WorkoutRepositoryImpl } from '@/data/workouts/workout-repository';
+import { ProfileScreen } from '@/features/profile/ProfileScreen';
 
-export default function ProfileScreen(): React.JSX.Element {
-  const { colors } = useTheme();
+export default function ProfileRoute(): React.JSX.Element {
+  const workoutRepository = useMemo(() => new WorkoutRepositoryImpl(getAppDriver()), []);
+  const exerciseRepository = useMemo(() => new ExerciseRepositoryImpl(getAppDriver()), []);
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.bg.base }]}>
-      <EmptyState
-        icon={<User size={40} strokeWidth={1.75} color={colors.text.tertiary} />}
-        title="Profile coming soon"
-        caption="Statistics, measurements, and settings will live here."
-      />
-      <View style={styles.bottomSection}>
-        <ListRow
-          testID="statistics-link"
-          title="Statistics"
-          subtitle="Workouts, volume, muscle distribution"
-          leading={<BarChart3 size={20} strokeWidth={1.75} color={colors.text.secondary} />}
-          chevron
-          onPress={() => router.push('/profile/statistics')}
-        />
-        <ListRow
-          testID="settings-link"
-          title="Settings"
-          subtitle="Theme, units"
-          leading={<SettingsIcon size={20} strokeWidth={1.75} color={colors.text.secondary} />}
-          chevron
-          onPress={() => router.push('/profile/settings')}
-        />
-        <ListRow
-          testID="archived-exercises-link"
-          title="Archived Exercises"
-          subtitle="Restore exercises you've archived"
-          leading={<ArchiveRestore size={20} strokeWidth={1.75} color={colors.text.secondary} />}
-          chevron
-          hideSeparator={!__DEV__}
-          onPress={() => router.push('/profile/exercises-archived')}
-        />
-        {__DEV__ ? (
-          <ListRow
-            testID="dev-gallery-link"
-            title="Design Gallery (DEV)"
-            subtitle="Every src/ui primitive, both themes"
-            leading={<FlaskConical size={20} strokeWidth={1.75} color={colors.text.secondary} />}
-            chevron
-            onPress={() => router.push('/dev/gallery')}
-          />
-        ) : null}
-        {__DEV__ ? (
-          <ListRow
-            testID="dev-load-fixture-link"
-            title="Load Fixture Data (DEV)"
-            subtitle="5-year synthetic history for perf/QA passes"
-            leading={<Database size={20} strokeWidth={1.75} color={colors.text.secondary} />}
-            chevron
-            hideSeparator
-            onPress={() => router.push('/dev/load-fixture')}
-          />
-        ) : null}
-      </View>
-    </View>
+    <ProfileScreen workoutRepository={workoutRepository} exerciseRepository={exerciseRepository} />
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bottomSection: {
-    position: 'absolute',
-    bottom: 24,
-    left: 16,
-    right: 16,
-  },
-});

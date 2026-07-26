@@ -118,8 +118,15 @@ describe('tab shell — boots to tabs, all 4 tabs navigable', () => {
   it(
     'navigates to the Profile tab',
     async () => {
+      // M5-04 update: the real `ProfileScreen` replaced the placeholder. The
+      // mocked driver's `queryAll` returns `[]` for everything (including
+      // `settings`, so `profile.name` resolves to its code default, `''`),
+      // so the screen legitimately renders its "no name set" header state
+      // here — this smoke test only needs to prove the route renders the
+      // real screen, not `ProfileScreen`'s own behavior (covered in
+      // `src/features/profile/__tests__/ProfileScreen.test.tsx`).
       await renderRouter('app', { initialUrl: '/profile' });
-      expect(await screen.findByText('Profile coming soon')).toBeTruthy();
+      expect(await screen.findByText('Add your name')).toBeTruthy();
     },
     15000,
   );

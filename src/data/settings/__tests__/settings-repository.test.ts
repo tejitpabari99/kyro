@@ -27,10 +27,10 @@ describe('SettingsRepository (better-sqlite3 integration, M0-10)', () => {
     const settings = await repository.get();
 
     expect(settings).toEqual(SETTINGS_DEFAULTS);
-    // Belt-and-suspenders: every one of the 19 documented keys (05 §3.5) is
-    // present — not just "the object deep-equals defaults" (which would
-    // also pass if both were vacuously `{}`).
-    expect(SETTINGS_KEYS).toHaveLength(19);
+    // Belt-and-suspenders: every one of the 20 documented keys (05 §3.5,
+    // `profile` added M5-04) is present — not just "the object deep-equals
+    // defaults" (which would also pass if both were vacuously `{}`).
+    expect(SETTINGS_KEYS).toHaveLength(20);
     for (const key of SETTINGS_KEYS) {
       expect(settings[key]).toEqual(SETTINGS_DEFAULTS[key]);
     }

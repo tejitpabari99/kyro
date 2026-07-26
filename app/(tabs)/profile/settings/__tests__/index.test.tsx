@@ -18,9 +18,10 @@
  * reads/writes the same `weight_unit` key correctly, not re-derive the
  * unit-math tests.
  */
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import React from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { openBetterSqlite3Driver } from '@/data/sqlite/driver.better-sqlite3';
 import { migrate } from '@/data/sqlite/migrator';
@@ -31,10 +32,25 @@ import type { SqliteDriver } from '@/data/sqlite/driver';
 
 import SettingsScreen from '../index';
 
+// M5-04: `SettingsScreen` now calls `useQueryClient()` (the first-day-of-week
+// recompute hook, `recompute-hooks.ts`) — every render needs a real
+// `QueryClientProvider` ancestor now, unlike before this task.
+function newQueryClient(): QueryClient {
+  return new QueryClient({ defaultOptions: { queries: { gcTime: 0, retry: false } } });
+}
+
 jest.mock('expo-router', () => ({
   ...jest.requireActual('expo-router'),
   router: { push: jest.fn() },
 }));
+
+// M5-04: "Export Diagnostics" calls this directly — mocked so the suite
+// never touches the real `Share.share` (throws under Jest, no native
+// `NativeActionSheetManager` — see `src/lib/diagnostics-export.ts`'s own
+// file header) and so the row's `onPress` wiring can be asserted by call
+// count alone, the same "mock the seam, assert it was called" convention
+// `router.push` above already uses.
+jest.mock('@/lib/diagnostics-export');
 
 // The screen imports the app-wide `useSettingsStore` singleton directly
 // (matching every other app-code consumer, e.g. `app/_layout.tsx`) — mocked
@@ -51,10 +67,12 @@ jest.mock('@/features/settings/settings-store', () => {
 
 describe('Settings screen (M0-10)', () => {
   let driver: SqliteDriver;
+  let queryClient: QueryClient;
 
   beforeEach(async () => {
     driver = openBetterSqlite3Driver(':memory:');
     migrate(driver);
+    queryClient = newQueryClient();
 
     const { useSettingsStore } = jest.requireMock('@/features/settings/settings-store') as {
       useSettingsStore: ReturnType<typeof createSettingsStore>;
@@ -70,9 +88,11 @@ describe('Settings screen (M0-10)', () => {
 
   it('renders the theme control defaulted to System and the weight-unit control defaulted to kg', async () => {
     await render(
-      <ThemeProvider>
-        <SettingsScreen />
-      </ThemeProvider>,
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <SettingsScreen />
+        </ThemeProvider>
+      </QueryClientProvider>,
     );
 
     expect(screen.getByTestId('settings-theme-control-system')).toHaveProp('accessibilityState', {
@@ -87,9 +107,11 @@ describe('Settings screen (M0-10)', () => {
 
   it('pressing Dark writes through to the repository and updates the control synchronously', async () => {
     await render(
-      <ThemeProvider>
-        <SettingsScreen />
-      </ThemeProvider>,
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <SettingsScreen />
+        </ThemeProvider>
+      </QueryClientProvider>,
     );
 
     await act(async () => {
@@ -107,9 +129,11 @@ describe('Settings screen (M0-10)', () => {
 
   it('pressing lbs writes through to the repository and updates the control synchronously', async () => {
     await render(
-      <ThemeProvider>
-        <SettingsScreen />
-      </ThemeProvider>,
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <SettingsScreen />
+        </ThemeProvider>
+      </QueryClientProvider>,
     );
 
     await act(async () => {
@@ -128,10 +152,12 @@ describe('Settings screen (M0-10)', () => {
 
 describe('Settings screen — Workouts group (M2-17, 02 §13)', () => {
   let driver: SqliteDriver;
+  let queryClient: QueryClient;
 
   beforeEach(async () => {
     driver = openBetterSqlite3Driver(':memory:');
     migrate(driver);
+    queryClient = newQueryClient();
 
     const { useSettingsStore } = jest.requireMock('@/features/settings/settings-store') as {
       useSettingsStore: ReturnType<typeof createSettingsStore>;
@@ -147,9 +173,11 @@ describe('Settings screen — Workouts group (M2-17, 02 §13)', () => {
 
   it('renders the Default Rest Timer row with the current value (90s default) as its subtitle', async () => {
     await render(
-      <ThemeProvider>
-        <SettingsScreen />
-      </ThemeProvider>,
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <SettingsScreen />
+        </ThemeProvider>
+      </QueryClientProvider>,
     );
 
     expect(screen.getByText('1min 30s')).toBeTruthy();
@@ -157,9 +185,11 @@ describe('Settings screen — Workouts group (M2-17, 02 §13)', () => {
 
   it('opens the Default Rest Timer wheel sheet and selecting a value writes through', async () => {
     await render(
-      <ThemeProvider>
-        <SettingsScreen />
-      </ThemeProvider>,
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <SettingsScreen />
+        </ThemeProvider>
+      </QueryClientProvider>,
     );
 
     await act(async () => {
@@ -178,9 +208,11 @@ describe('Settings screen — Workouts group (M2-17, 02 §13)', () => {
 
   it('selecting Off (0) on the Default Rest Timer wheel writes through', async () => {
     await render(
-      <ThemeProvider>
-        <SettingsScreen />
-      </ThemeProvider>,
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <SettingsScreen />
+        </ThemeProvider>
+      </QueryClientProvider>,
     );
 
     await act(async () => {
@@ -198,9 +230,11 @@ describe('Settings screen — Workouts group (M2-17, 02 §13)', () => {
 
   it('defaults Previous Workout Values to Any Workout, and Same Routine writes through', async () => {
     await render(
-      <ThemeProvider>
-        <SettingsScreen />
-      </ThemeProvider>,
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <SettingsScreen />
+        </ThemeProvider>
+      </QueryClientProvider>,
     );
 
     expect(screen.getByTestId('settings-previous-values-control-any_workout')).toHaveProp(
@@ -226,9 +260,11 @@ describe('Settings screen — Workouts group (M2-17, 02 §13)', () => {
     ['settings-live-pr-banner', 'live_pr_banner', true],
   ] as const)('the %s toggle defaults to %s and flips %s on press', async (testID, key, defaultValue) => {
     await render(
-      <ThemeProvider>
-        <SettingsScreen />
-      </ThemeProvider>,
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <SettingsScreen />
+        </ThemeProvider>
+      </QueryClientProvider>,
     );
 
     expect(screen.getByTestId(testID).props.value).toBe(defaultValue);
@@ -244,9 +280,11 @@ describe('Settings screen — Workouts group (M2-17, 02 §13)', () => {
 
   it('navigates to the Sounds screen', async () => {
     await render(
-      <ThemeProvider>
-        <SettingsScreen />
-      </ThemeProvider>,
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <SettingsScreen />
+        </ThemeProvider>
+      </QueryClientProvider>,
     );
 
     fireEvent.press(screen.getByTestId('settings-sounds-link'));
@@ -255,9 +293,11 @@ describe('Settings screen — Workouts group (M2-17, 02 §13)', () => {
 
   it('navigates to the Plate Calculator screen', async () => {
     await render(
-      <ThemeProvider>
-        <SettingsScreen />
-      </ThemeProvider>,
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <SettingsScreen />
+        </ThemeProvider>
+      </QueryClientProvider>,
     );
 
     fireEvent.press(screen.getByTestId('settings-plate-calc-link'));
@@ -266,9 +306,11 @@ describe('Settings screen — Workouts group (M2-17, 02 §13)', () => {
 
   it('navigates to the Warm-up Calculator screen', async () => {
     await render(
-      <ThemeProvider>
-        <SettingsScreen />
-      </ThemeProvider>,
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <SettingsScreen />
+        </ThemeProvider>
+      </QueryClientProvider>,
     );
 
     fireEvent.press(screen.getByTestId('settings-warmup-calc-link'));
@@ -289,5 +331,237 @@ describe('Settings screen — Workouts group (M2-17, 02 §13)', () => {
 
     expect(relaunchStore.getState().settings.rpe_enabled).toBe(true);
     expect(relaunchStore.getState().settings.default_rest_seconds).toBe(45);
+  });
+});
+
+describe('Settings screen — General/Notifications/About (M5-04, 04 §7)', () => {
+  let driver: SqliteDriver;
+  let queryClient: QueryClient;
+
+  beforeEach(async () => {
+    driver = openBetterSqlite3Driver(':memory:');
+    migrate(driver);
+    queryClient = newQueryClient();
+
+    const { useSettingsStore } = jest.requireMock('@/features/settings/settings-store') as {
+      useSettingsStore: ReturnType<typeof createSettingsStore>;
+    };
+    await useSettingsStore.getState().load(new SettingsRepository(driver));
+
+    (router.push as jest.Mock).mockClear();
+  });
+
+  afterEach(() => {
+    driver.close();
+  });
+
+  async function renderSettings() {
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <SettingsScreen />
+        </ThemeProvider>
+      </QueryClientProvider>,
+    );
+  }
+
+  it('defaults First Day of Week to Monday, and Sunday writes through', async () => {
+    await renderSettings();
+
+    expect(screen.getByTestId('settings-first-day-of-week-control-monday')).toHaveProp(
+      'accessibilityState',
+      { selected: true, disabled: false },
+    );
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('settings-first-day-of-week-control-sunday'));
+    });
+
+    const repository = new SettingsRepository(driver);
+    expect((await repository.get()).first_day_of_week).toBe('sunday');
+  });
+
+  it('defaults Weekly Workout Goal to Off, and selecting a value writes through', async () => {
+    await renderSettings();
+
+    expect(screen.getByText('Off')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('settings-weekly-goal-row'));
+    });
+    expect(await screen.findByTestId('settings-weekly-goal-sheet')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('settings-weekly-goal-wheel-option-4'));
+    });
+
+    const repository = new SettingsRepository(driver);
+    expect((await repository.get()).weekly_goal).toBe(4);
+  });
+
+  it('selecting Off on the Weekly Workout Goal wheel writes through null (not the -1 sentinel)', async () => {
+    await renderSettings();
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('settings-weekly-goal-row'));
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('settings-weekly-goal-wheel-option--1'));
+    });
+
+    const repository = new SettingsRepository(driver);
+    expect((await repository.get()).weekly_goal).toBeNull();
+  });
+
+  it('the Rest Timer Notifications toggle defaults on and flips off on press', async () => {
+    await renderSettings();
+
+    expect(screen.getByTestId('settings-rest-notifications-enabled').props.value).toBe(true);
+
+    await act(async () => {
+      fireEvent(screen.getByTestId('settings-rest-notifications-enabled'), 'valueChange', false);
+    });
+
+    const repository = new SettingsRepository(driver);
+    expect((await repository.get()).rest_notifications_enabled).toBe(false);
+  });
+
+  it('renders the app version in the About section', async () => {
+    await renderSettings();
+    expect(screen.getByTestId('settings-version-row')).toBeTruthy();
+    // `getAppVersion()` falls back to `app.json`'s `expo.version` under Jest
+    // (`lib/app-info.ts`'s own file header — no native Constants module here).
+    expect(screen.getByText('1.0.0')).toBeTruthy();
+  });
+
+  it('the Crash & Error Reporting (Sentry) toggle defaults on and flips off on press', async () => {
+    await renderSettings();
+
+    expect(screen.getByTestId('settings-sentry-enabled').props.value).toBe(true);
+
+    await act(async () => {
+      fireEvent(screen.getByTestId('settings-sentry-enabled'), 'valueChange', false);
+    });
+
+    const repository = new SettingsRepository(driver);
+    expect((await repository.get()).sentry_enabled).toBe(false);
+  });
+
+  it('pressing Export Diagnostics shares the formatted log buffer', async () => {
+    const { shareDiagnostics } = jest.requireMock('@/lib/diagnostics-export') as {
+      shareDiagnostics: jest.Mock;
+    };
+
+    await renderSettings();
+    fireEvent.press(screen.getByTestId('settings-export-diagnostics-row'));
+
+    expect(shareDiagnostics).toHaveBeenCalledTimes(1);
+  });
+
+  it('navigates to the Licenses screen', async () => {
+    await renderSettings();
+
+    fireEvent.press(screen.getByTestId('settings-licenses-link'));
+    expect(router.push).toHaveBeenCalledWith('/profile/settings/licenses');
+  });
+
+  it('every new setting persists across a simulated relaunch', async () => {
+    const { useSettingsStore } = jest.requireMock('@/features/settings/settings-store') as {
+      useSettingsStore: ReturnType<typeof createSettingsStore>;
+    };
+
+    await useSettingsStore.getState().setSetting('first_day_of_week', 'saturday');
+    await useSettingsStore.getState().setSetting('weekly_goal', 5);
+    await useSettingsStore.getState().setSetting('rest_notifications_enabled', false);
+    await useSettingsStore.getState().setSetting('sentry_enabled', false);
+
+    const relaunchStore = createSettingsStore();
+    await relaunchStore.getState().load(new SettingsRepository(driver));
+
+    expect(relaunchStore.getState().settings.first_day_of_week).toBe('saturday');
+    expect(relaunchStore.getState().settings.weekly_goal).toBe(5);
+    expect(relaunchStore.getState().settings.rest_notifications_enabled).toBe(false);
+    expect(relaunchStore.getState().settings.sentry_enabled).toBe(false);
+  });
+});
+
+describe('Settings screen — first-day-of-week recompute hook (M5-04 named acceptance case)', () => {
+  let driver: SqliteDriver;
+  let queryClient: QueryClient;
+
+  beforeEach(async () => {
+    driver = openBetterSqlite3Driver(':memory:');
+    migrate(driver);
+    // Deliberately NOT `newQueryClient()`'s `gcTime: 0` here — every seeded
+    // key in this test is set via `setQueryData` with zero observers (no
+    // component in this render tree actually subscribes to `['stats', ...]`
+    // /`['calendar', ...]`), and `gcTime: 0` garbage-collects an unobserved
+    // query almost immediately, which was empirically observed to race the
+    // assertions below (`getQueryState` returning `undefined`, not just
+    // `isInvalidated: false`). `gcTime: Infinity` keeps every seeded entry
+    // around for the whole test regardless of observer count.
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { gcTime: Infinity, retry: false } },
+    });
+
+    const { useSettingsStore } = jest.requireMock('@/features/settings/settings-store') as {
+      useSettingsStore: ReturnType<typeof createSettingsStore>;
+    };
+    await useSettingsStore.getState().load(new SettingsRepository(driver));
+
+    (router.push as jest.Mock).mockClear();
+  });
+
+  afterEach(() => {
+    driver.close();
+  });
+
+  /**
+   * The task's own named acceptance case: "first-day change re-buckets
+   * calendar/stats (integration) ... not just 'the setting saves,' but that
+   * a dependent query key gets invalidated." Seeds the shared `queryClient`
+   * with data under the exact `'stats'`/`'calendar'`-prefixed keys
+   * `StatisticsScreen.tsx`/`CalendarScreen.tsx` register, changes
+   * `first_day_of_week` via the real control, and asserts both queries are
+   * marked invalidated immediately after — proving `recompute-hooks.ts`'s
+   * `invalidateWeekBoundaryQueries` actually ran as a result of the change,
+   * not merely that `first_day_of_week` itself persisted.
+   */
+  it('invalidates the stats and calendar query prefixes when First Day of Week changes', async () => {
+    queryClient.setQueryData(['stats', 'workout-dates'], [{ date: '2026-07-20', count: 1 }]);
+    queryClient.setQueryData(['stats', 'feed', '3m'], []);
+    queryClient.setQueryData(['calendar', 'streak'], [{ date: '2026-07-20', count: 1 }]);
+    queryClient.setQueryData(['calendar', 'month', 2026, 6], [{ date: '2026-07-20', count: 1 }]);
+    // A sibling prefix that must NOT be invalidated by this hook (see
+    // `recompute-hooks.ts`'s own header — history never buckets by week).
+    queryClient.setQueryData(['history', 'list'], { pages: [], pageParams: [] });
+
+    expect(queryClient.getQueryState(['stats', 'workout-dates'])?.isInvalidated).toBe(false);
+    expect(queryClient.getQueryState(['calendar', 'month', 2026, 6])?.isInvalidated).toBe(false);
+
+    await render(
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <SettingsScreen />
+        </ThemeProvider>
+      </QueryClientProvider>,
+    );
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('settings-first-day-of-week-control-sunday'));
+    });
+
+    await waitFor(() => {
+      expect(queryClient.getQueryState(['stats', 'workout-dates'])?.isInvalidated).toBe(true);
+      expect(queryClient.getQueryState(['stats', 'feed', '3m'])?.isInvalidated).toBe(true);
+      expect(queryClient.getQueryState(['calendar', 'streak'])?.isInvalidated).toBe(true);
+      expect(queryClient.getQueryState(['calendar', 'month', 2026, 6])?.isInvalidated).toBe(true);
+    });
+
+    // The 'history' prefix is deliberately untouched by this hook.
+    expect(queryClient.getQueryState(['history', 'list'])?.isInvalidated).toBe(false);
+
+    const repository = new SettingsRepository(driver);
+    expect((await repository.get()).first_day_of_week).toBe('sunday');
   });
 });

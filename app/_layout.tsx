@@ -269,9 +269,24 @@ export default function RootLayout(): React.JSX.Element | null {
 
   // Sentry init, deferred past first frame (see file header) — never
   // gated on `gate.status`, never awaited, never blocks boot.
+  //
+  // M5-04: gated on `sentry_enabled` (`src/lib/sentry.ts`'s own TODO at
+  // `initSentry`'s doc comment named this exact call site). Read via
+  // `useSettingsStore.getState()` inside the RAF callback rather than the
+  // reactive `themePreference`-style selector above — this effect's `[]` dep
+  // array means it only ever fires once per mount, so a *later* toggle of
+  // `sentry_enabled` intentionally does not tear down/re-init Sentry; it only
+  // changes what the *next* app launch's first RAF callback sees. That is a
+  // genuine, documented next-launch-only exception (see the Settings
+  // screen's own subtitle on this toggle, and this task's EXECUTION-LOG row)
+  // — `Sentry.init`/`Sentry.close()` mid-session is not a supported flip this
+  // SDK exposes cleanly, and boot-time-only settings already have precedent
+  // in this codebase (nothing else reads `sentry_enabled` at all otherwise).
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
-      initSentry();
+      if (useSettingsStore.getState().settings.sentry_enabled) {
+        initSentry();
+      }
     });
     return () => cancelAnimationFrame(frame);
   }, []);

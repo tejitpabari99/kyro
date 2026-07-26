@@ -79,6 +79,24 @@ const soundsSchema = z.object({
 });
 export type SoundsSettings = z.infer<typeof soundsSchema>;
 
+/**
+ * Profile vanity (M5-04, 04 §7: "Profile tab: avatar/name (local vanity
+ * only)") — no such key existed in 05 §3.5 before this task; added here
+ * following the exact per-key-nested-object pattern `sounds`/`plate_calc`
+ * already establish, since 04 §7 explicitly scopes this to M5-04 ("add a
+ * minimal settings key if none exists"). `name` is a free-text display name
+ * (never an auth identity — this is a single-user, sign-in-free app, 06 §9's
+ * privacy posture); `avatar_emoji` is one emoji string standing in for a
+ * profile picture (no image picker/crop pipeline for this — that's the
+ * `progress_photos` capture path's job, not vanity chrome). Both purely
+ * cosmetic, never read by any domain/query logic.
+ */
+const profileSchema = z.object({
+  name: z.string().max(60),
+  avatar_emoji: z.string().min(1).max(8),
+});
+export type ProfileSettings = z.infer<typeof profileSchema>;
+
 // ---------------------------------------------------------------------------
 // Top-level keys — every key from 05 §3.5, in the doc's listed order.
 // ---------------------------------------------------------------------------
@@ -107,6 +125,7 @@ export const SETTINGS_KEY_SCHEMAS = {
   sounds: soundsSchema,
   rest_notifications_enabled: z.boolean(),
   sentry_enabled: z.boolean(),
+  profile: profileSchema,
 } as const;
 
 /** The full settings object schema — every key required, per-key shapes above. */
@@ -171,6 +190,12 @@ const DEFAULT_SOUNDS: SoundsSettings = {
   notification_volume: 'normal',
 };
 
+/** Default profile vanity (M5-04): no name set, a generic dumbbell emoji avatar. */
+const DEFAULT_PROFILE: ProfileSettings = {
+  name: '',
+  avatar_emoji: '💪',
+};
+
 /** Code defaults for every settings key (05 §3.5: "defaults in code"). */
 export const SETTINGS_DEFAULTS: Settings = {
   weight_unit: 'kg',
@@ -192,4 +217,5 @@ export const SETTINGS_DEFAULTS: Settings = {
   sounds: DEFAULT_SOUNDS,
   rest_notifications_enabled: true,
   sentry_enabled: true,
+  profile: DEFAULT_PROFILE,
 };
