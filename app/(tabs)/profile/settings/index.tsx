@@ -70,6 +70,30 @@
  * never claims either outcome — it only ever reports "started" -> "done" or
  * "failed"). Every rejected promise in the chain is caught and turned into
  * an `Alert`, never left to reject unhandled.
+ *
+ * ## M5-09 addition: DATA section — Backup, Restore, monthly reminder
+ *
+ * "Backup" is a one-shot action, same shape as "Export CSV" right above it
+ * (constructs `BackupService` lazily at press-time for the identical reason
+ * `handleExportCsv`'s own comment already gives — this screen's test suite
+ * renders it against a self-constructed driver that never calls the real
+ * `runDbBoot()`), then shares the resulting zip via `shareFile`.
+ * "Restore" navigates to `/backup/restore` (`BackupRestoreScreen`) — unlike
+ * Backup, restore needs a whole picker → double-confirm → progress → report
+ * flow, which doesn't fit this screen's own one-row-one-action shape (the
+ * same reasoning "Import Hevy CSV" already established for its own
+ * dedicated `/import/hevy` route rather than an inline action).
+ *
+ * "Monthly Backup Reminder" (`backup_reminder_enabled`, `settings-schema.ts`)
+ * schedules/cancels a real local notification directly from this toggle's
+ * `onValueChange` — there is no other natural "start" event to hang it off
+ * of (unlike `rest_notifications_enabled`, which `restTimerStore` reads
+ * lazily when a timer actually starts; a monthly reminder has no equivalent
+ * runtime trigger besides the toggle flip itself). Placed in DATA rather
+ * than NOTIFICATIONS (where `rest_notifications_enabled` lives) — contextual
+ * locality with the Backup/Restore rows it's actually about won over
+ * "notifications" as a settings-taxonomy category; either grouping is
+ * defensible, this one keeps the whole backup story in one place.
  */
 import React, { useState } from 'react';
 import { router } from 'expo-router';
@@ -81,12 +105,20 @@ import { ExerciseRepositoryImpl } from '@/data/exercises/exercise-repository';
 import { getAppDriver } from '@/data/sqlite/boot';
 import { WorkoutRepositoryImpl } from '@/data/workouts/workout-repository';
 import type { FirstDayOfWeek } from '@/domain/enums';
+import { createBackupService } from '@/features/data-transfer/backup-service';
 import { createCsvService } from '@/features/data-transfer/csv-service';
 import { invalidateWeekBoundaryQueries } from '@/features/settings/recompute-hooks';
 import { useSettingsStore } from '@/features/settings/settings-store';
 import { formatRestSeconds, restTimerSecondsOptions } from '@/features/workout/rest-timer-format';
 import { getAppVersion } from '@/lib/app-info';
+import { readBackupZipFile, writeCacheBackupZip } from '@/lib/backup-file';
 import { shareDiagnostics } from '@/lib/diagnostics-export';
+import { cancelBackupReminder, requestNotificationPermission, scheduleMonthlyBackupReminder } from '@/lib/notifications';
+import {
+  listProgressPhotoFileNames,
+  readProgressPhotoFileBase64,
+  writeProgressPhotoFileBase64,
+} from '@/lib/progress-photos';
 import { shareFile } from '@/lib/share-file';
 import { ListRow } from '@/ui/ListRow';
 import { SegmentedControl } from '@/ui/SegmentedControl';
@@ -170,10 +202,12 @@ export default function SettingsScreen(): React.JSX.Element {
     (state) => state.settings.rest_notifications_enabled,
   );
   const sentryEnabled = useSettingsStore((state) => state.settings.sentry_enabled);
+  const backupReminderEnabled = useSettingsStore((state) => state.settings.backup_reminder_enabled);
 
   const [restTimerSheetVisible, setRestTimerSheetVisible] = useState(false);
   const [weeklyGoalSheetVisible, setWeeklyGoalSheetVisible] = useState(false);
   const [exportingCsv, setExportingCsv] = useState(false);
+  const [backingUp, setBackingUp] = useState(false);
 
   // M5-06 (05 §7.1's export surfaces): write `kyro_workouts.csv` to the
   // cache directory per the *live* unit settings, then open the OS share
@@ -212,6 +246,73 @@ export default function SettingsScreen(): React.JSX.Element {
       })
       .finally(() => {
         setExportingCsv(false);
+      });
+  };
+
+  /**
+   * M5-09 (05 §9) — same lazy-construct-at-press-time shape as
+   * `handleExportCsv` right above, one native seam wider: `BackupService`
+   * needs the progress-photo file functions (`lib/progress-photos.ts`) and
+   * the zip-cache-file functions (`lib/backup-file.ts`) alongside the driver
+   * — every one of those five deps is wired here rather than left to a
+   * default, matching `app/backup/restore.tsx`'s own identical wiring for
+   * the restore side (both routes construct the same shape independently
+   * rather than sharing a singleton — same "per-route construction" posture
+   * `PhotosGalleryRoute`'s own header names as this codebase's convention).
+   */
+  const handleBackup = (): void => {
+    if (backingUp) return;
+    setBackingUp(true);
+    const backupService = createBackupService({
+      driver: getAppDriver(),
+      listPhotoFileNames: listProgressPhotoFileNames,
+      readPhotoFileBase64: readProgressPhotoFileBase64,
+      writePhotoFileBase64: writeProgressPhotoFileBase64,
+      writeCacheZipFile: writeCacheBackupZip,
+      readFileBase64: readBackupZipFile,
+    });
+    backupService
+      .export()
+      .then(({ uri }) =>
+        shareFile(uri, {
+          mimeType: 'application/zip',
+          UTI: 'public.zip-archive',
+          dialogTitle: 'Backup Kyro Data',
+        }),
+      )
+      .catch(() => {
+        Alert.alert('Backup Failed', 'Could not create a backup. Please try again.');
+      })
+      .finally(() => {
+        setBackingUp(false);
+      });
+  };
+
+  /**
+   * M5-09, 10 §9 — schedules/cancels the monthly backup-reminder local
+   * notification directly off this toggle's flip (see file header, "no
+   * other natural start event" — unlike `rest_notifications_enabled`, which
+   * `restTimerStore` reads lazily elsewhere). Permission is requested lazily
+   * here, on first enable, same "lazy, on first use, with no separate
+   * rationale screen for this low-stakes a toggle" posture — a denial simply
+   * means the setting is ON but nothing gets scheduled (silently, matching
+   * `requestNotificationPermission`'s own "denied" not being treated as an
+   * error anywhere else in this codebase); disabling always cancels
+   * unconditionally, regardless of whether anything was actually scheduled.
+   */
+  const handleBackupReminderToggle = (value: boolean): void => {
+    void useSettingsStore
+      .getState()
+      .setSetting('backup_reminder_enabled', value)
+      .then(async () => {
+        if (value) {
+          const status = await requestNotificationPermission();
+          if (status === 'granted') {
+            await scheduleMonthlyBackupReminder();
+          }
+        } else {
+          await cancelBackupReminder();
+        }
       });
   };
 
@@ -450,11 +551,9 @@ export default function SettingsScreen(): React.JSX.Element {
       </View>
 
       {/*
-        M5-06: Export CSV. M5-07 adds Import Hevy CSV -> `/import/hevy`
-        (a real route now, so this row no longer risks the "no dead row"
-        problem the M5-04/M5-06 comments above this one flagged for the
-        rows that weren't built yet). Backup & Restore still omitted —
-        M5-09's own not-yet-built route, same reasoning, narrowed further.
+        M5-06: Export CSV. M5-07 adds Import Hevy CSV -> `/import/hevy`.
+        M5-09 adds Backup, Restore -> `/backup/restore`, and the monthly
+        backup-reminder toggle — see file header, "M5-09 addition".
       */}
       <Text
         style={[
@@ -479,8 +578,33 @@ export default function SettingsScreen(): React.JSX.Element {
           title="Import Hevy CSV"
           subtitle="Import your workout history from a Hevy CSV export"
           chevron
-          hideSeparator
           onPress={() => router.push('/import/hevy')}
+        />
+        <ListRow
+          testID="settings-backup-row"
+          title="Backup"
+          subtitle={
+            backingUp
+              ? 'Backing up…'
+              : 'Save workouts, routines, measurements, photos, and settings to a file'
+          }
+          disabled={backingUp}
+          onPress={handleBackup}
+        />
+        <ListRow
+          testID="settings-restore-row"
+          title="Restore"
+          subtitle="Replace all current data from a backup file"
+          chevron
+          onPress={() => router.push('/backup/restore')}
+        />
+        <SettingsToggleRow
+          testID="settings-backup-reminder-enabled"
+          title="Monthly Backup Reminder"
+          subtitle="Get a monthly reminder to back up your data"
+          hideSeparator
+          value={backupReminderEnabled}
+          onValueChange={handleBackupReminderToggle}
         />
       </View>
 

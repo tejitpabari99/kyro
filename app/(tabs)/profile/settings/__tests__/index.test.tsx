@@ -67,6 +67,18 @@ jest.mock('@/features/data-transfer/csv-service', () => ({ createCsvService: jes
 // `diagnostics-export` above — `lib/share-file.ts`'s own header explains why
 // `expo-sharing` itself is never mocked directly in screen tests.
 jest.mock('@/lib/share-file', () => ({ shareFile: jest.fn().mockResolvedValue(undefined) }));
+// M5-09: "Backup" constructs `BackupService` via `getAppDriver()` lazily at
+// press-time too (same reasoning as Export CSV above) — mocked wholesale so
+// the dedicated "DATA section, Backup & Restore" describe block below can
+// configure `createBackupService`'s return value per-test without touching
+// `lib/progress-photos.ts`/`lib/backup-file.ts`'s real native seams (those
+// real functions are still passed through as inert arguments to this mock,
+// but the mock itself never calls them).
+jest.mock('@/features/data-transfer/backup-service', () => ({ createBackupService: jest.fn() }));
+// M5-09: the monthly backup-reminder toggle — manual mock, same
+// `src/lib/__mocks__/notifications.ts` convention `restTimerStore.test.ts`
+// already established for this module.
+jest.mock('@/lib/notifications');
 
 // The screen imports the app-wide `useSettingsStore` singleton directly
 // (matching every other app-code consumer, e.g. `app/_layout.tsx`) — mocked
@@ -532,12 +544,14 @@ describe('Settings screen — DATA section, Export CSV (M5-06)', () => {
     );
   }
 
-  it('renders Export CSV and Import Hevy CSV rows, but no Backup row (M5-09 not yet built)', async () => {
+  it('renders Export CSV, Import Hevy CSV, Backup, Restore, and the backup-reminder toggle rows', async () => {
     await renderSettings();
 
     expect(screen.getByTestId('settings-export-csv-row')).toBeTruthy();
     expect(screen.getByTestId('settings-import-hevy-csv-row')).toBeTruthy();
-    expect(screen.queryByText(/backup/i)).toBeNull();
+    expect(screen.getByTestId('settings-backup-row')).toBeTruthy();
+    expect(screen.getByTestId('settings-restore-row')).toBeTruthy();
+    expect(screen.getByTestId('settings-backup-reminder-enabled')).toBeTruthy();
   });
 
   it('pressing Import Hevy CSV navigates to /import/hevy (M5-07)', async () => {
@@ -598,6 +612,164 @@ describe('Settings screen — DATA section, Export CSV (M5-06)', () => {
     expect(screen.queryByText('Exporting…')).toBeNull();
 
     alertSpy.mockRestore();
+  });
+});
+
+describe('Settings screen — DATA section, Backup / Restore / monthly reminder (M5-09)', () => {
+  let driver: SqliteDriver;
+  let queryClient: QueryClient;
+
+  beforeEach(async () => {
+    driver = openBetterSqlite3Driver(':memory:');
+    migrate(driver);
+    queryClient = newQueryClient();
+
+    const { useSettingsStore } = jest.requireMock('@/features/settings/settings-store') as {
+      useSettingsStore: ReturnType<typeof createSettingsStore>;
+    };
+    await useSettingsStore.getState().load(new SettingsRepository(driver));
+
+    jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    driver.close();
+  });
+
+  async function renderSettings() {
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <SettingsScreen />
+        </ThemeProvider>
+      </QueryClientProvider>,
+    );
+  }
+
+  it('pressing Restore navigates to /backup/restore', async () => {
+    await renderSettings();
+    fireEvent.press(screen.getByTestId('settings-restore-row'));
+
+    expect(router.push).toHaveBeenCalledWith('/backup/restore');
+  });
+
+  it('pressing Backup calls BackupService.export(), then shares the returned zip', async () => {
+    const exportBackup = jest
+      .fn()
+      .mockResolvedValue({
+        uri: 'file:///mock-cache/kyro_backup_2026-01-01.zip',
+        fileName: 'kyro_backup_2026-01-01.zip',
+        workoutCount: 3,
+        photoCount: 1,
+        exportedAt: 0,
+      });
+    const { createBackupService } = jest.requireMock('@/features/data-transfer/backup-service') as {
+      createBackupService: jest.Mock;
+    };
+    createBackupService.mockReturnValue({ export: exportBackup, restore: jest.fn() });
+    const { shareFile } = jest.requireMock('@/lib/share-file') as { shareFile: jest.Mock };
+
+    await renderSettings();
+    fireEvent.press(screen.getByTestId('settings-backup-row'));
+
+    await waitFor(() => expect(exportBackup).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(shareFile).toHaveBeenCalledWith(
+        'file:///mock-cache/kyro_backup_2026-01-01.zip',
+        expect.objectContaining({ mimeType: 'application/zip' }),
+      ),
+    );
+  });
+
+  it('surfaces an alert and clears the loading state when backup export rejects, without an unhandled rejection', async () => {
+    const exportBackup = jest.fn().mockRejectedValue(new Error('disk full'));
+    const { createBackupService } = jest.requireMock('@/features/data-transfer/backup-service') as {
+      createBackupService: jest.Mock;
+    };
+    createBackupService.mockReturnValue({ export: exportBackup, restore: jest.fn() });
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+
+    await renderSettings();
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('settings-backup-row'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(alertSpy).toHaveBeenCalledWith('Backup Failed', expect.any(String));
+    expect(screen.queryByText('Backing up…')).toBeNull();
+
+    alertSpy.mockRestore();
+  });
+
+  it('enabling the monthly backup reminder requests permission and schedules it when granted', async () => {
+    const notifications = jest.requireMock('@/lib/notifications') as {
+      requestNotificationPermission: jest.Mock;
+      scheduleMonthlyBackupReminder: jest.Mock;
+      cancelBackupReminder: jest.Mock;
+    };
+    notifications.requestNotificationPermission.mockResolvedValue('granted');
+
+    await renderSettings();
+    await act(async () => {
+      fireEvent(screen.getByTestId('settings-backup-reminder-enabled'), 'valueChange', true);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(notifications.requestNotificationPermission).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(notifications.scheduleMonthlyBackupReminder).toHaveBeenCalledTimes(1));
+    expect(notifications.cancelBackupReminder).not.toHaveBeenCalled();
+
+    const { useSettingsStore } = jest.requireMock('@/features/settings/settings-store') as {
+      useSettingsStore: ReturnType<typeof createSettingsStore>;
+    };
+    expect(useSettingsStore.getState().settings.backup_reminder_enabled).toBe(true);
+  });
+
+  it('enabling the reminder when permission is denied persists the toggle but never schedules', async () => {
+    const notifications = jest.requireMock('@/lib/notifications') as {
+      requestNotificationPermission: jest.Mock;
+      scheduleMonthlyBackupReminder: jest.Mock;
+    };
+    notifications.requestNotificationPermission.mockResolvedValue('denied');
+
+    await renderSettings();
+    await act(async () => {
+      fireEvent(screen.getByTestId('settings-backup-reminder-enabled'), 'valueChange', true);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(notifications.scheduleMonthlyBackupReminder).not.toHaveBeenCalled();
+    const { useSettingsStore } = jest.requireMock('@/features/settings/settings-store') as {
+      useSettingsStore: ReturnType<typeof createSettingsStore>;
+    };
+    expect(useSettingsStore.getState().settings.backup_reminder_enabled).toBe(true);
+  });
+
+  it('disabling the reminder cancels it, without requesting permission', async () => {
+    const { useSettingsStore } = jest.requireMock('@/features/settings/settings-store') as {
+      useSettingsStore: ReturnType<typeof createSettingsStore>;
+    };
+    await useSettingsStore.getState().setSetting('backup_reminder_enabled', true);
+    const notifications = jest.requireMock('@/lib/notifications') as {
+      requestNotificationPermission: jest.Mock;
+      cancelBackupReminder: jest.Mock;
+    };
+
+    await renderSettings();
+    await act(async () => {
+      fireEvent(screen.getByTestId('settings-backup-reminder-enabled'), 'valueChange', false);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(notifications.cancelBackupReminder).toHaveBeenCalledTimes(1));
+    expect(notifications.requestNotificationPermission).not.toHaveBeenCalled();
+    expect(useSettingsStore.getState().settings.backup_reminder_enabled).toBe(false);
   });
 });
 

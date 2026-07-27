@@ -126,6 +126,20 @@ export const SETTINGS_KEY_SCHEMAS = {
   rest_notifications_enabled: z.boolean(),
   sentry_enabled: z.boolean(),
   profile: profileSchema,
+  /**
+   * M5-09 addition (05 §9, 10 §9): "Suggested monthly reminder toggle (local
+   * notification)" / "monthly backup reminder ... opt-in default **on**
+   * post-launch". This app is pre-launch (no released build yet) — 10 §9's
+   * "on post-launch" default explicitly does not apply today, and
+   * `M5-tasks.md`'s own M5-09 "How" line says so directly: "default flips on
+   * post-launch per 10 §9 — default off for now, M7-06 flips." Defaulting
+   * `true` now would mean every dev/test install silently schedules a real
+   * local notification before the app has ever shipped, which is the
+   * behavior 10 §9 itself only wants *after* launch — `false` here is the
+   * literal, non-speculative reading of that instruction, not a weaker
+   * substitute for it.
+   */
+  backup_reminder_enabled: z.boolean(),
 } as const;
 
 /** The full settings object schema — every key required, per-key shapes above. */
@@ -218,4 +232,5 @@ export const SETTINGS_DEFAULTS: Settings = {
   rest_notifications_enabled: true,
   sentry_enabled: true,
   profile: DEFAULT_PROFILE,
+  backup_reminder_enabled: false,
 };

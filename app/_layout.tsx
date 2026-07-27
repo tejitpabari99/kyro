@@ -410,6 +410,15 @@ export default function RootLayout(): React.JSX.Element | null {
                 name="import/hevy"
                 options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
               />
+              {/* M5-09, 05 §9/06 §3: the Restore-from-backup flow — same
+                  cross-tab, fullScreenModal presentation as every route
+                  above. Backup itself (export) has no dedicated route —
+                  it's a one-shot Settings → Data action, same shape Export
+                  CSV already uses (`app/(tabs)/profile/settings/index.tsx`). */}
+              <Stack.Screen
+                name="backup/restore"
+                options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
+              />
             </Stack>
           </ThemeProvider>
         </QueryClientProvider>
