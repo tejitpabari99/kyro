@@ -204,16 +204,36 @@ function computeDateRange(
   return { start, end };
 }
 
-/** One row per distinct `(title, start_time)` pair currently in the DB (non-deleted) — the duplicate-check index (05 §7.2: "duplicate import (same title+start_time already exists) -> skip workout"). */
+/**
+ * Floors an epoch-ms timestamp to its containing minute. Duplicate-detection
+ * granularity, not display precision (05 §7.1's `formatCsvDateTime` writes
+ * `d MMM yyyy, HH:mm` — no seconds — deliberately kept as-is so exported CSVs
+ * stay byte-compatible with genuine third-party Hevy exports, which are
+ * themselves minute-precision only). A real, live-logged workout's
+ * `startTime` is stamped via `Date.now()` (`workout-repository.ts`) and so
+ * essentially never lands on an exact minute boundary; re-exporting that
+ * workout to CSV and re-importing it therefore always yields a `startTime`
+ * with its seconds truncated to `:00`. Comparing raw millisecond values
+ * would make that reimport look like a brand-new workout instead of the
+ * duplicate it is, silently violating 05 §7.3's "import(export(db)) is a
+ * no-op" guarantee (found in M5 milestone-wide review). Flooring both sides
+ * of the comparison to the same 60-second bucket fixes this without
+ * changing the CSV format itself.
+ */
+function minuteBucket(epochMs: number): number {
+  return Math.floor(epochMs / 60_000);
+}
+
+/** One row per distinct `(title, start_time)` pair currently in the DB (non-deleted) — the duplicate-check index (05 §7.2: "duplicate import (same title+start_time already exists) -> skip workout"). Keyed at minute granularity — see {@link minuteBucket}. */
 function loadExistingWorkoutKeys(driver: SqliteDriver): Set<string> {
   const rows = driver.queryAll<{ title: string; start_time: number }>(
     `SELECT title, start_time FROM workouts WHERE deleted_at IS NULL`,
   );
-  return new Set(rows.map((row) => `${row.title} ${row.start_time}`));
+  return new Set(rows.map((row) => `${row.title} ${minuteBucket(row.start_time)}`));
 }
 
 function workoutKey(workout: Pick<ImportWorkoutDraft, 'title' | 'startTime'>): string {
-  return `${workout.title} ${workout.startTime}`;
+  return `${workout.title} ${minuteBucket(workout.startTime)}`;
 }
 
 function distinctExerciseTitles(workouts: readonly ImportWorkoutDraft[]): string[] {

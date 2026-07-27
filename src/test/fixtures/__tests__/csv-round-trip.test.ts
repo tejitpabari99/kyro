@@ -326,6 +326,58 @@ describe('CSV round trip 1 — import(export(db)) is a no-op (M5-08)', () => {
     expect(tableCount(driver, 'workout_exercises')).toBe(beforeExercises);
     expect(tableCount(driver, 'sets')).toBe(beforeSets);
   });
+
+  // Regression (found in M5 milestone-wide review): every workout above is
+  // seeded via the local `localDate(y, m, day, h = 0, min = 0)` helper,
+  // which always produces a whole-minute (`:00` seconds) timestamp — never
+  // exercising the actual bug. A *real*, live-logged workout's `startTime`
+  // is stamped via `Date.now()` (`workout-repository.ts`), which lands on a
+  // non-zero second essentially every time. `formatCsvDateTime` only ever
+  // emits `HH:mm` (05 §7.1's own spec'd Hevy-compatible format, no
+  // seconds), so re-exporting such a workout and re-importing it produces a
+  // parsed `startTime` with its seconds truncated to `:00` — if duplicate
+  // detection compares raw millisecond values, that reimport no longer
+  // matches the original row and gets inserted as a second copy, silently
+  // violating this describe block's own "is a no-op" guarantee.
+  it('a workout timestamp with non-zero seconds (e.g. stamped via Date.now()) is still recognized as a duplicate after export + reimport', async () => {
+    insertExercise('squat', 'Squat');
+
+    // 37s/12s past the minute — deliberately not a whole-minute boundary,
+    // unlike every other timestamp in this file.
+    const startTime = new Date(2026, 1, 5, 8, 0, 37).getTime();
+    const endTime = new Date(2026, 1, 5, 9, 0, 12).getTime();
+    insertWorkout({
+      id: 'w-odd-seconds',
+      title: 'Odd Seconds Day',
+      startTime,
+      endTime,
+      exercises: [
+        {
+          exerciseId: 'squat',
+          position: 0,
+          sets: [{ position: 0, setType: 'normal', weightKg: 100, reps: 5 }],
+        },
+      ],
+    });
+
+    const beforeWorkouts = tableCount(driver, 'workouts');
+    expect(beforeWorkouts).toBe(1);
+
+    const { csvService, hevyImportService } = services(driver);
+    const exportResult = await csvService.exportAll({ weightUnit: 'kg', distanceUnit: 'km' });
+
+    const preview = await hevyImportService.preview(exportResult.uri);
+    if ('error' in preview) throw new Error(`expected a valid preview, got: ${preview.error}`);
+
+    expect(preview.workoutsFoundCount).toBe(1);
+    expect(preview.duplicateWorkoutCount).toBe(1);
+
+    const report = await hevyImportService.confirm(preview);
+
+    expect(report.importedWorkoutCount).toBe(0);
+    expect(report.duplicateSkippedCount).toBe(1);
+    expect(tableCount(driver, 'workouts')).toBe(beforeWorkouts);
+  });
 });
 
 // ===========================================================================
