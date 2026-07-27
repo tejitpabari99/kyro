@@ -72,7 +72,7 @@ Task count: **11**
 **Acceptance / test gate:** Both round-trip tests green in CI; timed import test < 10 s on the node harness with the number recorded.
 **Est:** 1 d
 
-### M5-09 — Backup & restore (zip) + reminder
+### M5-09 — Backup & restore (zip) + reminder `[done]`
 **Description:** Full-fidelity backup beyond CSV.
 **How:** `BackupService.export()`: `kyro_backup_{date}.zip` = `db.json` (schema-versioned full logical dump of all tables) + `photos/` tree; share-sheet destination. `restore(fileUri)`: validate version (migrate logical dump forward if older), **replace-all with double confirm** ("This replaces all current data"), then orphan sweep + full query/cache invalidation. Settings → Data surfaces both. Monthly backup-reminder toggle (local notification; default flips on post-launch per 10 §9 — default off for now, M7-06 flips). Record `last_backup_at` in app_meta.
 **References:** 05 §9; 10 §9; 06 §9 (migration-failure guidance references backup).
