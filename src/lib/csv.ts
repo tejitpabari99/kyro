@@ -234,9 +234,21 @@ export function parseCsv(text: string): CsvParseResult {
       continue;
     }
     if (ch === '\r') {
-      // Swallow a lone CR; the following LF (if any) is handled by the
-      // '\n' branch below on the next iteration — net effect: `\r\n` and
-      // bare `\n` both end a record identically.
+      if (text[i + 1] === '\n') {
+        // Swallow a lone CR immediately before an LF; the '\n' branch below
+        // handles the actual line ending on the next iteration — net effect:
+        // `\r\n` and bare `\n` both end a record identically.
+        i += 1;
+        continue;
+      }
+      // A `\r` NOT followed by `\n` (bare old-Mac-style line ending,
+      // vanishingly unlikely but not worth crashing over, or just a literal
+      // CR byte in the data) is kept as a literal field character — matches
+      // this file's own header contract ("a `\r` not followed by `\n` ... is
+      // kept as a literal character") and how every other unrecognized
+      // character is handled below.
+      field += ch;
+      recordHasContent = true;
       i += 1;
       continue;
     }

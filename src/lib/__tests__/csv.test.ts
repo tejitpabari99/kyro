@@ -172,4 +172,15 @@ describe('parseCsv', () => {
     expect(errors).toEqual([]);
     expect(records).toEqual([{ fields: ['ab"cd', 'e'], line: 1 }]);
   });
+
+  it('keeps a bare CR not followed by LF as a literal field character, not a line ending', () => {
+    // Regression: a `\r` outside quotes used to be unconditionally swallowed
+    // regardless of what followed it, silently splicing the surrounding
+    // characters together (`'a\rb,c\n'` parsed as `['ab', 'c']` instead of
+    // `['a\rb', 'c']`) — contradicting this file's own header contract that
+    // a lone `\r` not immediately before a `\n` is kept as literal content.
+    const { records, errors } = parseCsv('a\rb,c\n');
+    expect(errors).toEqual([]);
+    expect(records).toEqual([{ fields: ['a\rb', 'c'], line: 1 }]);
+  });
 });

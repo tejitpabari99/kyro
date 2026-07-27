@@ -588,6 +588,54 @@ describe('HevyImportService', () => {
   });
 
   // -------------------------------------------------------------------------
+  // Transactional atomicity — a mid-batch DB failure leaves zero partial
+  // rows, not a half-imported file (M5-tasks.md's M5-07: "transactional
+  // batches"; `bulkInsertWorkouts` wraps the *entire* non-duplicate batch in
+  // one `driver.transaction(...)` call, per that function's own doc comment
+  // — stronger than "per workout," and this test locks that guarantee in
+  // rather than trusting the doc comment alone).
+  // -------------------------------------------------------------------------
+
+  it('rolls back the ENTIRE batch — including already-written earlier workouts — when a later workout in the same batch fails to write', async () => {
+    insertBuiltin('bench-press', 'Bench Press');
+    const csv = buildCsvText([
+      { title: 'First Workout', startTime: localDate(2026, 1, 3, 8, 0), endTime: localDate(2026, 1, 3, 8, 30), exerciseTitle: 'Bench Press', setIndex: 0, weight: '100', reps: '5' },
+      { title: 'Second Workout', startTime: localDate(2026, 1, 4, 8, 0), endTime: localDate(2026, 1, 4, 8, 30), exerciseTitle: 'Bench Press', setIndex: 0, weight: '90', reps: '8' },
+    ]);
+    mockFileText(csv);
+
+    const preview = await service().preview(FILE_URI);
+    if ('error' in preview) throw new Error('expected a valid preview');
+    expect(preview.workoutsFoundCount).toBe(2);
+
+    // Simulate a DB-level failure partway through the batch: let the first
+    // workout's INSERT succeed for real, then throw on the second workout's
+    // `workouts` INSERT — after several `sets`/`workout_exercises` writes
+    // for the first workout have already gone through the real driver.
+    const realExecute = driver.execute.bind(driver);
+    let workoutInsertCount = 0;
+    jest.spyOn(driver, 'execute').mockImplementation((sql: string, params?: unknown[]) => {
+      if (sql.trim().startsWith('INSERT INTO workouts')) {
+        workoutInsertCount += 1;
+        if (workoutInsertCount === 2) {
+          throw new Error('simulated mid-batch DB failure');
+        }
+      }
+      return realExecute(sql, params);
+    });
+
+    await expect(service().confirm(preview)).rejects.toThrow('simulated mid-batch DB failure');
+
+    // Zero partial rows: the first workout's already-executed INSERTs must
+    // have been rolled back too, since the whole batch shares one
+    // transaction — not just the second (failing) workout skipped.
+    expect(workoutCountForTitle('First Workout')).toBe(0);
+    expect(workoutCountForTitle('Second Workout')).toBe(0);
+    expect(setCountForWorkoutTitle('First Workout')).toBe(0);
+    expect(setCountForWorkoutTitle('Second Workout')).toBe(0);
+  });
+
+  // -------------------------------------------------------------------------
   // Custom-exercise re-link (05 §7.4)
   // -------------------------------------------------------------------------
 
@@ -652,6 +700,45 @@ describe('HevyImportService', () => {
     const report = await service().confirm(preview);
     expect(report.autoCreatedExercises).toEqual([]);
     expect(report.touchedExerciseIds).toEqual([custom.id]);
+  });
+
+  it('prefers a currently-active exercise over an archived one sharing the same name on a collision (05 §7.4)', async () => {
+    // Two distinct exercises can share one name as long as at most one is
+    // active (`idx_exercises_name_active` only constrains active rows) —
+    // exactly the "archived exercise's old name gets reused by a different,
+    // currently-active exercise" collision `buildExerciseNameIndex`'s own
+    // doc comment names. The import must re-link to the ACTIVE one, never
+    // resurrect/match the archived one it happens to share a name with.
+    const archived = await exerciseRepository.create({
+      name: 'Shared Name',
+      exerciseType: 'weight_reps',
+      primaryMuscleGroup: 'chest',
+    });
+    await exerciseRepository.archive(archived.id);
+    const active = await exerciseRepository.create({
+      name: 'Shared Name',
+      exerciseType: 'weight_reps',
+      primaryMuscleGroup: 'upper_back',
+    });
+
+    const start = localDate(2026, 1, 3, 8, 15);
+    const end = localDate(2026, 1, 3, 9, 0);
+    mockFileText(
+      buildCsvText([
+        { title: 'Pull Day', startTime: start, endTime: end, exerciseTitle: 'Shared Name', setIndex: 0, weight: '50', reps: '8' },
+      ]),
+    );
+
+    const preview = await service().preview(FILE_URI);
+    if ('error' in preview) throw new Error('expected a valid preview');
+    expect(preview.matchedExerciseTitles).toEqual(['Shared Name']);
+    expect(preview.unmatchedExercises).toEqual([]);
+    expect(preview.exerciseIdByTitle.get('Shared Name')).toBe(active.id);
+
+    const report = await service().confirm(preview);
+    expect(report.autoCreatedExercises).toEqual([]);
+    expect(report.touchedExerciseIds).toEqual([active.id]);
+    expect(report.touchedExerciseIds).not.toContain(archived.id);
   });
 
   it('re-checks the library fresh at confirm time — an exercise created in the preview-to-confirm gap is matched, not duplicated', async () => {
