@@ -118,6 +118,23 @@ describe('BackupRestoreScreen — idle/pick', () => {
 
     expect(router.back).toHaveBeenCalled();
   });
+
+  // Regression (found in M5 milestone-wide review): `handleChooseFile` had
+  // no try/catch anywhere — a rejecting `pickFile()` became an unhandled
+  // promise rejection instead of the same error phase the rest of this
+  // screen already uses for a failed restore.
+  it('shows an error screen when the file picker itself rejects, instead of throwing unhandled', async () => {
+    mockedFile.pickFile.mockRejectedValue(new Error('picker crashed'));
+    const restore = jest.fn();
+    await renderScreen({ restore });
+
+    fireEvent.press(screen.getByTestId('backup-restore-screen-choose-file'));
+
+    await waitFor(() => expect(screen.getByTestId('backup-restore-screen-error')).toBeTruthy());
+    expect(screen.getByText('picker crashed')).toBeTruthy();
+    expect(Alert.alert).not.toHaveBeenCalled();
+    expect(restore).not.toHaveBeenCalled();
+  });
 });
 
 describe('BackupRestoreScreen — double confirm (M5-09 acceptance gate)', () => {

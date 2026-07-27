@@ -123,14 +123,26 @@ export function PhotoGalleryScreen({
   }, []);
 
   const handleAddPress = useCallback(() => {
+    // `pickProgressPhoto` is a direct async call made from this Alert
+    // button's `onPress` — outside any Query mutationFn, so a rejection
+    // (camera/library permission errors, etc.) needs its own try/catch
+    // here, or it becomes an unhandled promise rejection instead of the
+    // same user-facing failure Alert `addPhotoMutation.onError` already
+    // shows for a failed save (found in M5 milestone-wide review — same
+    // recurring "unguarded direct async call in an event handler" shape
+    // M1-M4's own reviews each found).
     Alert.alert('Add Photo', undefined, [
       {
         text: 'Camera',
         onPress: () => {
           void (async () => {
-            const picked = await pickProgressPhoto('camera');
-            if (picked) {
-              addPhotoMutation.mutate(picked.uri);
+            try {
+              const picked = await pickProgressPhoto('camera');
+              if (picked) {
+                addPhotoMutation.mutate(picked.uri);
+              }
+            } catch {
+              Alert.alert('Something went wrong', 'This photo could not be saved. Please try again.');
             }
           })();
         },
@@ -139,9 +151,13 @@ export function PhotoGalleryScreen({
         text: 'Library',
         onPress: () => {
           void (async () => {
-            const picked = await pickProgressPhoto('library');
-            if (picked) {
-              addPhotoMutation.mutate(picked.uri);
+            try {
+              const picked = await pickProgressPhoto('library');
+              if (picked) {
+                addPhotoMutation.mutate(picked.uri);
+              }
+            } catch {
+              Alert.alert('Something went wrong', 'This photo could not be saved. Please try again.');
             }
           })();
         },

@@ -201,6 +201,33 @@ describe('PhotoGalleryScreen — Add Photo pipeline (Alert-driven)', () => {
     await waitFor(() => expect(mockPickProgressPhoto).toHaveBeenCalledWith('library'));
     expect(repository.addPhotoCalls).toHaveLength(0);
   });
+
+  // Regression (found in M5 milestone-wide review): each Camera/Library
+  // `Alert.alert` `onPress` callback wraps `pickProgressPhoto` in a bare
+  // `void (async () => {...})()` with no try/catch — a rejecting picker
+  // (camera/library permission errors, etc.) became an unhandled promise
+  // rejection instead of the same user-facing failure Alert
+  // `addPhotoMutation.onError` already shows for a failed save.
+  it('a rejecting picker (e.g. a camera permission error) shows the same failure Alert as a failed save, without throwing unhandled', async () => {
+    alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_title, _msg, buttons) => {
+      const cameraButton = buttons?.find((b) => b.text === 'Camera');
+      cameraButton?.onPress?.();
+    });
+    mockPickProgressPhoto.mockRejectedValue(new Error('camera permission denied'));
+
+    const repository = new FakeRepo([]);
+    await renderScreen(repository);
+
+    fireEvent.press(await screen.findByTestId('gallery-empty-add'));
+
+    await waitFor(() =>
+      expect(Alert.alert).toHaveBeenLastCalledWith(
+        'Something went wrong',
+        'This photo could not be saved. Please try again.',
+      ),
+    );
+    expect(repository.addPhotoCalls).toHaveLength(0);
+  });
 });
 
 describe('PhotoGalleryScreen (light theme smoke)', () => {

@@ -157,10 +157,27 @@ export function HevyImportScreen({
   const [phase, setPhase] = useState<Phase>({ status: 'idle' });
 
   const handleChooseFile = async (): Promise<void> => {
-    // M5-10 mocked-picker bypass (see file header) — everywhere else, no
-    // explicit `type` override: `pickFile`'s own default already restricts
-    // to CSV/plain-text MIME types (`lib/hevy-import-file.ts`).
-    const picked = __DEV__ && devFixtureImportEnabled ? await pickDevFixtureFile() : await pickFile();
+    // The picker call itself (native document-picker seam, or the M5-10 dev
+    // fixture write) is a direct async call made from this event handler —
+    // wrapped in its own try/catch (not just the `importService.preview`
+    // call below) so a rejection here (e.g. the fixture cache write
+    // failing) surfaces via the same error phase the rest of this handler
+    // already uses, instead of becoming an unhandled promise rejection
+    // (found in M5 milestone-wide review — same recurring "unguarded direct
+    // async call in an event handler" shape M1-M4's own reviews each found).
+    let picked: PickedFile | null;
+    try {
+      // M5-10 mocked-picker bypass (see file header) — everywhere else, no
+      // explicit `type` override: `pickFile`'s own default already
+      // restricts to CSV/plain-text MIME types (`lib/hevy-import-file.ts`).
+      picked = __DEV__ && devFixtureImportEnabled ? await pickDevFixtureFile() : await pickFile();
+    } catch (error) {
+      setPhase({
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Could not open the file picker.',
+      });
+      return;
+    }
     if (!picked) {
       return; // User cancelled — stay on the idle screen, no error.
     }

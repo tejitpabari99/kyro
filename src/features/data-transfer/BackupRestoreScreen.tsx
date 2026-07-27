@@ -139,7 +139,21 @@ export function BackupRestoreScreen({
   };
 
   const handleChooseFile = async (): Promise<void> => {
-    const picked = await pickFile({ type: ZIP_DOCUMENT_TYPES });
+    // Direct async call in an event handler — wrapped in try/catch (found
+    // in M5 milestone-wide review — same recurring "unguarded direct async
+    // call in an event handler" shape M1-M4's own reviews each found) so a
+    // rejecting picker surfaces via the same error phase `performRestore`'s
+    // own catch block already uses, instead of an unhandled rejection.
+    let picked: Awaited<ReturnType<typeof pickFile>>;
+    try {
+      picked = await pickFile({ type: ZIP_DOCUMENT_TYPES });
+    } catch (error) {
+      setPhase({
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Could not open the file picker.',
+      });
+      return;
+    }
     if (!picked) {
       return; // User cancelled the picker — stay on idle, no error.
     }

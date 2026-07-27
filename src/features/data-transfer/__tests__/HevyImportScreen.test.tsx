@@ -121,6 +121,23 @@ describe('HevyImportScreen — idle/pick', () => {
 
     expect(router.back).toHaveBeenCalled();
   });
+
+  // Regression (found in M5 milestone-wide review): `pickFile()` was called
+  // directly outside the handler's own try/catch, which only wrapped the
+  // later `importService.preview()` call — a rejecting picker (e.g. a
+  // native document-picker error) became an unhandled promise rejection
+  // instead of the same error phase every other failure in this flow shows.
+  it('shows an error screen when the file picker itself rejects, instead of throwing unhandled', async () => {
+    mockedFile.pickFile.mockRejectedValue(new Error('picker crashed'));
+    const preview = jest.fn();
+    await renderScreen({ preview, confirm: jest.fn() });
+
+    fireEvent.press(screen.getByTestId('hevy-import-screen-choose-file'));
+
+    await waitFor(() => expect(screen.getByTestId('hevy-import-screen-error')).toBeTruthy());
+    expect(screen.getByText('picker crashed')).toBeTruthy();
+    expect(preview).not.toHaveBeenCalled();
+  });
 });
 
 describe('HevyImportScreen — preview', () => {
