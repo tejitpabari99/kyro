@@ -362,6 +362,26 @@ export default function SettingsScreen(): React.JSX.Element {
             void useSettingsStore.getState().setSetting('theme', value);
           }}
         />
+        {/* M5-10 (08 §6 flow 6, Maestro theme dark<->light sweep): no
+            themed-root testID/text anywhere reveals which theme preference
+            is active — not Maestro-assertable at all before this. Exposes
+            the raw `settings.theme` preference (`'system' | 'light' |
+            'dark'`) already read into this screen's own `theme` local
+            above, not `useTheme().themeName` (which resolves `'system'`
+            against the OS scheme and so can only ever read `'light'`/
+            `'dark'`, never `'system'` — the wrong signal for asserting
+            *this* screen's own segmented-control selection actually wrote
+            through). Same `__DEV__`-gated debug-hook pattern/framing as
+            `TimerPill.tsx`'s `-debug-notification-id` hook (flow 07) —
+            never rendered in a production/TestFlight build. */}
+        {__DEV__ ? (
+          <Text
+            testID="settings-debug-theme-mode"
+            style={[typography.caption, { color: colors.text.tertiary, marginTop: spacing['1'] }]}
+          >
+            {theme}
+          </Text>
+        ) : null}
       </View>
 
       <View style={{ marginBottom: spacing['6'] }}>

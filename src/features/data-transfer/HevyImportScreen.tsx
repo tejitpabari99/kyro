@@ -28,6 +28,44 @@
  * caller, firing the bulk invalidation exactly once, after `confirm()`
  * resolves, mirroring `ActiveWorkoutScreen.tsx`'s/`EditWorkoutScreen.tsx`'s
  * own "await the mutation, then invalidate" call shape.
+ *
+ * ## M5-10 addition: `__DEV__`-gated mocked-picker bypass (Maestro flow 5)
+ *
+ * `pickFile()` (`lib/hevy-import-file.ts`) lazily `require()`s
+ * `expo-document-picker`, which has no native module on this headless
+ * sandbox (or under Maestro on a plain simulator boot with no way to drive
+ * the real OS file picker UI at all) — it always resolves `null`, so flow 5
+ * (import the bundled fixture CSV → preview → confirm → history populated)
+ * is literally unauthorable against the real "Choose CSV File" button
+ * (`docs/plan/BLOCKERS.md`'s M5-10 entry). `devFixtureImportEnabled` (new
+ * prop, default `false`) plus a bare `__DEV__` check together gate a bypass
+ * that writes the bundled `sample-csv-content.ts` fixture (an in-memory,
+ * drift-guarded copy of `domain/__fixtures__/hevy-import/sample.csv` — see
+ * that module's own header) to a real cache file via the same
+ * `writeCacheTextFile` helper `Settings`'s CSV export already uses, then
+ * feeds that file's real `uri` through the exact same `importService
+ * .preview(uri)` call the real picker path already takes — nothing about
+ * `preview`/`confirm`'s own code changes, only *which file* gets handed to
+ * them. `app/import/hevy.tsx` (the only real caller) passes
+ * `devFixtureImportEnabled={__DEV__}`, so this bypass is live in any dev
+ * build and compiled out of a production/TestFlight build's actual
+ * behavior — same `__DEV__`-gated-hook framing as
+ * `TimerPill.tsx`'s own debug hook (flow 07).
+ *
+ * **Why this needs a second gate beyond bare `__DEV__`, unlike `TimerPill`'s
+ * hook**: this repo's own Jest test environment (`jest-expo`) also sets
+ * `__DEV__ = true`, and `HevyImportScreen.test.tsx` mocks `pickFile` and
+ * asserts on it being called (e.g. "stays on idle when the user cancels the
+ * document picker (pickFile resolves null)" — asserts `pickFile` WAS
+ * called; several others assert `preview()` is called with the *mocked*
+ * `'file:///picked.csv'` uri). A bare `__DEV__` check alone would silently
+ * divert every one of those tests onto this bypass instead (since Jest's
+ * `__DEV__` is also `true`), calling `preview()` with the fixture's real
+ * cache uri instead of the test's own mocked uri and breaking every
+ * assertion that depends on `pickFile` having been called. Gating on
+ * `devFixtureImportEnabled` too — a prop those tests never pass, so it
+ * defaults `false` — keeps every existing test on the exact same
+ * `pickFile()`-mocked path it always used, unchanged.
  */
 import React, { useState } from 'react';
 import { router } from 'expo-router';
@@ -36,9 +74,11 @@ import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 
+import { HEVY_IMPORT_SAMPLE_CSV_CONTENT } from '@/domain/__fixtures__/hevy-import/sample-csv-content';
 import { formatWorkoutDate } from '@/features/history/date-format';
 import { invalidateAfterWorkoutMutation } from '@/features/stats/records-service';
-import { pickFile } from '@/lib/hevy-import-file';
+import { writeCacheTextFile } from '@/lib/csv-export-file';
+import { pickFile, type PickedFile } from '@/lib/hevy-import-file';
 import { Button } from '@/ui/Button';
 import { Card } from '@/ui/Card';
 import { EmptyState } from '@/ui/EmptyState';
@@ -50,9 +90,25 @@ import type {
   HevyImportServiceApi,
 } from './hevy-import-service';
 
+/** M5-10 — see file header's "mocked-picker bypass" section. The cache file name is fixed/overwritten-in-place each pick, same convention `writeCacheTextFile`'s own doc comment already establishes for the CSV export path. */
+const DEV_FIXTURE_CACHE_FILE_NAME = 'hevy-import-dev-fixture.csv';
+
+/** Writes the bundled sample fixture to a real cache file and returns it in `pickFile()`'s own result shape — see file header. */
+async function pickDevFixtureFile(): Promise<PickedFile> {
+  const uri = await writeCacheTextFile(DEV_FIXTURE_CACHE_FILE_NAME, HEVY_IMPORT_SAMPLE_CSV_CONTENT);
+  return { uri, name: 'sample.csv' };
+}
+
 export interface HevyImportScreenProps {
   importService: HevyImportServiceApi;
   testID?: string;
+  /**
+   * M5-10 — `__DEV__`-gated mocked-picker bypass, see file header. Defaults
+   * `false` so every existing test (which never passes this prop) keeps
+   * exercising the real `pickFile()`-mocked path unchanged; the real route
+   * (`app/import/hevy.tsx`) passes `__DEV__` itself.
+   */
+  devFixtureImportEnabled?: boolean;
 }
 
 type Phase =
@@ -93,6 +149,7 @@ function StatRow({ label, value }: { label: string; value: string | number }): R
 export function HevyImportScreen({
   importService,
   testID = 'hevy-import-screen',
+  devFixtureImportEnabled = false,
 }: HevyImportScreenProps): React.JSX.Element {
   const { colors, typography, spacing } = useTheme();
   const insets = useSafeAreaInsets();
@@ -100,9 +157,10 @@ export function HevyImportScreen({
   const [phase, setPhase] = useState<Phase>({ status: 'idle' });
 
   const handleChooseFile = async (): Promise<void> => {
-    // No explicit `type` override — `pickFile`'s own default already
-    // restricts to CSV/plain-text MIME types (`lib/hevy-import-file.ts`).
-    const picked = await pickFile();
+    // M5-10 mocked-picker bypass (see file header) — everywhere else, no
+    // explicit `type` override: `pickFile`'s own default already restricts
+    // to CSV/plain-text MIME types (`lib/hevy-import-file.ts`).
+    const picked = __DEV__ && devFixtureImportEnabled ? await pickDevFixtureFile() : await pickFile();
     if (!picked) {
       return; // User cancelled — stay on the idle screen, no error.
     }

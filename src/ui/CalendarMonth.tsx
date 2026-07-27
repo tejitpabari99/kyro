@@ -132,6 +132,15 @@ export function CalendarMonth({
         {weekdayHeaderLabels.map((label, index) => (
           <Text
             key={`weekday-${index}`}
+            // M5-10 (08 §6 flow 6, first-day-of-week Maestro sweep): a pure
+            // additive testID, unconditional (not `__DEV__`-gated, unlike
+            // the two debug-text hooks this same task added elsewhere) —
+            // every other testID in this codebase is always present, and
+            // this one carries no behavior change, just an index-stable
+            // handle onto text that already respects the live
+            // first-day-of-week setting via `weekdayLabels()`'s own
+            // ordering (`calendar-month-model.ts`).
+            testID={testID ? `${testID}-weekday-${index}` : undefined}
             style={[
               typography.footnote,
               styles.dayCell,
