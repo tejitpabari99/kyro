@@ -381,6 +381,42 @@ describe('BackupService (better-sqlite3 + real temp-dir integration, M5-09)', ()
     expect(snapshotAllTables(driver)).toEqual(beforeSnapshot);
   });
 
+  it('rejects a zip whose photo entry path attempts directory traversal ("zip slip"), without mutating the DB or writing any file', async () => {
+    // Found in M5-09 review: `path.slice(PHOTOS_ZIP_PREFIX.length)` was fed
+    // straight into `writePhotoFileBase64` (plain string concatenation onto
+    // the real photo directory, no sanitization) with no check that the
+    // result stays inside `photos/progress/`. A malicious/corrupt backup
+    // zip — the restored file is picked from anywhere on-device, not
+    // necessarily produced by this app — could otherwise overwrite an
+    // arbitrary file inside the app sandbox, including the SQLite database
+    // `replaceAllTables` just finished restoring.
+    seedSampleData(driver);
+    const { deps, listPhotoFiles } = fakeBackupFileDeps();
+    const service = createBackupService({ driver, ...deps });
+
+    const schemaVersion = Number(
+      driver.queryAll<{ value: string }>(`SELECT value FROM app_meta WHERE key = 'schema_version'`)[0]!
+        .value,
+    );
+    const zipped = zipEntries([
+      {
+        path: 'db.json',
+        data: utf8ToBytes(JSON.stringify({ schemaVersion, exportedAt: Date.now(), tables: {} })),
+      },
+      { path: 'photos/progress/../../../evil.jpg', data: utf8ToBytes('malicious payload') },
+    ]);
+    const uri = await deps.writeCacheZipFile('zip-slip.zip', bytesToBase64(zipped));
+
+    const beforeSnapshot = snapshotAllTables(driver);
+    const result = await service.restore(uri);
+
+    expect(result).toEqual({ error: expect.stringContaining('unsafe photo file path') });
+    expect(snapshotAllTables(driver)).toEqual(beforeSnapshot);
+    // Nothing should have been written to the (real) photo directory either
+    // — the whole restore is rejected before any table or file is touched.
+    expect(listPhotoFiles()).toEqual([]);
+  });
+
   // ---------------------------------------------------------------------------
   // Transactional atomicity (M5-09 review addition) — `replaceAllTables`
   // wraps its children-first DELETE pass and parents-first INSERT pass in one

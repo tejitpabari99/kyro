@@ -205,6 +205,30 @@ const LAST_BACKUP_AT_KEY = 'last_backup_at';
 const PHOTOS_ZIP_PREFIX = 'photos/progress/';
 const DB_JSON_ZIP_PATH = 'db.json';
 
+/**
+ * True when `fileName` is a safe, flat file name — no path separators, no
+ * `.`/`..` traversal segments, non-empty. A restore's zip archive is a file
+ * the user picked from anywhere on-device (Files app, a download, a shared
+ * attachment) — its entry *paths* are attacker/corruption-influenced input,
+ * not something this app minted. `writeProgressPhotoFileBase64`
+ * (`lib/progress-photos.ts`) joins its `fileName` argument onto the real
+ * on-disk photo directory with plain string concatenation and no
+ * sanitization of its own (`progressPhotoUri`) — so a photo entry whose
+ * derived name is e.g. `../../../../Library/Preferences/evil.plist` (a "zip
+ * slip" payload: `PHOTOS_ZIP_PREFIX` + `../../../../...` still starts with
+ * `photos/progress/`, so it would otherwise pass the existing prefix filter
+ * untouched) would resolve outside `photos/progress/` and overwrite an
+ * arbitrary file inside the app's sandbox, including the SQLite database
+ * file `replaceAllTables` just finished restoring. Checked for every photo
+ * entry *before* any table is touched (see `restoreBackup`) — same "reject
+ * the whole file up front" posture the schema-version/corrupt-JSON checks
+ * below already use, rather than partially applying a backup and failing
+ * mid-photo-copy.
+ */
+function isSafeBackupPhotoFileName(fileName: string): boolean {
+  return fileName.length > 0 && fileName !== '.' && fileName !== '..' && !/[/\\]/.test(fileName);
+}
+
 /** One backup's full logical dump — every `BACKUP_TABLES` table's rows, verbatim raw-SQL shape. */
 interface BackupDump {
   schemaVersion: number;
@@ -398,9 +422,23 @@ export function createBackupService(deps: BackupServiceDeps): BackupServiceApi {
       };
     }
 
+    const photoEntries = Object.entries(entries).filter(([path]) => path.startsWith(PHOTOS_ZIP_PREFIX));
+
+    // Validate every photo entry's derived file name *before* touching the
+    // DB — see `isSafeBackupPhotoFileName`'s own header. A zip-slip payload
+    // must reject the whole restore, not partially replace the DB and then
+    // fail (or silently write outside `photos/progress/`) mid-photo-copy.
+    for (const [path] of photoEntries) {
+      const fileName = path.slice(PHOTOS_ZIP_PREFIX.length);
+      if (fileName && !isSafeBackupPhotoFileName(fileName)) {
+        return {
+          error: 'This file is not a valid Kyro backup — it contains an unsafe photo file path.',
+        };
+      }
+    }
+
     replaceAllTables(deps.driver, dump);
 
-    const photoEntries = Object.entries(entries).filter(([path]) => path.startsWith(PHOTOS_ZIP_PREFIX));
     for (const [path, bytes] of photoEntries) {
       const fileName = path.slice(PHOTOS_ZIP_PREFIX.length);
       if (!fileName) continue; // Defensive: the prefix itself is never a real file entry.
