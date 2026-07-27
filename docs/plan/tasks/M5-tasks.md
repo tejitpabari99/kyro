@@ -80,7 +80,7 @@ Task count: **11**
 **Acceptance / test gate:** Integration: export → wipe DB+files → restore → deep-equal logical state incl. photos; older-version dump migrates forward; double-confirm flow (RNTL). Manual backup→wipe simulator→restore drill recorded (08 §7).
 **Est:** 1.5 d
 
-### M5-10 — Maestro flows 5 & 6 + M5 QA & exit gate
+### M5-10 — Maestro flows 5 & 6 + M5 QA & exit gate `[done]`
 **Description:** E2E for import + settings sweep, and milestone close.
 **How:** Flow 5: import bundled fixture CSV via mocked picker → preview counts → confirm → history populated, PRs visible. Flow 6: units kg→lb (logger values convert), theme dark→light, RPE on (column appears), first-day-of-week (calendar shifts). Data-integrity audit (08 §7): export CSV → diff vs in-app history for 10 random fixture workouts. Fix P0/P1 + regression tests; `docs/qa/M5-checklist.md`; tag.
 **References:** 08 §6 flows 5–6, §7; 09 M5 exit.
