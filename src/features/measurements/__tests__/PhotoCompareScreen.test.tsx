@@ -4,7 +4,7 @@
  * present on only one side, the "neither date has data" empty case, and the
  * "photo no longer exists" guard, plus a light-theme smoke pass.
  */
-import { render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -212,6 +212,56 @@ describe('PhotoCompareScreen (dark theme)', () => {
     await renderScreen(repository, 'p1', 'deleted-id');
 
     expect(await screen.findByTestId('compare-missing')).toBeTruthy();
+  });
+});
+
+// Regression (found in M5 milestone-wide review, the worst instance of this
+// bug class: a real query failure previously fell through to the "photo no
+// longer available / may have been deleted" guard above — actively
+// misleading, since that copy implies a user action (deleting a photo) when
+// this is really an unrelated repository failure).
+class FailingRepo implements MeasurementRepository {
+  async upsert(): Promise<void> {
+    throw new Error('unused');
+  }
+  async clearField(): Promise<void> {
+    throw new Error('unused');
+  }
+  async list(_range?: MeasurementDateRange): Promise<BodyMeasurement[]> {
+    throw new Error('database is locked');
+  }
+  async series(): Promise<MeasurementPoint[]> {
+    return [];
+  }
+  async addPhoto(): Promise<ProgressPhoto> {
+    throw new Error('unused');
+  }
+  async photos(_range?: MeasurementDateRange): Promise<ProgressPhoto[]> {
+    throw new Error('database is locked');
+  }
+  async deletePhoto(): Promise<void> {
+    throw new Error('unused');
+  }
+}
+
+describe('PhotoCompareScreen — query error', () => {
+  it('shows a distinct error state (not the "photo no longer available" guard) when a query fails, with a working retry', async () => {
+    const repository = new FailingRepo();
+    await renderScreen(repository, 'p1', 'p2');
+
+    expect(await screen.findByTestId('compare-error')).toBeTruthy();
+    expect(screen.queryByTestId('compare-missing')).toBeNull();
+    expect(screen.queryByText(/photo no longer available/i)).toBeNull();
+
+    jest.spyOn(repository, 'photos').mockResolvedValue([
+      photo({ id: 'p1', date: '2026-06-01' }),
+      photo({ id: 'p2', date: '2026-07-01' }),
+    ]);
+    jest.spyOn(repository, 'list').mockResolvedValue([]);
+    await fireEvent.press(screen.getByTestId('compare-retry'));
+
+    expect(await screen.findByTestId('compare-image-a')).toBeTruthy();
+    expect(screen.queryByTestId('compare-error')).toBeNull();
   });
 });
 

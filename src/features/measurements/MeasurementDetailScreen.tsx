@@ -19,7 +19,7 @@
  * interpolation of its own.
  */
 import React, { useState } from 'react';
-import { ChevronLeft, LineChart as LineChartIcon } from 'lucide-react-native';
+import { ChevronLeft, LineChart as LineChartIcon, TriangleAlert } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from 'react-native';
@@ -167,6 +167,21 @@ export function MeasurementDetailScreen({
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <ActivityIndicator color={colors.accent.primary} />
         </View>
+      ) : seriesQuery.isError ? (
+        <EmptyState
+          testID={`${testID}-error`}
+          icon={<TriangleAlert size={40} strokeWidth={1.75} color={colors.semantic.danger} />}
+          title="Couldn't load this measurement"
+          caption="Something went wrong loading the chart and entries."
+          cta={
+            <Button
+              label="Retry"
+              variant="tonal"
+              onPress={() => void seriesQuery.refetch()}
+              testID={`${testID}-retry`}
+            />
+          }
+        />
       ) : (
         <ScrollView testID={`${testID}-scroll`} contentContainerStyle={{ padding: spacing['4'] }}>
           <LineChart

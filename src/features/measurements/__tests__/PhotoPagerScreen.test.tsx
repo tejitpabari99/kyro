@@ -212,6 +212,50 @@ describe('PhotoPagerScreen (dark theme)', () => {
   });
 });
 
+// Regression (found in M5 milestone-wide review): a real query failure
+// previously fell through to `photos = []`, rendering a blank pager with no
+// error indicator at all — indistinguishable from a data-loading bug.
+class FailingRepo implements MeasurementRepository {
+  async upsert(): Promise<void> {
+    throw new Error('unused');
+  }
+  async clearField(): Promise<void> {
+    throw new Error('unused');
+  }
+  async list(_range?: MeasurementDateRange): Promise<BodyMeasurement[]> {
+    throw new Error('database is locked');
+  }
+  async series(): Promise<MeasurementPoint[]> {
+    return [];
+  }
+  async addPhoto(): Promise<ProgressPhoto> {
+    throw new Error('unused');
+  }
+  async photos(_range?: MeasurementDateRange): Promise<ProgressPhoto[]> {
+    throw new Error('database is locked');
+  }
+  async deletePhoto(): Promise<void> {
+    throw new Error('unused');
+  }
+}
+
+describe('PhotoPagerScreen — query error', () => {
+  it('shows a distinct error state (not a blank pager) when a query fails, with a working retry', async () => {
+    const repository = new FailingRepo();
+    await renderScreen(repository, 'p1');
+
+    expect(await screen.findByTestId('pager-error')).toBeTruthy();
+    expect(screen.queryByTestId('pager-scroll')).toBeNull();
+
+    jest.spyOn(repository, 'photos').mockResolvedValue([photo({ id: 'p1', date: '2026-07-01' })]);
+    jest.spyOn(repository, 'list').mockResolvedValue([]);
+    await fireEvent.press(screen.getByTestId('pager-retry'));
+
+    expect(await screen.findByTestId('pager-image-p1')).toBeTruthy();
+    expect(screen.queryByTestId('pager-error')).toBeNull();
+  });
+});
+
 describe('PhotoPagerScreen (light theme smoke)', () => {
   it('renders without throwing in light theme', async () => {
     const repository = new FakeRepo([photo({ id: 'p1', date: '2026-07-01' })]);

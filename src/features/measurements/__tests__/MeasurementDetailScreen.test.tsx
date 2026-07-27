@@ -21,6 +21,13 @@ import { Alert } from 'react-native';
 import { router } from 'expo-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+import type {
+  BodyMeasurement,
+  MeasurementDateRange,
+  MeasurementPoint,
+  MeasurementRepository,
+  ProgressPhoto,
+} from '@/data/measurements/types';
 import type { SqliteDriver } from '@/data/sqlite/driver';
 import { openBetterSqlite3Driver } from '@/data/sqlite/driver.better-sqlite3';
 import { migrate } from '@/data/sqlite/migrator';
@@ -54,7 +61,7 @@ function newTestQueryClient(): QueryClient {
 }
 
 async function renderScreen(
-  repository: MeasurementRepositoryImpl,
+  repository: MeasurementRepository,
   field: string,
   theme: 'dark' | 'light' = 'dark',
 ) {
@@ -165,5 +172,50 @@ describe('MeasurementDetailScreen', () => {
       expect(rows[0]!.weightKg).toBeNull();
       expect(rows[0]!.waistCm).toBe(90);
     });
+  });
+});
+
+// Regression (found in M5 milestone-wide review): a real `series()` failure
+// previously rendered identically to "no entries yet" (no chart data, empty
+// entry list) — the same bug class M4's own milestone-wide review found and
+// fixed for `HistoryListScreen`/`CalendarScreen`/`StatisticsScreen`.
+describe('MeasurementDetailScreen — series query error', () => {
+  class FailingRepo implements MeasurementRepository {
+    async upsert(): Promise<void> {
+      throw new Error('unused');
+    }
+    async clearField(): Promise<void> {
+      throw new Error('unused');
+    }
+    async list(_range?: MeasurementDateRange): Promise<BodyMeasurement[]> {
+      return [];
+    }
+    async series(): Promise<MeasurementPoint[]> {
+      throw new Error('database is locked');
+    }
+    async addPhoto(): Promise<ProgressPhoto> {
+      throw new Error('unused');
+    }
+    async photos(_range?: MeasurementDateRange): Promise<ProgressPhoto[]> {
+      return [];
+    }
+    async deletePhoto(): Promise<void> {
+      throw new Error('unused');
+    }
+  }
+
+  it('shows a distinct error state (not the empty-entries state) when the series query fails, with a working retry', async () => {
+    const repository = new FailingRepo();
+    await renderScreen(repository, 'weightKg');
+
+    expect(await screen.findByTestId('detail-error')).toBeTruthy();
+    expect(screen.queryByTestId('detail-entries-empty')).toBeNull();
+    expect(screen.queryByTestId('detail-chart')).toBeNull();
+
+    jest.spyOn(repository, 'series').mockResolvedValue([]);
+    await fireEvent.press(screen.getByTestId('detail-retry'));
+
+    expect(await screen.findByTestId('detail-chart')).toBeTruthy();
+    expect(screen.queryByTestId('detail-error')).toBeNull();
   });
 });

@@ -18,7 +18,7 @@
  * all-dash rows.
  */
 import React, { useMemo } from 'react';
-import { ImageOff } from 'lucide-react-native';
+import { ImageOff, TriangleAlert } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { ActivityIndicator, Text, View } from 'react-native';
@@ -29,6 +29,7 @@ import type { BodyMeasurement, MeasurementRepository } from '@/data/measurements
 import { MEASUREMENT_FIELD_KEYS } from '@/data/measurements/types';
 import { useSettingsStore } from '@/features/settings/settings-store';
 import { progressPhotoUri } from '@/lib/progress-photos';
+import { Button } from '@/ui/Button';
 import { Card } from '@/ui/Card';
 import { EmptyState } from '@/ui/EmptyState';
 import { useTheme } from '@/ui/theme-provider';
@@ -81,6 +82,36 @@ export function PhotoCompareScreen({
     return (
       <View testID={testID} style={{ flex: 1, backgroundColor: colors.bg.base, alignItems: 'center', justifyContent: 'center' }}>
         <ActivityIndicator color={colors.accent.primary} />
+      </View>
+    );
+  }
+
+  // A real repository failure must render as a distinct error state, not
+  // the "photo may have been deleted" guard below — that copy implies a
+  // user action (deleting a photo), which is actively misleading for what
+  // is actually a query failure (same `isError` + `EmptyState` + `Retry`
+  // pattern `PhotoGalleryScreen.tsx`'s own `query.isError` branch already
+  // establishes for this same repository).
+  if (photosQuery.isError || measurementsQuery.isError) {
+    return (
+      <View testID={testID} style={{ flex: 1, backgroundColor: colors.bg.base }}>
+        <EmptyState
+          testID={`${testID}-error`}
+          icon={<TriangleAlert size={40} strokeWidth={1.75} color={colors.semantic.danger} />}
+          title="Couldn't load photo comparison"
+          caption="Something went wrong loading these photos."
+          cta={
+            <Button
+              label="Retry"
+              variant="tonal"
+              onPress={() => {
+                void photosQuery.refetch();
+                void measurementsQuery.refetch();
+              }}
+              testID={`${testID}-retry`}
+            />
+          }
+        />
       </View>
     );
   }

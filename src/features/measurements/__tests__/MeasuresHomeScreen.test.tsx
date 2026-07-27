@@ -19,6 +19,13 @@ import React from 'react';
 import { router } from 'expo-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+import type {
+  BodyMeasurement,
+  MeasurementDateRange,
+  MeasurementPoint,
+  MeasurementRepository,
+  ProgressPhoto,
+} from '@/data/measurements/types';
 import type { SqliteDriver } from '@/data/sqlite/driver';
 import { openBetterSqlite3Driver } from '@/data/sqlite/driver.better-sqlite3';
 import { migrate } from '@/data/sqlite/migrator';
@@ -51,7 +58,7 @@ function newTestQueryClient(): QueryClient {
   return new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
 }
 
-async function renderScreen(repository: MeasurementRepositoryImpl, theme: 'dark' | 'light' = 'dark') {
+async function renderScreen(repository: MeasurementRepository, theme: 'dark' | 'light' = 'dark') {
   return render(
     <QueryClientProvider client={newTestQueryClient()}>
       <ThemeProvider preference={theme}>
@@ -135,5 +142,52 @@ describe('MeasuresHomeScreen', () => {
     await fireEvent.press(await screen.findByTestId('home-fab'));
 
     expect(await screen.findByText('Log Measurements')).toBeTruthy();
+  });
+});
+
+// Regression (found in M5 milestone-wide review): a real `series()` failure
+// on any field's query was previously indistinguishable from "nothing
+// logged yet" — every row silently fell back to `[]` and rendered "No
+// entries yet", the same bug class M4's own milestone-wide review found and
+// fixed for `HistoryListScreen`/`CalendarScreen`/`StatisticsScreen`.
+describe('MeasuresHomeScreen — series query error', () => {
+  class FailingRepo implements MeasurementRepository {
+    async upsert(): Promise<void> {
+      throw new Error('unused');
+    }
+    async clearField(): Promise<void> {
+      throw new Error('unused');
+    }
+    async list(_range?: MeasurementDateRange): Promise<BodyMeasurement[]> {
+      return [];
+    }
+    async series(): Promise<MeasurementPoint[]> {
+      throw new Error('database is locked');
+    }
+    async addPhoto(): Promise<ProgressPhoto> {
+      throw new Error('unused');
+    }
+    async photos(_range?: MeasurementDateRange): Promise<ProgressPhoto[]> {
+      return [];
+    }
+    async deletePhoto(): Promise<void> {
+      throw new Error('unused');
+    }
+  }
+
+  it('shows a distinct error state (not "No entries yet") when a series query fails, with a working retry', async () => {
+    const repository = new FailingRepo();
+    await renderScreen(repository);
+
+    expect(await screen.findByTestId('home-error')).toBeTruthy();
+    expect(screen.queryByTestId('home-row-weightKg')).toBeNull();
+    expect(screen.queryByText('No entries yet')).toBeNull();
+
+    // Retry recovers normal rendering once the repository starts succeeding.
+    jest.spyOn(repository, 'series').mockResolvedValue([]);
+    await fireEvent.press(screen.getByTestId('home-retry'));
+
+    expect(await screen.findByTestId('home-row-weightKg')).toBeTruthy();
+    expect(screen.queryByTestId('home-error')).toBeNull();
   });
 });

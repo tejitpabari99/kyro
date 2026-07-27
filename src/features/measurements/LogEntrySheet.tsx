@@ -305,6 +305,28 @@ export function LogEntrySheet({
           Log Measurements
         </Text>
 
+        {entryQuery.isError || photosQuery.isError ? (
+          <View style={{ marginBottom: spacing['4'] }}>
+            <Text
+              testID={`${testID}-load-error`}
+              style={[typography.subhead, { color: colors.semantic.danger, marginBottom: spacing['2'] }]}
+            >
+              Couldn&apos;t load this entry — existing values or photos for this date may not be
+              shown. Saving now could overwrite them.
+            </Text>
+            <Button
+              label="Retry"
+              variant="tonal"
+              size="sm"
+              testID={`${testID}-load-retry`}
+              onPress={() => {
+                void entryQuery.refetch();
+                void photosQuery.refetch();
+              }}
+            />
+          </View>
+        ) : null}
+
         <View style={{ marginBottom: spacing['5'] }}>
           <Text style={sectionLabelStyle}>DATE</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing['2'] }}>

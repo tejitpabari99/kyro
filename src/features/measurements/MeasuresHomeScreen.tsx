@@ -22,7 +22,7 @@
  * rather than firing a second ranged query per field.
  */
 import React, { useState } from 'react';
-import { Plus } from 'lucide-react-native';
+import { Plus, TriangleAlert } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useQueries } from '@tanstack/react-query';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
@@ -32,6 +32,8 @@ import type { MeasurementRepository } from '@/data/measurements/types';
 import { MEASUREMENT_FIELD_KEYS } from '@/data/measurements/types';
 import { useSettingsStore } from '@/features/settings/settings-store';
 import { Sparkline } from '@/ui/charts';
+import { Button } from '@/ui/Button';
+import { EmptyState } from '@/ui/EmptyState';
 import { useTheme } from '@/ui/theme-provider';
 
 import { LogEntrySheet } from './LogEntrySheet';
@@ -82,9 +84,21 @@ export function MeasuresHomeScreen({
   });
 
   const isLoading = seriesQueries.some((query) => query.isLoading);
+  // A real repository failure on any one field's series query must render
+  // as a distinct error state, not silently fall through to "No entries
+  // yet" for every row — the same `isError` + `EmptyState` + `Retry`
+  // pattern `HistoryListScreen.tsx`/`CalendarScreen.tsx`/
+  // `StatisticsScreen.tsx` already establish (M4's own milestone-wide
+  // review, found in M5 milestone-wide review for this screen too).
+  const isError = seriesQueries.some((query) => query.isError);
   const rows: MeasureHomeRow[] = MEASUREMENT_FIELD_KEYS.map((field, index) =>
     buildMeasureHomeRow(field, seriesQueries[index]?.data ?? []),
   );
+  const retryFailedQueries = (): void => {
+    for (const query of seriesQueries) {
+      if (query.isError) void query.refetch();
+    }
+  };
 
   return (
     <View testID={testID} style={{ flex: 1, backgroundColor: colors.bg.base }}>
@@ -104,6 +118,21 @@ export function MeasuresHomeScreen({
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <ActivityIndicator color={colors.accent.primary} />
         </View>
+      ) : isError ? (
+        <EmptyState
+          testID={`${testID}-error`}
+          icon={<TriangleAlert size={40} strokeWidth={1.75} color={colors.semantic.danger} />}
+          title="Couldn't load measurements"
+          caption="Something went wrong loading your measurements."
+          cta={
+            <Button
+              label="Retry"
+              variant="tonal"
+              onPress={retryFailedQueries}
+              testID={`${testID}-retry`}
+            />
+          }
+        />
       ) : (
         <ScrollView testID={`${testID}-list`} contentContainerStyle={{ paddingBottom: spacing['12'] }}>
           {rows.map((row) => {

@@ -21,6 +21,13 @@ import React from 'react';
 import { Alert } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+import type {
+  BodyMeasurement,
+  MeasurementDateRange,
+  MeasurementPoint,
+  MeasurementRepository,
+  ProgressPhoto,
+} from '@/data/measurements/types';
 import type { SqliteDriver } from '@/data/sqlite/driver';
 import { openBetterSqlite3Driver } from '@/data/sqlite/driver.better-sqlite3';
 import { migrate } from '@/data/sqlite/migrator';
@@ -52,7 +59,7 @@ function newTestQueryClient(): QueryClient {
 }
 
 function renderSheet(
-  repository: MeasurementRepositoryImpl,
+  repository: LogEntrySheetProps['repository'],
   overrides: Partial<LogEntrySheetProps> = {},
   theme: 'dark' | 'light' = 'dark',
 ) {
@@ -318,5 +325,49 @@ describe('LogEntrySheet — photo attach (self-contained, plain thumbnail + remo
       const photos = await repository.photos({ start: '2026-07-26', end: '2026-07-26' });
       expect(photos).toHaveLength(0);
     });
+  });
+});
+
+// Regression (found in M5 milestone-wide review): `entryQuery`/`photosQuery`
+// never checked `isError` — a real load failure silently seeded the form
+// blank (indistinguishable from "nothing logged for this date yet") instead
+// of warning the user their save could overwrite existing data.
+describe('LogEntrySheet — entry/photos load error', () => {
+  class FailingRepo implements MeasurementRepository {
+    async upsert(): Promise<void> {
+      throw new Error('unused');
+    }
+    async clearField(): Promise<void> {
+      throw new Error('unused');
+    }
+    async list(_range?: MeasurementDateRange): Promise<BodyMeasurement[]> {
+      throw new Error('database is locked');
+    }
+    async series(): Promise<MeasurementPoint[]> {
+      return [];
+    }
+    async addPhoto(): Promise<ProgressPhoto> {
+      throw new Error('unused');
+    }
+    async photos(_range?: MeasurementDateRange): Promise<ProgressPhoto[]> {
+      throw new Error('database is locked');
+    }
+    async deletePhoto(): Promise<void> {
+      throw new Error('unused');
+    }
+  }
+
+  it('shows a load-error banner (not a silently blank form) when the entry/photos queries fail, with a working retry', async () => {
+    const repository = new FailingRepo();
+    await renderSheet(repository, { initialDate: '2026-07-27' });
+    await screen.findByText('Log Measurements');
+
+    expect(await screen.findByTestId('sheet-load-error')).toBeTruthy();
+
+    jest.spyOn(repository, 'list').mockResolvedValue([]);
+    jest.spyOn(repository, 'photos').mockResolvedValue([]);
+    await fireEvent.press(screen.getByTestId('sheet-load-retry'));
+
+    await waitFor(() => expect(screen.queryByTestId('sheet-load-error')).toBeNull());
   });
 });

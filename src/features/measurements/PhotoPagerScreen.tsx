@@ -29,7 +29,7 @@
  * happen to open that specific photo before the next relaunch clears it).
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, ImageOff, Trash2 } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, ImageOff, Trash2, TriangleAlert } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import {
@@ -49,6 +49,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { MeasurementRepository } from '@/data/measurements/types';
 import { progressPhotoUri } from '@/lib/progress-photos';
 import { useSettingsStore } from '@/features/settings/settings-store';
+import { Button } from '@/ui/Button';
+import { EmptyState } from '@/ui/EmptyState';
 import { useTheme } from '@/ui/theme-provider';
 
 import { formatMeasurementDateLabel, formatMeasurementValue } from './measurement-photo-format';
@@ -174,6 +176,34 @@ export function PhotoPagerScreen({
     return (
       <View testID={testID} style={{ flex: 1, backgroundColor: colors.bg.base, alignItems: 'center', justifyContent: 'center' }}>
         <ActivityIndicator color={colors.accent.primary} />
+      </View>
+    );
+  }
+
+  // A real repository failure must render as a distinct error state, not a
+  // blank pager with no photos and no explanation — same `isError` +
+  // `EmptyState` + `Retry` pattern `PhotoGalleryScreen.tsx`'s own
+  // `query.isError` branch already establishes for this same repository.
+  if (photosQuery.isError || measurementsQuery.isError) {
+    return (
+      <View testID={testID} style={{ flex: 1, backgroundColor: colors.bg.base }}>
+        <EmptyState
+          testID={`${testID}-error`}
+          icon={<TriangleAlert size={40} strokeWidth={1.75} color={colors.semantic.danger} />}
+          title="Couldn't load photos"
+          caption="Something went wrong loading your progress photos."
+          cta={
+            <Button
+              label="Retry"
+              variant="tonal"
+              onPress={() => {
+                void photosQuery.refetch();
+                void measurementsQuery.refetch();
+              }}
+              testID={`${testID}-retry`}
+            />
+          }
+        />
       </View>
     );
   }
