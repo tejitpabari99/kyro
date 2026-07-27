@@ -381,6 +381,59 @@ describe('BackupService (better-sqlite3 + real temp-dir integration, M5-09)', ()
     expect(snapshotAllTables(driver)).toEqual(beforeSnapshot);
   });
 
+  // ---------------------------------------------------------------------------
+  // Transactional atomicity (M5-09 review addition) — `replaceAllTables`
+  // wraps its children-first DELETE pass and parents-first INSERT pass in one
+  // `driver.transaction(...)` call (this file's own header, "Restore
+  // transactionality"). A mid-restore DB failure must leave the PRE-restore
+  // data intact — not a half-wiped DB, and not a half-restored one either —
+  // same "mid-batch DB failure rolls back the ENTIRE transaction" case
+  // `hevy-import-service.test.ts` locks in for `bulkInsertWorkouts` (found
+  // missing here during the M5-09 review; this is the analogous test for
+  // `replaceAllTables`).
+  // ---------------------------------------------------------------------------
+
+  it('a mid-restore DB failure rolls back the ENTIRE transaction — pre-restore data (including the DELETEs already run on earlier tables) is fully intact, not a half-wiped DB', async () => {
+    seedSampleData(driver);
+    const { deps } = fakeBackupFileDeps();
+    const service = createBackupService({ driver, ...deps });
+    const exportResult = await service.export();
+
+    // Drift since the export, so "restore rolled back cleanly" and "restore
+    // never ran at all" are distinguishable: if the transaction had *not*
+    // rolled back, this junk row would already be gone (deleted by the
+    // DELETE-all pass) even though the failure happened later, on a
+    // different table's INSERT.
+    driver.execute(
+      `INSERT INTO workouts
+         (id, title, description, routine_id, state, start_time, end_time,
+          duration_pause_offset_ms, created_at, updated_at, deleted_at)
+       VALUES ('w-junk', 'Should Survive A Failed Restore', NULL, NULL, 'completed', 0, 100, 0, 0, 0, NULL)`,
+    );
+    const beforeSnapshot = snapshotAllTables(driver);
+    expect(beforeSnapshot.workouts).toHaveLength(2);
+
+    // Simulate a DB-level failure LATE in the INSERT pass (routine_sets,
+    // second-to-last table) — by this point every table's DELETE has
+    // already run for real, and several tables' INSERTs (exercises,
+    // workouts, workout_exercises, sets, routine_folders, routines,
+    // routine_exercises) have already gone through the real driver too. If
+    // rollback is genuinely all-or-nothing, none of that survives either.
+    const realExecute = driver.execute.bind(driver);
+    jest.spyOn(driver, 'execute').mockImplementation((sql: string, params?: unknown[]) => {
+      if (sql.trim().startsWith('INSERT INTO routine_sets')) {
+        throw new Error('simulated mid-restore DB failure');
+      }
+      return realExecute(sql, params);
+    });
+
+    await expect(service.restore(exportResult.uri)).rejects.toThrow('simulated mid-restore DB failure');
+
+    // Pre-restore state — junk row included, no partial restore rows —
+    // must be back exactly, not a half-wiped or half-restored DB.
+    expect(snapshotAllTables(driver)).toEqual(beforeSnapshot);
+  });
+
   it('export() with zero photos on disk still succeeds, with photoCount 0', async () => {
     seedSampleData(driver);
     // Remove the progress_photos rows this test doesn't want, so there is
