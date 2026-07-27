@@ -96,7 +96,7 @@
  */
 import { parseCsvDateTime } from './csv-codec';
 import { RPE_VALUES, SET_TYPE_VALUES, type ExerciseType, type Rpe, type SetType } from './enums';
-import { lbToKg, milesToM } from './units';
+import { kmToM, lbToKg, milesToM } from './units';
 
 // ---------------------------------------------------------------------------
 // Header / unit resolution
@@ -361,8 +361,21 @@ export function parseHevyRow(
   const reps = parseIntOrNull(fieldAt(fields, c.reps));
 
   let distanceMeters = parseNumericOrNull(fieldAt(fields, c.distance));
-  if (distanceMeters !== null && header.units.distanceUnit === 'miles') {
-    distanceMeters = milesToM(distanceMeters);
+  if (distanceMeters !== null) {
+    // `05` §7.2 accepts either a metric (`distance_km`) or imperial
+    // (`distance_miles`) header — canonical storage is always meters
+    // (`sets.distance_meters`, `05` §3.2), so *both* variants need
+    // conversion here, not just the imperial one. Found via M5-08's own
+    // `export(import(hevy.csv))` round-trip test: a `distance_km` value was
+    // being stored as if it were already meters (e.g. "5" km silently
+    // becoming 5 m instead of 5000 m) — no prior test asserted an exact
+    // km-converted value, only `distance_miles`'s conversion was ever
+    // checked (`domain/__tests__/hevy-import.test.ts`'s own "converts
+    // imperial distance_miles to canonical meters" case), so this slipped
+    // through M5-07's own review undetected until the round-trip check
+    // could actually compare a km-based value against its canonical form.
+    distanceMeters =
+      header.units.distanceUnit === 'miles' ? milesToM(distanceMeters) : kmToM(distanceMeters);
   }
 
   const durationSeconds = parseIntOrNull(fieldAt(fields, c.durationSeconds));

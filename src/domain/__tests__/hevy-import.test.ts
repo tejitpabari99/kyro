@@ -342,6 +342,17 @@ describe('parseHevyRow', () => {
     expect(result.row.distanceMeters).toBeCloseTo(3.1 * 1609.344, 6);
   });
 
+  it('converts metric distance_km to canonical meters (M5-08 round-trip review fix — was previously stored verbatim as if already meters)', () => {
+    const result = parseHevyRow(
+      row(KG_HEADER, { ...baseValues, distance_km: '5' }),
+      kgHeaderResolution,
+      2,
+    );
+    expect('error' in result).toBe(false);
+    if ('error' in result) return;
+    expect(result.row.distanceMeters).toBe(5000);
+  });
+
   it('parses a non-empty exercise_notes value through', () => {
     const result = parseHevyRow(
       row(KG_HEADER, { ...baseValues, exercise_notes: 'Slow eccentric' }),
