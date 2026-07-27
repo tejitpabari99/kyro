@@ -14,8 +14,11 @@
 import { SchedulableTriggerInputTypes } from 'expo-notifications';
 
 import {
+  BACKUP_REMINDER_NOTIFICATION_ID,
+  cancelBackupReminder,
   cancelNotification,
   requestNotificationPermission,
+  scheduleMonthlyBackupReminder,
   scheduleRestNotification,
 } from '../notifications';
 
@@ -29,7 +32,7 @@ jest.mock('expo-notifications', () => ({
   requestPermissionsAsync: (...args: unknown[]) => mockRequestPermissionsAsync(...args),
   scheduleNotificationAsync: (...args: unknown[]) => mockScheduleNotificationAsync(...args),
   cancelScheduledNotificationAsync: (...args: unknown[]) => mockCancelScheduledNotificationAsync(...args),
-  SchedulableTriggerInputTypes: { TIME_INTERVAL: 'timeInterval' },
+  SchedulableTriggerInputTypes: { TIME_INTERVAL: 'timeInterval', MONTHLY: 'monthly' },
 }));
 
 describe('lib/notifications (M2-10)', () => {
@@ -157,6 +160,31 @@ describe('lib/notifications (M2-10)', () => {
       expect(mockCancelScheduledNotificationAsync).toHaveBeenCalledWith('notif-1');
     });
   });
+
+  describe('scheduleMonthlyBackupReminder (M5-09)', () => {
+    it('schedules a MONTHLY trigger (day 1, 10:00) under the fixed reminder identifier', async () => {
+      mockScheduleNotificationAsync.mockResolvedValue(BACKUP_REMINDER_NOTIFICATION_ID);
+
+      const id = await scheduleMonthlyBackupReminder();
+
+      expect(id).toBe(BACKUP_REMINDER_NOTIFICATION_ID);
+      expect(mockScheduleNotificationAsync).toHaveBeenCalledWith({
+        identifier: BACKUP_REMINDER_NOTIFICATION_ID,
+        content: expect.objectContaining({ sound: true }),
+        trigger: { type: SchedulableTriggerInputTypes.MONTHLY, day: 1, hour: 10, minute: 0 },
+      });
+    });
+  });
+
+  describe('cancelBackupReminder (M5-09)', () => {
+    it('delegates to cancelScheduledNotificationAsync with the fixed reminder identifier', async () => {
+      mockCancelScheduledNotificationAsync.mockResolvedValue(undefined);
+      await cancelBackupReminder();
+      expect(mockCancelScheduledNotificationAsync).toHaveBeenCalledWith(
+        BACKUP_REMINDER_NOTIFICATION_ID,
+      );
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -212,5 +240,19 @@ describe('lib/notifications — native module unavailable (headless/Jest environ
     await expect(
       mod.scheduleRestNotification({ secondsFromNow: 30, title: 't', body: 'b' }),
     ).rejects.toThrow('expo-notifications native module unavailable');
+  });
+
+  it('scheduleMonthlyBackupReminder throws a clear error (M5-09, same posture as scheduleRestNotification)', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('../notifications') as typeof import('../notifications');
+    await expect(mod.scheduleMonthlyBackupReminder()).rejects.toThrow(
+      'expo-notifications native module unavailable',
+    );
+  });
+
+  it('cancelBackupReminder resolves as a no-op instead of throwing (M5-09)', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('../notifications') as typeof import('../notifications');
+    await expect(mod.cancelBackupReminder()).resolves.toBeUndefined();
   });
 });

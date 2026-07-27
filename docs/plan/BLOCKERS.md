@@ -510,6 +510,34 @@ assertion and the settings-store write is lost (observed as `Received: ""` inste
 name, 100% reproducible, not flaky) with console warnings ("update ... not wrapped in act(...)").
 Noting both fixes here since a future settings-writing screen test is likely to hit one or both.
 
+## Manual backup → wipe → restore drill cannot be run on-device (M5-09 finding, 2026-07-26)
+
+`M5-tasks.md`'s M5-09 acceptance gate literally asks for "Manual backup→wipe→restore drill
+recorded (08 §7)" — an on-device/simulator QA step (export a real backup, wipe/reinstall the app,
+restore it, visually confirm everything came back) that this headless machine cannot perform at
+all, for the same reason every other physical-device/simulator drill in this document can't (no
+macOS/Xcode/Simulator — "Machine profile" above). The closest verification actually run here is
+`src/features/data-transfer/__tests__/backup-service.test.ts`'s integration test: real
+`better-sqlite3` (all 12 tables, every FK relationship) + a real temp-directory filesystem for the
+photo/zip-cache side (`fs`/`os.tmpdir()`, same posture `measurement-repository.test.ts` established)
+— export, an independent forced wipe of every table and every photo file, then restore, asserting
+the full post-restore table snapshot and every photo file's bytes match the pre-export state
+exactly. That test proves the `BackupService.export`/`restore` *logic* is correct; it does not and
+cannot exercise the real OS share sheet, the real document picker, or the real `expo-file-system`
+native module, none of which have a host to run against here. Logged rather than fabricating a
+"drill was performed" claim — see `docs/plan/EXECUTION-LOG.md`'s M5-09 row for the full breakdown of
+what was and wasn't verified.
+
+Separately, related but distinct: this task added two new npm dependencies (`fflate`, `base64-js`,
+both pure JS, no native module) specifically chosen so the *code path* would be fully testable here
+(see `src/lib/zip.ts`'s own header for the "why pure-JS, why fflate over jszip" reasoning) — `npx
+expo export --platform ios` was run and completed cleanly (a 12MB Hermes bytecode bundle produced,
+same verification method `docs/plan/EXECUTION-LOG.md`'s M5-01 row already used for an unrelated
+dependency), confirming Metro's package-exports resolution can bundle both packages without error.
+That is a real, if partial, verification — it is not the same as a real device/simulator round trip
+actually reading/writing a zip file through the on-device Hermes runtime, which remains unverified
+here for the same "no device" reason as the drill above.
+
 ## Everything else
 
 Every other task — all of M0 through M7 except the six owner-gated tasks listed above — is

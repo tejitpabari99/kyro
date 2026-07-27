@@ -157,3 +157,77 @@ export async function cancelNotification(id: string): Promise<void> {
   }
   await Notifications.cancelScheduledNotificationAsync(id);
 }
+
+/**
+ * ## M5-09 addition: monthly backup reminder (05 §9, 10 §9)
+ *
+ * A second, unrelated consumer of this module's lazy-`require()` seam — the
+ * Settings → Data "Monthly Backup Reminder" toggle (`backup_reminder_enabled`,
+ * `data/settings/settings-schema.ts`), not `restTimerStore`. 10 §9: "monthly
+ * backup reminder (local notification, opt-in default on post-launch, `05`
+ * §9)" — this app is pre-launch (default `false` for now; a later M7-06 task
+ * flips the code default once the app actually ships, per that task's own
+ * scope line in `M5-tasks.md`'s M5-09 entry).
+ *
+ * ## Fixed `identifier`, not a persisted notification id
+ *
+ * `restTimerStore`'s own timer notification needs to persist its returned
+ * id (`kv-store.expo.ts`) purely because *which* rest timer is running
+ * changes constantly, so "the current one" has no fixed identity beyond
+ * whatever id `scheduleNotificationAsync` happened to hand back last. This
+ * reminder has the opposite shape: there is only ever at most one backup
+ * reminder scheduled, ever, for the life of the app — so rather than
+ * building an equivalent persistence seam just to remember an id, both
+ * functions below pass `identifier: BACKUP_REMINDER_NOTIFICATION_ID`
+ * explicitly (an `expo-notifications` `scheduleNotificationAsync` option,
+ * confirmed present via `node_modules/expo-notifications/build/
+ * Notifications.types.d.ts`'s own `NotificationRequestInput.identifier?:
+ * string`). Re-enabling after a disable simply re-schedules under the same
+ * fixed id (idempotent — the OS replaces any existing schedule for that id
+ * rather than stacking a second one); disabling cancels that exact id
+ * directly, with no lookup/storage step needed either way.
+ */
+export const BACKUP_REMINDER_NOTIFICATION_ID = 'kyro-backup-reminder';
+
+const BACKUP_REMINDER_TITLE = 'Back up your workout history';
+const BACKUP_REMINDER_BODY = 'It’s been a while — export a backup from Settings → Data.';
+
+/**
+ * Schedules (or re-schedules) the monthly backup reminder — a `MONTHLY`
+ * calendar trigger (day 1 of every month, 10:00 local time; `day`/`hour`/
+ * `minute` are the only fields `MonthlyTriggerInput` takes, per
+ * `expo-notifications`'s own types — there is no "which months" filter
+ * beyond "every month"). Callers request permission first (same "lazy, on
+ * first enable" posture `restTimerStore`'s own rest-timer scheduling
+ * establishes) — this function itself does not request permission, mirroring
+ * {@link scheduleRestNotification}'s own "only reached after permission
+ * resolved granted" contract. Throws when `expo-notifications` itself is
+ * unavailable (same defensive-not-silent posture {@link
+ * scheduleRestNotification} uses — an inconsistent-state bug, not a normal
+ * path, once a caller has already confirmed permission).
+ */
+export async function scheduleMonthlyBackupReminder(): Promise<string> {
+  const Notifications = loadExpoNotifications();
+  if (!Notifications) {
+    throw new Error('scheduleMonthlyBackupReminder: expo-notifications native module unavailable.');
+  }
+  return Notifications.scheduleNotificationAsync({
+    identifier: BACKUP_REMINDER_NOTIFICATION_ID,
+    content: {
+      title: BACKUP_REMINDER_TITLE,
+      body: BACKUP_REMINDER_BODY,
+      sound: true,
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.MONTHLY,
+      day: 1,
+      hour: 10,
+      minute: 0,
+    },
+  });
+}
+
+/** Cancels the monthly backup reminder, if scheduled — a thin, self-documenting alias over {@link cancelNotification} with the fixed id baked in, so call sites (the Settings toggle's `onValueChange`) never need to know/import {@link BACKUP_REMINDER_NOTIFICATION_ID} themselves. Same idempotent/no-op-when-unavailable posture as {@link cancelNotification}. */
+export async function cancelBackupReminder(): Promise<void> {
+  await cancelNotification(BACKUP_REMINDER_NOTIFICATION_ID);
+}

@@ -163,3 +163,40 @@ export async function progressPhotoFileExists(fileName: string): Promise<boolean
   const info = await FileSystem.getInfoAsync(progressPhotoUri(fileName));
   return info.exists;
 }
+
+/**
+ * Reads one progress-photo file's raw bytes as base64 — the M5-09 backup
+ * export's own read half of the "zip up every `photos/progress/*.jpg`" step
+ * (05 §9). `EncodingType.Base64`, not `UTF8`: a JPEG is binary, not text
+ * (`lib/zip.ts`'s header, "Why base64-js", explains the round trip this
+ * feeds into). Lives here rather than `lib/backup-file.ts` because every
+ * other progress-photo on-disk operation (list/exists/delete) already lives
+ * in this file — joining them keeps `photos/progress/` path construction in
+ * one place instead of duplicating `progressPhotoUri` in a second file.
+ */
+export async function readProgressPhotoFileBase64(fileName: string): Promise<string> {
+  return FileSystem.readAsStringAsync(progressPhotoUri(fileName), {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+}
+
+/**
+ * Writes `base64Contents` to `photos/progress/<fileName>`, creating the
+ * directory first if needed (fresh install / first-ever restore) —
+ * `BackupService.restore`'s own "copy every zip'd photo file back into
+ * photos/progress/" step (05 §9). Overwrites any existing file of the same
+ * name (a restore is a replace-all operation by design — 05 §9's "replace-
+ * all with double confirm"). Returns nothing: unlike `saveProgressPhotoFile`
+ * (`progress-photo-capture.ts`), the caller already knows `fileName` — it
+ * came from the zip archive's own `progress_photos.file_name`-derived entry
+ * path, not minted here.
+ */
+export async function writeProgressPhotoFileBase64(
+  fileName: string,
+  base64Contents: string,
+): Promise<void> {
+  await ensureProgressPhotoDirExists();
+  await FileSystem.writeAsStringAsync(progressPhotoUri(fileName), base64Contents, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+}

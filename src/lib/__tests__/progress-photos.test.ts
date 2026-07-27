@@ -29,6 +29,8 @@ import {
   progressPhotoDirUri,
   progressPhotoFileExists,
   progressPhotoUri,
+  readProgressPhotoFileBase64,
+  writeProgressPhotoFileBase64,
 } from '../progress-photos';
 
 jest.mock('expo-file-system/legacy', () => ({
@@ -38,6 +40,9 @@ jest.mock('expo-file-system/legacy', () => ({
   copyAsync: jest.fn(),
   deleteAsync: jest.fn(),
   readDirectoryAsync: jest.fn(),
+  readAsStringAsync: jest.fn(),
+  writeAsStringAsync: jest.fn(),
+  EncodingType: { UTF8: 'utf8', Base64: 'base64' },
 }));
 
 const MOCK_DOCUMENT_DIRECTORY = 'file:///mock-documents/';
@@ -49,6 +54,8 @@ const mockFileSystem = FileSystem as unknown as {
   copyAsync: jest.Mock;
   deleteAsync: jest.Mock;
   readDirectoryAsync: jest.Mock;
+  readAsStringAsync: jest.Mock;
+  writeAsStringAsync: jest.Mock;
 };
 
 beforeEach(() => {
@@ -141,5 +148,48 @@ describe('progressPhotoFileExists (orphan sweep helper)', () => {
   it('resolves false when the file is missing', async () => {
     mockFileSystem.getInfoAsync.mockResolvedValue({ exists: false });
     expect(await progressPhotoFileExists('missing.jpg')).toBe(false);
+  });
+});
+
+describe('readProgressPhotoFileBase64 (M5-09 backup export)', () => {
+  it('reads the file as base64 text', async () => {
+    mockFileSystem.readAsStringAsync.mockResolvedValue('ZmFrZS1qcGVn');
+
+    const base64 = await readProgressPhotoFileBase64('abc.jpg');
+
+    expect(base64).toBe('ZmFrZS1qcGVn');
+    expect(mockFileSystem.readAsStringAsync).toHaveBeenCalledWith(
+      'file:///mock-documents/photos/progress/abc.jpg',
+      { encoding: 'base64' },
+    );
+  });
+});
+
+describe('writeProgressPhotoFileBase64 (M5-09 backup restore)', () => {
+  it('ensures the directory exists, then writes base64 bytes to the given file name', async () => {
+    mockFileSystem.getInfoAsync.mockResolvedValue({ exists: false });
+    mockFileSystem.makeDirectoryAsync.mockResolvedValue(undefined);
+    mockFileSystem.writeAsStringAsync.mockResolvedValue(undefined);
+
+    await writeProgressPhotoFileBase64('restored.jpg', 'ZmFrZS1qcGVn');
+
+    expect(mockFileSystem.makeDirectoryAsync).toHaveBeenCalledWith(
+      'file:///mock-documents/photos/progress/',
+      { intermediates: true },
+    );
+    expect(mockFileSystem.writeAsStringAsync).toHaveBeenCalledWith(
+      'file:///mock-documents/photos/progress/restored.jpg',
+      'ZmFrZS1qcGVn',
+      { encoding: 'base64' },
+    );
+  });
+
+  it('does not recreate the directory when it already exists', async () => {
+    mockFileSystem.getInfoAsync.mockResolvedValue({ exists: true });
+    mockFileSystem.writeAsStringAsync.mockResolvedValue(undefined);
+
+    await writeProgressPhotoFileBase64('restored.jpg', 'ZmFrZS1qcGVn');
+
+    expect(mockFileSystem.makeDirectoryAsync).not.toHaveBeenCalled();
   });
 });
