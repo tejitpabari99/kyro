@@ -342,3 +342,102 @@ new gaps introduced here.
 with zero P0/P1 open. Tagged `v0.5.0-m5` (annotated, not pushed, mirroring M2/M3/M4's own
 `v0.2.0-m2`/`v0.3.0-m3`/`v0.4.0-m4` — see `git tag -l -n5 v0.4.0-m4` for the precedent this
 follows). Working tree clean after all commits.
+
+## 11. Independent milestone-wide review (post-close, per the current one-review-per-milestone process)
+
+A separate reviewing agent independently re-verified M5 as a whole after the §1-10 pass above
+closed, the same shape `M4-checklist.md`'s own §8 established (this section's own preamble note
+at the top of this file, written by the §1-10 pass, predates this addition — it described that
+pass's own scope, not a prohibition on a later independent pass adding one).
+
+**CI gate reproduced independently, fresh, from a clean invocation:**
+
+```
+npx tsc --noEmit        → exit 0, clean
+npx eslint .             → exit 0, clean
+npx jest --coverage      → 199 suites / 2582 tests, 0 failures, 285.304s
+npx expo-doctor          → 21/21 checks passed
+npx expo export --platform ios → exit 0, dist/ 48 MB (7693 modules, 2605 assets)
+```
+
+Coverage (cross-checked against Jest's own printed summary, and independently via
+`coverage-final.json`): global 96.73% stmts / 88.78% branches / 92.57% funcs / 97.1% lines;
+`src/domain/**` 99.53/97.99/100/99.66; `src/features/workout/**` 97.07/88.92/94.63/97.07;
+`src/data/**` 99.09% lines / 94.95% branches. All four `coverageThreshold` globs (domain 95/90,
+data 90/85, workout 85/80, global 75/70) held with margin — essentially identical to §8's own
+numbers above (test count is +9, accounted for exactly by this section's own 3 new regression
+tests below).
+
+One flake observed and resolved during this pass: a cold-run reproduction attempt made before
+this section's own fixes landed hit a single failure in
+`src/features/workout/__tests__/ExerciseCard.test.tsx` ("M4-09: opening the detail sheet
+mid-workout ... never mutates the active workout", a `testID: card-detail-sheet-content-tabs-history`
+lookup timeout) — real exit code 1 on that specific run. Isolated re-run of that one file
+immediately after: 18/18 passed, exit 0. Re-run as part of the full suite again (post-fixes,
+numbers above): 0 failures. Disposition: an async/`waitFor`-timing flake under this sandbox's
+own CPU-contended conditions (`M4-checklist.md` §1/§6.3's own precedent), not a real regression
+— noted here for the record rather than silently dropped, per this repo's honesty convention.
+
+**Cross-cutting code-review sweep — three real bugs found, each fixed with a regression test,
+confirmed fail-before/pass-after via `git stash` + targeted `npx jest <file>` for every one:**
+
+1. **Missing `isError` handling across 5 query-backed measurement screens**
+   (`MeasuresHomeScreen.tsx`, `MeasurementDetailScreen.tsx`, `PhotoCompareScreen.tsx`,
+   `PhotoPagerScreen.tsx`, `LogEntrySheet.tsx`) — each checked `isLoading` but never `isError`,
+   so a genuine query failure rendered identically to "no data yet" (worst instance:
+   `PhotoCompareScreen.tsx` fell straight through to a misleading "Photo no longer available"
+   guard on a real query error, implying user action rather than a fetch failure). Exactly the
+   same bug *class* M4's own independent review (`M4-checklist.md` §8.2) found and fixed across
+   `HistoryListScreen`/`CalendarScreen`/`StatisticsScreen` — confirmed here that M5's screens had
+   never been swept for the same gap. Fixed with the identical `isError` + `EmptyState`
+   (`TriangleAlert`, `colors.semantic.danger`) + Retry pattern, using `PhotoGalleryScreen.tsx`'s
+   pre-existing `isError` branch as the template; `LogEntrySheet` (a form sheet, not a list) got
+   an inline load-error banner + retry instead, matching its own existing `saveMutation.isError`
+   banner convention. Commit `f721c50`.
+2. **Unguarded direct async calls in 3 event handlers** — `HevyImportScreen.tsx`'s
+   `handleChooseFile` (the picker call sat outside its own `try` block), `BackupRestoreScreen
+   .tsx`'s `handleChooseFile` (no try/catch at all), `PhotoGalleryScreen.tsx`'s `handleAddPress`
+   (both Camera/Library `Alert.alert` callbacks called `pickProgressPhoto` unguarded) — the same
+   unhandled-rejection bug shape M1/M2/M3/M4's own reviews have each found at least one instance
+   of. Fixed by wrapping each in try/catch, surfacing through each screen's own existing error
+   convention (the `'error'` phase for the two data-transfer screens; `PhotoGalleryScreen`'s own
+   existing `addPhotoMutation.onError` alert copy, verbatim). Commit `1ac54c5`.
+3. **`csv-codec.ts`'s seconds-dropping silently broke the M5-08 no-op re-import guarantee (05
+   §7.3) for any workout not started on a whole minute.** `formatCsvDateTime`/`parseCsvDateTime`'s
+   Hevy branch both correctly drop seconds per the spec'd `d MMM yyyy, HH:mm` format (`05
+   -data-model-and-storage.md:317`, genuine Hevy-export compatibility — not touched), but
+   `hevy-import-service.ts`'s duplicate-detection compared raw millisecond `start_time` values,
+   so exporting and re-importing a workout whose real `Date.now()` timestamp wasn't exactly on
+   the minute (the overwhelming majority of real workouts) silently created a duplicate instead
+   of being skipped. Fixed on the dedup side — `loadExistingWorkoutKeys`/`workoutKey` now floor
+   both the DB's stored `start_time` and the freshly-parsed CSV `startTime` to the same 60-second
+   bucket before comparing — rather than touching the CSV format. New test in
+   `src/test/fixtures/__tests__/csv-round-trip.test.ts` using a real (37s/12s) timestamp,
+   confirmed failing before (`duplicateWorkoutCount` 0, a real duplicate row inserted) and
+   passing after, with that file's own pre-existing 1000-workout perf/no-O(n²)-scan test staying
+   green. Commit `a7289ca`.
+
+**Also checked, no further issues found:** the data-flow invalidation trace (measurement entry →
+Measures home sparkline/chart; photo add → gallery/compare; Hevy import and Backup/Restore's own
+`queryClient` invalidation calls, both confirmed to cover every stale query their own mutation
+touches); a direct-repository-call sweep across `src/features/measurements/**` and
+`src/features/data-transfer/**` beyond the 3 sites above (every other call site is inside a
+Query `queryFn` or an existing `.catch()`/try-catch chain); a hand-trace of `domain/csv-codec.ts`
++ `domain/hevy-import.ts` against `05` §7's spec text for a few edge cases (RFC 4180 escaping,
+unit-header switching, out-of-enum RPE) — all match; and the M5-05/06/07/08 acceptance-gate
+citations in `M5-tasks.md` against their real current test files — no line-number drift found
+(unlike the one M4's own §8 found once).
+
+**Verification after all 3 fix commits**: full suite re-run, **199 suites / 2582 tests, 0
+failures**, 211s wall time; `tsc`/`eslint` clean on all 18 changed files; all four coverage
+thresholds held (numbers essentially unchanged from above). `git merge-base --is-ancestor
+a7289ca v0.5.0-m5` returns **false** — the tag stays exactly where §1-10 placed it, this
+section's 3 fix commits land on top, same convention M2's/M3's/M4's own independent-review
+passes each confirmed for their own fix commits against their own milestone tags.
+
+**Verdict: M5 milestone-wide independent review complete.** Three real (P2 per `08` §8's bug
+bar — no data loss, no crash, no core-flow-broken wrong number, but real reachable silently-wrong
+UI/data states) bugs found and fixed, each with a regression test proven fail-before/pass-after.
+Zero P0/P1 found or introduced. **M5 is closed out**, pending only the owner-gated M5-11 (real
+Hevy export audit — does not block this exit, per `M5-tasks.md`'s own framing). `v0.5.0-m5`
+remains the correct milestone tag.
