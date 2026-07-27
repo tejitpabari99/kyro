@@ -64,7 +64,7 @@ Task count: **11**
 **Acceptance / test gate:** 08 §4.6 import cases: sample-fixture counts/supersets/RPE/set types correct; imperial-header conversion; one fixture per type-inference rule; duplicate skipped; malformed row line-numbered; custom-name re-link (7.4).
 **Est:** 2 d
 
-### M5-08 — CSV round-trip tests + import performance
+### M5-08 — CSV round-trip tests + import performance `[done]`
 **Description:** The two round-trip contracts and the bulk-import budget.
 **How:** Automated tests per 05 §7.3: `import(export(db))` → 0 new rows (all duplicates skipped); `export(import(hevy.csv))` semantically equal to source (canonical-unit comparison). Superset ids survive the round-trip (02 §8 acceptance). Perf: import 1000-workout synthetic CSV (M4-11 generator → CSV via M5-05) < 10 s, single-transaction batches, UI-thread-free in the integration harness (08 §4.9).
 **References:** 05 §7.3; 08 §4.6, §4.9.
