@@ -68,7 +68,8 @@
       ],
       "expo-audio",
       "expo-asset",
-      "expo-sharing"
+      "expo-sharing",
+      "expo-document-picker"
     ],
     "experiments": {
       "typedRoutes": true,

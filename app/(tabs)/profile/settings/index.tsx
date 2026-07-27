@@ -450,10 +450,11 @@ export default function SettingsScreen(): React.JSX.Element {
       </View>
 
       {/*
-        M5-06: Export CSV only. Import Hevy CSV / Backup & Restore still
-        omitted — M5-07/M5-09's own not-yet-built routes, same "no dead row"
-        reasoning the comment above (M5-04's original one, left unchanged as
-        the historical record) already established.
+        M5-06: Export CSV. M5-07 adds Import Hevy CSV -> `/import/hevy`
+        (a real route now, so this row no longer risks the "no dead row"
+        problem the M5-04/M5-06 comments above this one flagged for the
+        rows that weren't built yet). Backup & Restore still omitted —
+        M5-09's own not-yet-built route, same reasoning, narrowed further.
       */}
       <Text
         style={[
@@ -471,8 +472,15 @@ export default function SettingsScreen(): React.JSX.Element {
             exportingCsv ? 'Exporting…' : 'Export your full workout history as a CSV file'
           }
           disabled={exportingCsv}
-          hideSeparator
           onPress={handleExportCsv}
+        />
+        <ListRow
+          testID="settings-import-hevy-csv-row"
+          title="Import Hevy CSV"
+          subtitle="Import your workout history from a Hevy CSV export"
+          chevron
+          hideSeparator
+          onPress={() => router.push('/import/hevy')}
         />
       </View>
 

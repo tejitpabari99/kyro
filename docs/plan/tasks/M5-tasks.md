@@ -56,7 +56,7 @@ Task count: **11**
 **Acceptance / test gate:** Integration: exportAll on fixture DB matches golden file; single-workout export contains only that workout; share sheet invoked (mock).
 **Est:** 0.5 d
 
-### M5-07 — Hevy CSV import: parser, matching, preview, report
+### M5-07 — Hevy CSV import: parser, matching, preview, report `[done]`
 **Description:** The import pipeline with preview screen.
 **How:** `importHevy(fileUri)` per 05 §7.2: parse (RFC 4180 reader in `lib/csv.ts`); accept metric and imperial headers → canonical; group by (title, start_time); parse Hevy date format + ISO 8601 defensively; exercise matching — exact case-insensitive vs library incl. aliases, else auto-create **custom** with type inferred from populated columns (weight+reps → weight_reps; reps → reps_only; duration → duration; weight+duration → weight_duration; distance+duration → distance_duration; weight+distance → short_distance_weight), flagged in report; set_type 1:1, unknown → normal + warning; out-of-enum RPE → nearest valid + warning; duplicate (title+start_time exists) → skip + count; malformed row → skip with line number; all-or-nothing per workout; transactional batches; bulk records invalidation after. UI: `import/hevy` modal — document picker → preview (workouts found, date range, matched/unmatched exercises, skipped rows + reasons) → confirm → report screen. **Fixture:** build an anonymized Hevy-format fixture now from the research doc's documented schema (research §CSV) so tests never wait on the owner file; swap in the owner's trimmed export when O-07 delivers.
 **References:** 05 §7.2, §7.4; 06 §3 (route); 08 §4.6; research/hevy-deep-dive.md (CSV shape).
