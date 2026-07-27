@@ -89,8 +89,14 @@ export function AddWarmUpSetsSheet({
 }: AddWarmUpSetsSheetProps): React.JSX.Element {
   const { colors, typography, spacing, radii } = useTheme();
 
-  const workoutStore = useWorkoutStore();
-  const workoutExercise = workoutStore(selectWorkoutExercise(workoutExerciseId));
+  // `useStore` (not `workoutStore`) — see `ConnectedSetRow.tsx`'s matching
+  // comment: the `use`-prefix naming convention is how both eslint's
+  // rules-of-hooks and the React Compiler recognize a hook call; a
+  // non-`use`-prefixed name here let the compiler treat `workoutStore
+  // (selector)` as an ordinary memoizable call, silently varying this
+  // component's real hook count across renders.
+  const useStore = useWorkoutStore();
+  const workoutExercise = useStore(selectWorkoutExercise(workoutExerciseId));
   const warmupCalc = useSettingsStore((s) => s.settings.warmup_calc);
   const plateCalc = useSettingsStore((s) => s.settings.plate_calc);
 
@@ -107,7 +113,7 @@ export function AddWarmUpSetsSheet({
       previousSetsExcludeWorkoutId ?? null,
     ],
     queryFn: () =>
-      workoutStore.getState().previousSets(exerciseId, {
+      useStore.getState().previousSets(exerciseId, {
         ...(previousValuesMode === 'same_routine' && routineId ? { routineId } : undefined),
         ...(previousSetsExcludeWorkoutId ? { beforeWorkoutId: previousSetsExcludeWorkoutId } : undefined),
       }),
@@ -159,7 +165,7 @@ export function AddWarmUpSetsSheet({
       barbellWeightKg,
     });
     const rows = warmupSets(parsedWeight, warmupCalc.sets, rounding);
-    void workoutStore.getState().addWarmUpSets(
+    void useStore.getState().addWarmUpSets(
       workoutExerciseId,
       rows.map((row) => ({
         setType: 'warmup' as const,

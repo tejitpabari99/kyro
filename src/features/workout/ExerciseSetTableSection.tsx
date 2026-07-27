@@ -141,8 +141,15 @@ export function ExerciseSetTableSection({
   onSetChecked,
   testID,
 }: ExerciseSetTableSectionProps): React.JSX.Element | null {
-  const workoutStore = useWorkoutStore();
-  const workoutExercise = workoutStore(selectWorkoutExercise(workoutExerciseId));
+  // `useStore` (not `workoutStore`) — see `ConnectedSetRow.tsx`'s matching
+  // comment: React Compiler / eslint's rules-of-hooks recognize hook calls
+  // by the `use`-prefix naming convention, not by tracing that this value
+  // came from `useWorkoutStore()`'s `useContext`. A non-`use`-prefixed name
+  // here made the compiler treat `workoutStore(selector)` as an ordinary
+  // memoizable call, silently varying this component's real hook count
+  // across renders and producing an invalid-hook-call crash downstream.
+  const useStore = useWorkoutStore();
+  const workoutExercise = useStore(selectWorkoutExercise(workoutExerciseId));
 
   const units = useMemo(() => ({ weightUnit, distanceUnit }), [weightUnit, distanceUnit]);
 
@@ -172,7 +179,7 @@ export function ExerciseSetTableSection({
       previousSetsExcludeWorkoutId ?? null,
     ],
     queryFn: () =>
-      workoutStore.getState().previousSets(exercise.id, {
+      useStore.getState().previousSets(exercise.id, {
         ...(previousValuesMode === 'same_routine' && routineId ? { routineId } : undefined),
         ...(previousSetsExcludeWorkoutId ? { beforeWorkoutId: previousSetsExcludeWorkoutId } : undefined),
       }),

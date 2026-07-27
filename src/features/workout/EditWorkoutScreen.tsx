@@ -125,10 +125,15 @@ export function EditWorkoutScreen({
   const queryClient = useQueryClient();
 
   // See file header — one independent store instance per screen mount,
-  // never the app-wide singleton.
-  const [editStore] = useState(() => createActiveWorkoutStore());
-  const workout = editStore(selectActiveWorkout);
-  const loaded = editStore((state) => state.loaded);
+  // never the app-wide singleton. Named `useEditStore` (not `editStore`) so
+  // both eslint's rules-of-hooks and the React Compiler
+  // (`experiments.reactCompiler`, app.json) recognize `useEditStore(selector)`
+  // below as a hook call by naming convention alone — see the matching
+  // comment in `ConnectedSetRow.tsx` for the invalid-hook-call bug a
+  // non-`use`-prefixed name here caused.
+  const [useEditStore] = useState(() => createActiveWorkoutStore());
+  const workout = useEditStore(selectActiveWorkout);
+  const loaded = useEditStore((state) => state.loaded);
   const [notFound, setNotFound] = useState(false);
 
   const weightUnit = useSettingsStore((state) => state.settings.weight_unit);
@@ -152,7 +157,7 @@ export function EditWorkoutScreen({
       return;
     }
     loadRequested.current = true;
-    void editStore
+    void useEditStore
       .getState()
       .loadForEdit(workoutRepository, workoutId)
       .then((loadedWorkout) => {
@@ -268,13 +273,13 @@ export function EditWorkoutScreen({
     const next = titleDraft.trim();
     setTitleDraft(null);
     if (next.length > 0 && next !== workout.title) {
-      void editStore.getState().updateMeta({ title: next });
+      void useEditStore.getState().updateMeta({ title: next });
     }
   };
 
   const handleSaveMeta = (nextStartTime: number, nextEndTime: number): void => {
     setMetaSheetVisible(false);
-    void editStore.getState().updateMeta({ startTime: nextStartTime, endTime: nextEndTime });
+    void useEditStore.getState().updateMeta({ startTime: nextStartTime, endTime: nextEndTime });
   };
 
   const handleAddExercisePress = (): void => setAddPickerVisible(true);
@@ -284,12 +289,12 @@ export function EditWorkoutScreen({
   };
   const handlePickerAdd = async (ids: string[], superset: boolean): Promise<void> => {
     const items = ids.map((exerciseId) => ({ exerciseId, restSeconds: defaultRestSeconds }));
-    const added = await editStore.getState().addExercises(items);
+    const added = await useEditStore.getState().addExercises(items);
     if (superset && added.length > 1) {
       const groupId = Math.min(...added.map((workoutExercise) => workoutExercise.position));
       await Promise.all(
         added.map((workoutExercise) =>
-          editStore.getState().updateExercise(workoutExercise.id, { supersetId: groupId }),
+          useEditStore.getState().updateExercise(workoutExercise.id, { supersetId: groupId }),
         ),
       );
     }
@@ -298,14 +303,14 @@ export function EditWorkoutScreen({
     if (!replaceTargetId) {
       return;
     }
-    void editStore.getState().replaceExercise(replaceTargetId, exerciseId);
+    void useEditStore.getState().replaceExercise(replaceTargetId, exerciseId);
   };
   const handleReplacePress = (workoutExerciseId: string): void => {
     setAddPickerVisible(false);
     setReplaceTargetId(workoutExerciseId);
   };
   const handleReorderSave = (orderedIds: string[]): void => {
-    void editStore.getState().reorderExercises(orderedIds);
+    void useEditStore.getState().reorderExercises(orderedIds);
   };
   const handleAddToSupersetPress = (workoutExerciseId: string): void => {
     setSupersetTargetId(workoutExerciseId);
@@ -321,12 +326,12 @@ export function EditWorkoutScreen({
     }
     const groupId = Math.min(...members.map((workoutExercise) => workoutExercise.position));
     for (const member of members) {
-      void editStore.getState().updateExercise(member.id, { supersetId: groupId });
+      void useEditStore.getState().updateExercise(member.id, { supersetId: groupId });
     }
     setSupersetTargetId(null);
   };
   const handleRemoveExercise = (workoutExerciseId: string): void => {
-    void editStore.getState().removeExercise(workoutExerciseId);
+    void useEditStore.getState().removeExercise(workoutExerciseId);
   };
 
   const handleCalculatorPress = (): void => {
@@ -341,7 +346,7 @@ export function EditWorkoutScreen({
 
   /** See file header, "Write-through-immediately, then a wholesale `update()` at Save." */
   const handleSave = async (): Promise<void> => {
-    const current = editStore.getState().workout;
+    const current = useEditStore.getState().workout;
     if (!current) {
       return;
     }
@@ -438,7 +443,7 @@ export function EditWorkoutScreen({
   }
 
   return (
-    <WorkoutStoreContext.Provider value={editStore}>
+    <WorkoutStoreContext.Provider value={useEditStore}>
       <EditWorkoutModeContext.Provider value={true}>
         <View testID={testID} style={[styles.container, { backgroundColor: colors.bg.base }]}>
           <View
