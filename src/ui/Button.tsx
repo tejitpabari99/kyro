@@ -44,6 +44,8 @@ export interface ButtonProps {
   emphasis?: ButtonDestructiveEmphasis;
   disabled?: boolean;
   loading?: boolean;
+  /** Forces full-width (`alignSelf:'stretch'`) regardless of `size`. For a solo button in a column that needs to be full-width without borrowing `size="lg"`'s 50pt height. Not useful inside `ButtonRow` (see below) — that's an equal-flex row problem, not a stretch problem. */
+  fullWidth?: boolean;
   style?: StyleProp<ViewStyle>;
   testID?: string;
   accessibilityLabel?: string;
@@ -65,6 +67,7 @@ export function Button({
   emphasis = 'text',
   disabled = false,
   loading = false,
+  fullWidth,
   style,
   testID,
   accessibilityLabel,
@@ -133,7 +136,7 @@ export function Button({
           paddingHorizontal: spacing['5'],
           borderRadius: size === 'sm' ? radii.pill : radii.md,
           backgroundColor: pressed && !isDisabled ? pressedBackgroundColor : backgroundColor,
-          alignSelf: size === 'lg' ? 'stretch' : 'flex-start',
+          alignSelf: size === 'lg' || fullWidth ? 'stretch' : 'flex-start',
           opacity: isDisabled ? 0.4 : 1,
         },
         style,
