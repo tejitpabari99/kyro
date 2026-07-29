@@ -33,7 +33,9 @@ import { Text, View } from 'react-native';
 
 import { Button } from '@/ui/Button';
 import { NumericInput } from '@/ui/NumericInput';
+import { ScreenFooter } from '@/ui/ScreenFooter';
 import { Sheet } from '@/ui/Sheet';
+import { SheetHeader } from '@/ui/SheetHeader';
 import { useTheme } from '@/ui/theme-provider';
 
 export interface EditWorkoutMetaSheetProps {
@@ -137,11 +139,8 @@ export function EditWorkoutMetaSheet({
 
   return (
     <Sheet visible={visible} onDismiss={onDismiss} testID={testID}>
+      <SheetHeader testID={`${testID}-header`} title="Edit Date & Duration" safeTop={false} />
       <View style={{ paddingHorizontal: spacing['4'] }}>
-        <Text style={[typography.title2, { color: colors.text.primary, marginBottom: spacing['4'] }]}>
-          Edit Date & Duration
-        </Text>
-
         <View style={{ marginBottom: spacing['5'] }}>
           <Text style={sectionLabelStyle}>Date & Start Time</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing['2'] }}>
@@ -228,9 +227,10 @@ export function EditWorkoutMetaSheet({
             />
           </View>
         </View>
-
-        <Button testID={`${testID}-save`} label="Save" variant="primary" onPress={handleSave} />
       </View>
+      <ScreenFooter testID={`${testID}-footer`}>
+        <Button testID={`${testID}-save`} label="Save" variant="primary" onPress={handleSave} />
+      </ScreenFooter>
     </Sheet>
   );
 }
