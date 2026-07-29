@@ -59,6 +59,56 @@ why. None of these block execution.
    use in this file disappears with the `'records'` key) and drop the now-unused `Trophy` import.
    Purely cosmetic, zero behavioral stakes. See Task 5.
 
+## Parallelization
+
+Derived from each task's stated `Depends on:` line plus the actual files each task touches (read
+in full above — not guessed). Hard cap: **2 tasks per wave**, since only 2 people/agents ever run
+concurrently on this project. Waves are listed in execution order; within a wave, both tasks may
+start as soon as the previous wave's tasks have landed.
+
+1. **Wave 1 — Task 2, Task 3.** No dependencies for either. `ExerciseChartsTab.tsx` (Task 2) and
+   `ExerciseRecordsTab.tsx` (Task 3) are disjoint files with no shared consumer edited by either
+   task. Both are prerequisites for Task 4.
+2. **Wave 2 — Task 1, Task 7.** Neither depends on anything landed so far, and neither depends on
+   the other. Task 1 touches `HowToTab.tsx` (new) and removes the inline `AboutTab` block from
+   `ExerciseDetailScreen.tsx`; Task 7 touches only `ExercisePickerSheet.tsx`. Disjoint files.
+3. **Wave 3 — Task 4, Task 6.** Task 4 depends on Task 2 + Task 3 (both landed in Wave 1) and
+   creates `ExerciseSummaryTab.tsx` (new). Task 6 has no dependencies and touches only
+   `ExerciseCard.tsx`. Disjoint files, safe to run alongside Task 4.
+4. **Wave 4 — Task 5, Task 11.** Task 5 depends on Task 1 (Wave 2) and Task 4 (Wave 3), both now
+   landed; it makes the full tab-restructure edit to `ExerciseDetailScreen.tsx` (the same file
+   Task 1 touched in Wave 2 — safe here because Task 1 already landed before this wave starts, so
+   this is sequential-on-file, not concurrent). Task 11 is verify-only (confirms
+   `RoutineEditorScreen.tsx` needs zero changes) — it makes no edits at all, so it has no file
+   conflict with anything and is paired here purely to keep this wave full; it could equally run
+   in any other wave.
+5. **Wave 5 — Task 8, Task 10.** Both depend on Task 6 + Task 7 (Waves 3 and 2, both landed). Task
+   8 touches only `ActiveWorkoutScreen.tsx`; Task 10 touches only `EditWorkoutScreen.tsx`.
+   Disjoint files, no dependency between the two tasks themselves.
+6. **Wave 6 — Task 12, Task 15.** Both depend only on Task 6 + Task 7 (already landed). Task 12
+   deletes `ExerciseDetailSheet.tsx`; Task 15 edits `ExerciseCard.test.tsx`. Disjoint files.
+7. **Wave 7 — Task 9, Task 17.** Task 9 depends on Task 8 (Wave 5, landed); it touches only
+   `app/workout/active.tsx`. Task 17 depends on Task 7 (Wave 2, landed) and creates a new file,
+   `ExercisePickerSheet.test.tsx`. Disjoint files, no dependency between the two.
+8. **Wave 8 — Task 13, Task 16.** Task 13 depends on Task 5 (Wave 4, landed) and rewrites
+   `ExerciseDetailScreen.test.tsx`. Task 16 depends on Task 6 (Wave 3, landed) and edits a
+   file-header comment in `ExerciseCard.operations.test.tsx`. Disjoint files from each other.
+   Note: Task 16 and Task 18 (Wave 9) both touch `ExerciseCard.operations.test.tsx` — Task 16
+   edits the comment above the `jest.mock('@/lib/files')` block, Task 18 edits the separate
+   `jest.mock('expo-router')` block. Although these are different blocks in the file, they are
+   **not** scheduled in the same wave: editing the same file concurrently from two agents risks
+   line-drift/merge conflicts even when the target regions look disjoint on paper, so Task 16 is
+   deliberately placed in an earlier wave than Task 18 rather than paired with it.
+9. **Wave 9 — Task 14, Task 18.** Task 14 depends on Task 5 (Wave 4, landed) and is verify-only —
+   no edits expected to `ExerciseDetailScreen.actions.test.tsx`. Task 18 depends on Task 7 (Wave
+   2, landed) and edits 8 test files (including `ExerciseCard.operations.test.tsx`, already
+   touched by Task 16 in Wave 8 — safe here because that edit already landed). None of Task 18's 8
+   files overlap with Task 14's single file. Disjoint.
+10. **Wave 10 — Task 19 (alone).** Depends on Tasks 1–18 all having landed (its own acceptance
+    criteria explicitly says "once Tasks 1–18 have landed"), so it cannot start until every prior
+    wave is complete. By the time it can start, no other task remains unstarted to pair it with —
+    it is necessarily the sole task in the final wave.
+
 ## Task 1 — `HowToTab.tsx` (new file): extract `AboutTab` verbatim
 
 - Files:
