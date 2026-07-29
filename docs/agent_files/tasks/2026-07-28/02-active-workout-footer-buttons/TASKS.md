@@ -9,6 +9,17 @@
 
 No other ambiguity — PRD §9's Q1–Q6 are all `[RESOLVED]`/`[DEFERRED]` and fully pin down the architecture; §4.1/§4.2's "Before"/"After" code blocks are precise enough to transcribe directly once reconciled against the real file's current line numbers (done below).
 
+## Parallelization
+
+Hard constraint: at most 2 tasks in flight at once. Waves are ordered — a wave cannot start until every task in the previous wave has landed.
+
+- **Wave 1 — Task 1 + Task 3.** Independent: Task 1 touches only `src/features/workout/ActiveWorkoutScreen.tsx`; Task 3 touches only `src/features/workout/__tests__/ActiveWorkoutScreen.test.tsx`, and only its `renderScreen` helper region (the new import near line 32, and the function body currently at lines 121–139). Disjoint files, neither depends on the other.
+- **Wave 2 — Task 2 + Task 4.** Task 2 is verification-only (no files changed) and depends only on Task 1 having landed, so it's compatible with anything else in this wave. Task 4 depends on Task 1 (it queries the `screen-footer-row` testID Task 1 introduces) and inserts a brand-new `describe` block into the test file at a region (~line 688, after the "header/footer stub affordances" block) that is entirely disjoint from the `renderScreen` region Task 3 already landed in Wave 1 — trivially non-overlapping even though both are edits to the same file. Task 2 (no files) and Task 4 (test file only) don't touch each other at all.
+- **Wave 3 — Task 5 (alone).** Depends on Task 4 (adds the *second* `it` inside the `describe` block Task 4 opened) and on Task 1 (asserts the `flex: 1` styling Task 1's row wrapper adds). Cannot be paired: Tasks 5, 6, and 7 all insert sequentially into that same `describe` block (each is specified as "the next `it`," appended immediately after the previous one), so any two of {5, 6, 7} running concurrently would be racing to edit the same lines of the same file — not trivially non-overlapping, unlike the Wave 2 case.
+- **Wave 4 — Task 6 (alone).** Depends on Task 3 (needs the `insetsOverride` 4th parameter on `renderScreen`) and on Task 4/5 (adds the *third* `it`, appended after Task 5's just-landed one, inside the same `describe` block). Same same-block collision risk with Task 5 and Task 7 rules out pairing.
+- **Wave 5 — Task 7 (alone).** Depends on Task 4 (adds the *fourth* `it`, appended after Task 6's) and on Task 1 (checks `screen-footer` presence under the relocated-footer layout). Same same-block collision risk with Task 5 and Task 6 rules out pairing.
+- **Wave 6 — Task 8 (alone).** Verification-only, but explicitly scoped as "after Tasks 1–7 are all applied" — it depends on every other task in this file, so there is nothing left to pair it with.
+
 ---
 
 ### Task 1 — Relocate the footer into the ScrollView's content, add safe-area-aware bottom padding, and make Settings/Discard an equal-width row
