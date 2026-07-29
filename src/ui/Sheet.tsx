@@ -1,7 +1,8 @@
 /**
- * `Sheet` — 07 §5: bottom sheet with detents 0.5/0.9, grabber, scrim
- * (`semantic.overlay` token), keyboard-aware. Built on
- * `react-native-gesture-handler` + `react-native-reanimated` per 06 §1.
+ * `Sheet` — 07 §5: bottom sheet with detents `half` (50%) / `full` (100%,
+ * edge-to-edge), grabber, scrim (`semantic.overlay` token), keyboard-aware.
+ * Built on `react-native-gesture-handler` + `react-native-reanimated` per
+ * 06 §1.
  *
  * Component-level, not a route (06 §3: "Sheets ... are component-level
  * bottom sheets on gesture-handler, not routes — they must coexist with the
@@ -38,10 +39,11 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from './theme-provider';
 
-/** 07 §5 detents: `half` = 50% of screen height, `full` = 90%. */
+/** 07 §5 detents: `half` = 50% of screen height, `full` = 100%, edge-to-edge. */
 export type SheetDetent = 'half' | 'full';
 
 export interface SheetProps {
@@ -57,7 +59,7 @@ export interface SheetProps {
 const SHEET_ANIMATION_MS = 250;
 const DETENT_HEIGHT_RATIO: Record<SheetDetent, number> = {
   half: 0.5,
-  full: 0.9,
+  full: 1,
 };
 /** Downward drag past this many pt dismisses the sheet on release. */
 const DRAG_DISMISS_THRESHOLD = 120;
@@ -72,6 +74,8 @@ export function Sheet({
   testID,
 }: SheetProps): React.JSX.Element | null {
   const { colors, radii, spacing } = useTheme();
+  const insets = useSafeAreaInsets();
+  const isFull = detent === 'full';
 
   const windowHeight = Dimensions.get('window').height;
   const sheetHeight = windowHeight * DETENT_HEIGHT_RATIO[detent];
@@ -153,22 +157,27 @@ export function Sheet({
                 {
                   height: sheetHeight,
                   backgroundColor: colors.bg.surface,
-                  borderTopLeftRadius: radii.lg,
-                  borderTopRightRadius: radii.lg,
-                  paddingTop: spacing['2'],
+                  borderTopLeftRadius: isFull ? 0 : radii.lg,
+                  borderTopRightRadius: isFull ? 0 : radii.lg,
+                  paddingTop: isFull ? 0 : spacing['2'],
                 },
                 animatedStyle,
                 style,
               ]}
             >
-              <View
-                accessible={false}
-                style={[
-                  styles.grabber,
-                  { backgroundColor: colors.border.input, borderRadius: GRABBER_SIZE.height / 2 },
-                ]}
-              />
-              <View style={styles.content}>{children}</View>
+              {!isFull ? (
+                <View
+                  accessible={false}
+                  style={[
+                    styles.grabber,
+                    {
+                      backgroundColor: colors.border.input,
+                      borderRadius: GRABBER_SIZE.height / 2,
+                    },
+                  ]}
+                />
+              ) : null}
+              <View style={[styles.content, { paddingBottom: insets.bottom }]}>{children}</View>
             </Animated.View>
           </GestureDetector>
         </KeyboardAvoidingView>
