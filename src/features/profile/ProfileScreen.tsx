@@ -77,6 +77,7 @@ import { HistoryWorkoutCard, type HistoryCardData } from '../history/HistoryWork
 import { Card } from '@/ui/Card';
 import { ListRow } from '@/ui/ListRow';
 import { Sheet } from '@/ui/Sheet';
+import { SheetHeader } from '@/ui/SheetHeader';
 import { StatTile } from '@/ui/StatColumn';
 import { useTheme } from '@/ui/theme-provider';
 
@@ -368,10 +369,12 @@ export function ProfileScreen({
         visible={editSheetVisible}
         onDismiss={() => setEditSheetVisible(false)}
       >
+        <SheetHeader
+          testID={`${testID}-edit-profile-sheet-header`}
+          title="Edit Profile"
+          safeTop={false}
+        />
         <View style={{ paddingHorizontal: spacing['4'] }}>
-          <Text style={[typography.headline, { color: colors.text.primary, marginBottom: spacing['3'] }]}>
-            Edit Profile
-          </Text>
           <TextInput
             testID={`${testID}-name-input`}
             value={draftName}
