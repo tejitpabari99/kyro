@@ -49,6 +49,50 @@ block execution.
    behavioral intent (reset-to-`PANEL_ENTER_OFFSET`-then-settle-to-`0`), not weaken or drop the
    assertion.
 
+## Parallelization
+
+Dependency chain, based on actual files touched and what each task's edits reference from
+prior tasks (not just file overlap):
+
+- **Task 1** (`src/ui/tokens.ts`, `src/ui/__tests__/tokens.test.ts`) — no dependencies.
+- **Task 2** (`TimerPill.tsx`) — depends on **Task 1**: `RestTimerPanelControls`'s Skip button
+  directly references `colors.semantic.onInfo`, which doesn't exist until Task 1 lands.
+- **Task 3** (`TimerPill.tsx`) — depends on **Task 2**: the replacement render tree
+  instantiates `RestTimerPanelControls`, which Task 2 defines. Also a same-file, same-block
+  edit: both tasks append new keys to the same bottom `StyleSheet.create({...})` object, which
+  is a sequential-append collision even setting the component dependency aside.
+- **Task 4** (`TimerPill.tsx`) — depends on **Task 3**: it changes the exact outer element
+  Task 3 just introduced (`View` → `Animated.View`) and appends `animatedStyle` to its style
+  array — a direct edit to Task 3's output, not just same-file proximity.
+- **Task 5** (`TimerPill.test.tsx`) — depends on **Tasks 1–4** together: its new assertions
+  exercise the final token (Skip color), the final component/order (§4.2.3), the final layout
+  (edge-to-edge + safe-area inset), and the final animation (`timerKey`-triggered re-entrance).
+  File-wise it's disjoint from `TimerPill.tsx`, but the dependency is correctness-based, not
+  organizational — the tests would fail against any intermediate state.
+- **Task 6** (`SetRow.test.tsx`, optional) — no dependencies on anything above. It pins
+  already-correct, pre-existing colors (`accent.primary`/`bg.accentSubtle`) and doesn't touch
+  `TimerPill.tsx`, `tokens.ts`, or reference `semantic.onInfo`.
+
+Tasks 2→3→4 form a strictly sequential chain on the same file with real functional
+dependencies (each consumes what the previous one just added), so they can never be paired
+with each other. Task 6 is the only task with zero dependencies in either direction, so it's
+the one used to fill a partner slot; it's placed in the earliest wave since nothing gates it.
+Given the hard 2-tasks-per-wave cap:
+
+1. **Wave 1 — Tasks 1, 6 (parallel).** Fully disjoint files (`tokens.ts`/`tokens.test.ts` vs.
+   `SetRow.test.tsx`), no shared symbols, and Task 6 needs nothing Task 1 produces (it doesn't
+   use `semantic.onInfo`). Safe to run together.
+2. **Wave 2 — Task 2 (solo).** Blocked on Task 1's `onInfo` token, so it can't start until Wave
+   1 lands. No other task is unblocked yet to pair with it (Task 6 is already spent; Tasks 3/4
+   are blocked on Task 2 itself; Task 5 is blocked on Task 2–4).
+3. **Wave 3 — Task 3 (solo).** Blocked on Task 2's `RestTimerPanelControls` and edits the same
+   `StyleSheet.create` block Task 2 just changed. No other task is unblocked yet.
+4. **Wave 4 — Task 4 (solo).** Blocked on Task 3's `panelContainer` render tree (direct edit to
+   the element Task 3 introduced). No other task is unblocked yet.
+5. **Wave 5 — Task 5 (solo).** Blocked on Tasks 1–4 all landing (correctness dependency, per
+   above). Task 6, the only task that could otherwise fill a second slot, already ran in Wave
+   1, so there's no eligible partner here.
+
 ## Task 1 — `tokens.ts`: new `semantic.onInfo` token + contrast test
 
 - Files:
