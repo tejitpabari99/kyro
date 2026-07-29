@@ -32,6 +32,57 @@
    PRD's general justification as grounds to leave this one file alone. This is a one-line comment, no
    behavior implication either way.
 
+## Parallelization
+
+No two tasks in this list ever touch the same file, so the only real constraint is dependency ordering
+(new component → its consumers → its consumers' consumers → tests). With a hard cap of 2 concurrent
+tasks, the 16 tasks split into exactly 8 waves of 2 — the theoretical minimum for 16 tasks at this cap,
+achieved because at every wave there were always at least 2 dependency-satisfied tasks available.
+
+1. **Wave 1: Task 1, Task 2** — Both are brand-new, self-contained files
+   (`src/ui/KeyboardDoneBar.tsx`, `src/features/workout/InlineNoteField.tsx`) with no dependencies on
+   anything else in this list, and no import relationship between them (`InlineNoteField.tsx` defines its
+   own `NOTES_KEYBOARD_ACCESSORY_VIEW_ID` constant rather than importing `KeyboardDoneBar`). These gate the
+   most downstream work (Tasks 3, 5, 7, 8, 9, 15, 16), so they run first. (Task 11 is also dependency-free
+   at this point but was deferred to Wave 6 — pairing it here would waste a slot ahead of the
+   higher-leverage foundation tasks.)
+
+2. **Wave 2: Task 3, Task 5** — Both consume `InlineNoteField` from Task 1/2 (satisfied) and edit entirely
+   separate files (`ExerciseCard.tsx` vs. `RoutineExerciseCard.tsx`) that are mirror-image changes to
+   parallel screens (workout vs. routine editor). Independent of each other.
+
+3. **Wave 3: Task 4, Task 6** — Each removes the `onAddNote` prop *definition* from a menu-sheet component
+   whose only caller had its *call site* removed in Wave 2 (Task 4 needs Task 3; Task 6 needs Task 5) —
+   doing it in the other order would leave the caller passing a prop the type no longer declares. Different
+   files (`ExerciseCardMenuSheet.tsx` vs. `RoutineExerciseMenuSheet.tsx`), independent of each other.
+
+4. **Wave 4: Task 7, Task 8** — Both only need `KeyboardDoneBar` + `NOTES_KEYBOARD_ACCESSORY_VIEW_ID` from
+   Wave 1 (not Tasks 3-6 — mounting the bar doesn't require the card components to have adopted
+   `InlineNoteField` yet). Different screens (`ActiveWorkoutScreen.tsx` vs. `EditWorkoutScreen.tsx`),
+   independent of each other.
+
+5. **Wave 5: Task 9, Task 10** — Task 9 has the same Wave-1-only dependency as Tasks 7/8, just applied to
+   `RoutineEditorScreen.tsx` (a different file, and this screen's first accessory-bar mount, so nothing
+   else could conflict). Task 10 deletes `NoteEditSheet.tsx` + its test, which is safe only once both of
+   its call sites are gone — i.e. once Task 3 *and* Task 5 have landed (both satisfied since Wave 2).
+   Disjoint files, independent of each other.
+
+6. **Wave 6: Task 11, Task 13** — Task 11 (doc-comment-only `NoteEditSheet` → `DurationEditSheet`
+   repoints in five unrelated sheet files) has no real dependency on anything — it's pure text in
+   comments, not a reference the compiler checks — so it could have run anywhere; it lands here to fill an
+   otherwise-open slot. Task 13 updates `ExerciseCardMenuSheet.test.tsx` to match Task 4's menu-item
+   removal, so it needs Task 4 (satisfied since Wave 3). The two touch six files total, none shared.
+
+7. **Wave 7: Task 12, Task 14** — Task 12 (`ExerciseCard.test.tsx`) needs both Task 3 (new `InlineNoteField`
+   testIDs) and Task 4 (removed "Add a Note" menu test), both satisfied by Wave 3. Task 14
+   (`RoutineEditorScreen.test.tsx`) needs both Task 5 and Task 6 for the same reasons on the routines side,
+   also satisfied by Wave 3. Different test files, independent of each other.
+
+8. **Wave 8: Task 15, Task 16** — Final new, direct-render unit-test files for the two Wave-1 components
+   (`InlineNoteField.test.tsx` needs only Task 2; `KeyboardDoneBar.test.tsx` needs only Task 1). Both were
+   ready as early as Wave 2 but pushed last since nothing else depends on them — scheduling them earlier
+   would have displaced tasks that unblock more downstream work. Disjoint files, independent of each other.
+
 ## Task 1 — `src/ui/KeyboardDoneBar.tsx` (new component)
 
 - Files:
