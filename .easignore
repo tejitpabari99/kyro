@@ -1,0 +1,17 @@
+# Not needed on the EAS builder — mirrors .gitignore's exclusions, since
+# eas-cli stops reading .gitignore entirely once this file exists.
+.expo/
+dist/
+web-build/
+coverage/
+*.tsbuildinfo
+.DS_Store
+
+# Local-only source dataset (102M) — only read by scripts/build-exercise-db.ts
+# to regenerate assets/exercise-db.json + assets/exercises/, which are already
+# committed and are what the app actually bundles. Not touched by EAS build.
+data/
+
+# Docs and Maestro E2E flow files — not used by the build itself.
+docs/
+e2e/

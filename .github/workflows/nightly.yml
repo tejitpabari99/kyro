@@ -1,0 +1,203 @@
+# Nightly workflow (M2-18) — 08-testing-and-quality.md §9: "full jest +
+# Maestro flows on macOS runner (simulator) + dataset build determinism
+# check." This is the workflow `ci.yml`'s own header comment named as
+# deliberately not-yet-built (M0-04) — this task is what closes that gap.
+#
+# Three independent jobs (no `needs:` chain between them — a Maestro
+# failure shouldn't hide a jest regression or vice versa, and the
+# determinism check has nothing to do with either):
+#   1. `jest`        — the same full unit+integration suite `ci.yml` runs on
+#                       every PR, re-run here mainly so a nightly cron catches
+#                       any flake/drift even on a day with no PRs merged.
+#   2. `dataset-determinism` — runs `scripts/build-exercise-db.ts`
+#                       (`npm run build:exercises`) twice from the same
+#                       vendored inputs and asserts the emitted
+#                       `assets/exercise-db.json` is byte-identical both
+#                       times (08 §4.7's "deterministic output hash" case).
+#                       Ubuntu is sufficient here — this script has no iOS/
+#                       Xcode dependency, just Node + `sharp` (which ships
+#                       Linux prebuilt binaries same as it does for macOS).
+#   3. `maestro`      — builds the app for the iOS Simulator on a macOS
+#                       runner, then runs flows 1 & 3 (`e2e/flows/`) plus a
+#                       second pass scoped to just the `smoke`-tagged subset
+#                       (flow 1) via `--include-tags=smoke`, per 08 §6's
+#                       "tagged smoke set < 5 min" — see this job's own
+#                       comments for why both passes live in one job.
+#
+# **What this file cannot prove from this sandbox** (`docs/plan/BLOCKERS.md`):
+# there is no macOS/Xcode/iOS Simulator/Maestro binary available here (this
+# machine is headless Linux — confirmed `maestro --version` -> command not
+# found, and there is no workaround: installing a macOS toolchain isn't
+# something a Linux sandbox can do regardless of network access). The
+# `maestro` job below is therefore reviewed for structural/YAML correctness
+# and cross-checked against `e2e/flows/*.yaml`'s own testIDs (which likewise
+# cannot be exercised against a real render tree here) but has never
+# actually executed. `jest`/`dataset-determinism` do not have this
+# limitation — both were run for real during this task (see
+# `docs/plan/EXECUTION-LOG.md`'s M2-18 row for the exact commands/output).
+name: Nightly
+
+on:
+  schedule:
+    # 09:00 UTC nightly. `ci.yml` only runs on PR/push to `main`; this is
+    # the one workflow in the repo that runs on a schedule independent of
+    # any push, matching 08 §9's "nightly + pre-release" cadence for E2E.
+    - cron: '0 9 * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: nightly-${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------
+  # 1. Full jest (same suite/coverage gate as ci.yml's own jest step).
+  # ---------------------------------------------------------------------
+  jest:
+    name: jest (full suite)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test (both jest projects, coverage gate)
+        run: pnpm test -- --coverage
+
+  # ---------------------------------------------------------------------
+  # 2. Dataset build determinism (08 §4.7 / §9).
+  # ---------------------------------------------------------------------
+  dataset-determinism:
+    name: dataset build determinism
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Run 1 — the committed baseline the repo ships with.
+      - name: Build exercise dataset (run 1)
+        run: pnpm run build:exercises
+
+      - name: Save run-1 hash
+        run: sha256sum assets/exercise-db.json | tee /tmp/exercise-db.run1.sha256
+
+      # Run 2 — same inputs, fresh output — must reproduce byte-for-byte.
+      # `computeDatasetHash` (`src/domain/exercise-mapping.ts`) is already
+      # exhaustively unit-tested for this exact property (see the `jest` job
+      # above, `src/domain/__tests__/exercise-mapping.test.ts`'s own
+      # "computeDatasetHash — determinism" suite) — this step additionally
+      # exercises the *real* end-to-end script (file I/O, `sharp` image
+      # pass, JSON emission), not just the pure mapping function, which is
+      # the "run the build script twice ... assert byte-identical output"
+      # check 08 §4.7 actually asks for at the CI level.
+      - name: Build exercise dataset (run 2)
+        run: pnpm run build:exercises
+
+      - name: Save run-2 hash
+        run: sha256sum assets/exercise-db.json | tee /tmp/exercise-db.run2.sha256
+
+      - name: Assert byte-identical output across both runs
+        run: |
+          diff /tmp/exercise-db.run1.sha256 /tmp/exercise-db.run2.sha256 \
+            || (echo "::error::assets/exercise-db.json was NOT byte-identical across two consecutive build:exercises runs — the dataset build is non-deterministic." && exit 1)
+          echo "Dataset build is deterministic: $(cut -d' ' -f1 /tmp/exercise-db.run2.sha256)"
+
+  # ---------------------------------------------------------------------
+  # 3. Maestro E2E — flows 1 & 3 (+ flow 7's semi-manual debug-hook check)
+  #    on an iOS Simulator, macOS runner.
+  # ---------------------------------------------------------------------
+  maestro:
+    name: maestro E2E (iOS Simulator)
+    # macos-14 ships Xcode 15.x with iOS 17 simulator runtimes preinstalled
+    # (GitHub-hosted runner image) — no separate simulator-runtime download
+    # step needed for a same-major-version iOS Simulator.
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Pin a concrete Xcode version rather than trusting whatever
+      # `macos-14`'s current default happens to be — keeps simulator/SDK
+      # behavior reproducible run to run (same rationale as ci.yml's own
+      # "no version pinned... single source of truth" note, just the
+      # opposite call here since there's no package.json-equivalent pin for
+      # Xcode itself).
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      # Maestro's own documented install method (no package-manager
+      # release exists) — adds `~/.maestro/bin` to `$GITHUB_PATH` so every
+      # subsequent step in this job can call `maestro` directly.
+      - name: Install Maestro CLI
+        run: |
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+
+      - name: Maestro version
+        run: maestro --version
+
+      # Generates the native `ios/` project (this repo has no `ios/`
+      # committed — pure Expo-managed workflow) and builds + installs a
+      # Debug build onto a booted Simulator in one step; `expo run:ios`
+      # boots its own default simulator (or the one implied by
+      # `--device`) if none is already running.
+      - name: Build & install the app on the iOS Simulator
+        run: npx expo run:ios --device "iPhone 15"
+
+      # Full flow set — flows 1, 3, and 7 (`e2e/flows/*.yaml`, this task).
+      # Flows 2/4/5/6 are deliberately not authored yet (M3+ features) so
+      # `e2e/flows/` only ever contains what's actually runnable today.
+      - name: Run all E2E flows
+        run: maestro test e2e/flows/
+
+      # Tagged smoke subset (08 §6/§9: "tagged smoke set < 5 min") — today
+      # this is exactly flow 1 (`tags: [smoke]` in its own frontmatter).
+      # Run again, scoped, as its own step so this workflow visibly
+      # demonstrates the `--include-tags` invocation a future pre-release
+      # gate would reuse standalone (this step is redundant with the full
+      # run directly above on *this* job specifically, since the full run
+      # already includes the smoke flow — kept anyway so the tagged
+      # invocation itself is exercised/reviewed here rather than only
+      # existing as a documented `pnpm run e2e:smoke` nobody runs in CI).
+      - name: Run tagged smoke subset only
+        run: maestro test e2e/flows/ --include-tags=smoke

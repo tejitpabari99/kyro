@@ -1,0 +1,205 @@
+/**
+ * `GlobalWorkoutBar` (M2-13) — 06 §3: "`GlobalWorkoutBar` (rendered in the
+ * tabs layout, above the tab bar) appears whenever `activeWorkout != null &&
+ * !loggerVisible`, and re-presents the route on tap." 02 §10 / 07 §5's
+ * literal content: "workout title + live elapsed time; when a rest timer
+ * runs, remaining time replaces elapsed (accent-colored). Tap → re-expand."
+ *
+ * Rendered unconditionally by `app/(tabs)/_layout.tsx` (M0-08's reserved
+ * seam) as a sibling *after* `<Tabs>`, positioned absolutely so it can float
+ * above the tab bar without needing a slot inside the navigator itself.
+ * `<Tabs>` (expo-router, wrapping React Navigation's bottom-tabs) doesn't
+ * expose its own rendered tab-bar height to a sibling outside the navigator
+ * tree — `useBottomTabBarHeight()` only resolves inside a screen actually
+ * hosted by that navigator — so this file approximates it as
+ * `TAB_BAR_CONTENT_HEIGHT` (the tab bar's own fixed content height, no
+ * safe-area allowance folded in) plus the real per-device bottom inset.
+ *
+ * **Update (BUGFIX-01):** `app/_layout.tsx` now wraps the app root in a
+ * `SafeAreaProvider` (fixing the separate "content hidden under the status
+ * bar" bug), so the flat `TAB_BAR_HEIGHT_APPROX` constant this file used to
+ * document here (a single number guessing *both* the tab bar's content
+ * height *and* a typical home-indicator allowance at once, since no
+ * provider existed to ask for the real one) is no longer the best
+ * available option — `useSafeAreaInsets().bottom` now gives the real
+ * per-device value instead of a guess. Swapped to `TAB_BAR_CONTENT_HEIGHT +
+ * insets.bottom`: on a home-indicator device this comes out equivalent to
+ * the old flat constant (49 + ~34 ≈ 83), and on an older device with no
+ * home indicator (`insets.bottom === 0`) it now correctly floats right
+ * above the 49pt tab bar instead of leaving an unnecessary ~34pt gap below
+ * it.
+ *
+ * **Two data sources, one visibility gate:**
+ *  - `activeWorkoutStore` (`selectActiveWorkout`) — the workout itself
+ *    (`null` when none active, e.g. finished/discarded or never started).
+ *  - `loggerVisibilityStore` — `true` while `ActiveWorkoutScreen` is mounted
+ *    (its own mount/unmount effect owns this flag; see that store's header).
+ * `shouldShow = workout != null && !loggerVisible` is 06 §3's condition
+ * verbatim.
+ *
+ * **Elapsed vs. remaining:** `useRestTimerStore`'s `timer` is global
+ * (there is only ever one active workout, so any running timer necessarily
+ * belongs to it — nothing here needs to cross-check `exerciseId` against
+ * this workout's own exercises). When a timer is running, its remaining
+ * time (accent-colored, per 02 §10) replaces the elapsed display outright,
+ * matching the logger's own inline countdown affordance (M2-10/M2-11's
+ * scope, not duplicated here — this bar never needs progress rings or
+ * ±15s/Skip controls, just the readable countdown text 02 §10 asks for).
+ *
+ * **Ticking:** reuses `useRestTimerTicker` (M2-10, `active`-gated 250 ms
+ * ticker) as the shared "now" driver for *both* the elapsed and remaining
+ * math, rather than adding a third near-duplicate ticking hook alongside
+ * `useWorkoutStopwatch`'s own internal 1 s one — 06 §6.1 only requires "a
+ * 1 s interval hook," not literally a single shared implementation, and
+ * 250 ms is strictly finer (never wrong, just more frequent) than the "~1 s
+ * is fine" this task's own brief calls for. Gated on `shouldShow` so the
+ * interval genuinely doesn't exist on every tab the rest of the time (same
+ * "active only while a surface is visible" discipline that hook's own file
+ * header describes). Elapsed math itself is `computeElapsedMs`
+ * (`useWorkoutStopwatch.ts`) — the exact same formula the full logger's own
+ * stopwatch uses, so the two surfaces can never diverge.
+ *
+ * **Pause state across minimize (documented judgment call):** the logger's
+ * own `useWorkoutStopwatch` pause is ephemeral local UI state, never
+ * persisted until `resume()` (that hook's own file header). Minimizing
+ * unmounts `ActiveWorkoutScreen` outright, so a pause that is still active
+ * at the moment of minimize is lost — this bar (and the logger, if
+ * re-presented) simply resumes computing live elapsed from
+ * `workout.startTime`/`workout.durationPauseOffsetMs` as if never paused.
+ * This is a direct, structural extension of the exact gap
+ * `useWorkoutStopwatch.ts`'s own header already calls out for a kill
+ * ("a pause that is still active when the app is killed does not survive
+ * relaunch as 'still paused'") — minimizing is the same kind of unmount, so
+ * the same acceptance applies; not silently assumed, restated here.
+ *
+ * **Reconciling a rest timer that expires while this bar is on screen
+ * (M2-13 review fix):** `restTimerStore.complete()`'s own doc comment
+ * defines its contract as "call once a mounted timer surface observes
+ * `remaining <= 0`." Today this bar *is* such a surface — M2-11's in-logger
+ * pill doesn't exist yet, and nothing in `ConnectedSetRow` observes
+ * completion either — so without this bar honoring that contract, a timer
+ * that reaches zero while the app stays foregrounded (never backgrounding,
+ * so `useForegroundReconciliation` never runs) would leave `timer` in the
+ * store forever: `remainingMs` floors at 0 and the accent "0:00" display
+ * would never revert to elapsed, contradicting 02 §10's "remaining time
+ * replaces elapsed" (which implies reverting once the rest period is over).
+ * The effect below calls `complete()` exactly once remaining reaches 0
+ * while `shouldShow` (this bar is actually mounted/ticking); `complete()`
+ * itself is idempotent (no-ops once `timer` is already `null`), and once it
+ * clears the store, this component's own `timer` selector re-renders with
+ * `null`, so `displaySeconds` naturally falls back to elapsed on the very
+ * next render — no separate "revert" branch needed.
+ */
+import React, { useEffect } from 'react';
+import { Pressable, StyleSheet, Text } from 'react-native';
+import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { formatDuration } from '@/domain/units';
+import { useTheme } from '@/ui/theme-provider';
+
+import { selectActiveWorkout, useActiveWorkoutStore } from './activeWorkoutStore';
+import { useLoggerVisibilityStore } from './loggerVisibilityStore';
+import { useRestTimerStore } from './restTimerStore';
+import { useRestTimerTicker } from './useRestTimerTicker';
+import { computeElapsedMs } from './useWorkoutStopwatch';
+
+/** Standard iOS tab-bar content height (no safe-area allowance folded in — see file header). */
+const TAB_BAR_CONTENT_HEIGHT = 49;
+const BAR_HEIGHT = 52;
+
+export function GlobalWorkoutBar(): React.JSX.Element | null {
+  const { colors, typography, spacing } = useTheme();
+  const insets = useSafeAreaInsets();
+
+  const workout = useActiveWorkoutStore(selectActiveWorkout);
+  const loggerVisible = useLoggerVisibilityStore((state) => state.visible);
+  const timer = useRestTimerStore((state) => state.timer);
+
+  const shouldShow = workout != null && !loggerVisible;
+  const now = useRestTimerTicker(shouldShow);
+
+  // See file header — this is the one mounted timer surface that exists
+  // today, so it must honor `restTimerStore.complete()`'s "call once a
+  // mounted timer surface observes remaining <= 0" contract or an expired
+  // timer never clears while the app stays foregrounded.
+  useEffect(() => {
+    if (!shouldShow || !timer) {
+      return;
+    }
+    if (timer.endsAt <= now) {
+      void useRestTimerStore.getState().complete();
+    }
+  }, [shouldShow, timer, now]);
+
+  if (!shouldShow || !workout) {
+    return null;
+  }
+
+  const remainingMs = timer ? Math.max(0, timer.endsAt - now) : null;
+  const showingRemaining = remainingMs !== null;
+  const displaySeconds = showingRemaining
+    ? Math.ceil(remainingMs / 1000)
+    : Math.floor(computeElapsedMs(workout.startTime, workout.durationPauseOffsetMs, now) / 1000);
+  const displayText = formatDuration(displaySeconds) ?? '0:00';
+
+  const handlePress = (): void => {
+    // Same "enter the logger" navigation the Workout tab's own
+    // `Start Empty Workout`/resume path uses (`app/(tabs)/workout/index.tsx`)
+    // — a plain `router.push`, no gate needed here since a workout is
+    // already known active (that's this bar's own visibility condition).
+    router.push('/workout/active' as never);
+  };
+
+  return (
+    <Pressable
+      testID="global-workout-bar"
+      onPress={handlePress}
+      accessibilityRole="button"
+      accessibilityLabel={`Resume workout: ${workout.title}`}
+      style={[
+        styles.bar,
+        {
+          bottom: TAB_BAR_CONTENT_HEIGHT + insets.bottom,
+          height: BAR_HEIGHT,
+          backgroundColor: colors.bg.surface,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: colors.border.hairline,
+          paddingHorizontal: spacing['4'],
+        },
+      ]}
+    >
+      <Text
+        testID="global-workout-bar-title"
+        style={[typography.subhead, { color: colors.text.primary, flex: 1 }]}
+        numberOfLines={1}
+      >
+        {workout.title}
+      </Text>
+      <Text
+        testID="global-workout-bar-time"
+        style={[
+          typography.subhead,
+          styles.time,
+          { color: showingRemaining ? colors.accent.text : colors.text.secondary },
+        ]}
+      >
+        {displayText}
+      </Text>
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  bar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  time: {
+    fontVariant: ['tabular-nums'],
+    fontWeight: '600',
+  },
+});

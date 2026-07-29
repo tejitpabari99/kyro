@@ -1,0 +1,80 @@
+# PR/push CI gate — static + test gate per docs/plan/08-testing-and-quality.md §9.
+#
+# Sequence (must stay in lockstep with the local-equivalent `pnpm ci` script
+# in package.json — package.json is JSON and can't hold an inline comment,
+# so this note is the single source of truth for keeping the two in sync):
+#   checkout -> pnpm install (cached) -> tsc --noEmit -> eslint ->
+#   jest (both projects, coverage gate enforced via jest.config.js
+#   coverageThreshold) -> expo-doctor -> expo export sanity (bundle compiles).
+# Target: < 8 min total (08 §9). Locally on this dev machine the full
+# post-install sequence runs in ~70s (typecheck 3s, lint 3s, jest 3s,
+# expo-doctor 32s, expo export 31s) — a cold CI runner adds install time but
+# the pnpm store cache below keeps that bounded.
+#
+# Deliberately NOT included yet (separate future tasks, see
+# docs/plan/tasks/M0-tasks.md M0-04 and TASKS-INDEX.md):
+#   - nightly.yml  (M2-18): full jest + Maestro flows on macOS/simulator +
+#     dataset build determinism check.
+#   - release.yml  (M7-03): tag-triggered EAS Build/Submit + Sentry sourcemap
+#     upload.
+#
+# Branch protection ("CI green required to merge to main") is a GitHub
+# repo-settings action, not something this workflow file can configure —
+# that is owner task O-06 (see docs/plan/tasks/OWNER-TASKS.md). This file
+# only produces the check that a future branch-protection rule would require.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Cancel superseded runs on the same PR/branch so the runner queue doesn't
+# back up while iterating on a PR.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: typecheck, lint, test, doctor, export
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Reads the `packageManager` field in package.json (pnpm@9.15.9) —
+      # kept in sync with docs/plan/BLOCKERS.md's Node-20/pnpm-9 pin note,
+      # no version pinned here on purpose so the two stay a single source of
+      # truth (package.json) rather than drifting apart.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Test (both jest projects, coverage gate)
+        run: pnpm test -- --coverage
+
+      - name: expo-doctor
+        run: npx expo-doctor
+
+      - name: expo export sanity (bundle compiles)
+        run: npx expo export --platform ios

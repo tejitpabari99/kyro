@@ -1,0 +1,1 @@
+ALTER TABLE `workout_exercises` ADD `routine_occurrence_index` integer;

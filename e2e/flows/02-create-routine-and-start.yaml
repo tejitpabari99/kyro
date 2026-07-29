@@ -1,0 +1,336 @@
+# M3-08 — E2E flow 2 (08 §6 item 2): create a routine and start it.
+#
+# new routine -> 2 exercises, rep range 6-8, rest 90 s -> save -> start ->
+# placeholders show targets -> complete -> update-routine prompt -> accept
+# -> routine shows new targets.
+#
+# ## Environment note (docs/plan/BLOCKERS.md)
+#
+# Authored only — **not executed**. This sandbox has no macOS/Xcode/iOS
+# Simulator/Maestro binary (same constraint M2-18 hit authoring flows
+# 01/03/07 — see that task's own `EXECUTION-LOG.md` row and
+# `docs/plan/BLOCKERS.md`'s M2-18 update). Every testID referenced below was
+# grep-confirmed against the real source at authoring time (file:line audit
+# in this task's own `EXECUTION-LOG.md`/`docs/qa/M3-checklist.md` entry) —
+# the furthest a flow file's content can be validated without a real
+# rendered app, matching M2-18's established method exactly.
+#
+# ## Structure
+#
+# One phase, one straight run of 08 §6 item 2's own step list — unlike flow
+# 1 (M2-18), there is no "seed history first" problem here: a routine's
+# targets are typed directly into the editor (not autofilled from history),
+# so this flow is deterministic from a `clearState: true` fresh install with
+# no seed phase needed.
+#
+# ## Exercise choice
+#
+# Two real vendored dataset exercises, both `weight_reps` (`assets/
+# exercise-db.json`, confirmed via a direct read at authoring time):
+#   - `Barbell_Bench_Press_-_Medium_Grip` ("Barbell Bench Press - Medium
+#     Grip") — same stand-in flows 1/3 already use for "Bench Press" (no
+#     exercise in the vendored dataset is literally named that).
+#   - `Barbell_Squat` ("Barbell Squat").
+# Both get a weight target + a 6-8 rep-range target + a 90 s rest timer, per
+# 08 §6 item 2's own wording ("2 exercises, rep range 6-8, rest 90 s" reads
+# as applying to the routine as a whole, not one exercise singled out).
+#
+# ## Logged values chosen to exercise 04 §2.4's own "in-range reps preserve
+# the range" rule, not just "some diff exists"
+#
+# Bench Press is logged at 65 kg (target was 60 kg — a material weight-target
+# change, 02 §14.4) x 7 reps (inside the 6-8 target range). Squat is logged
+# at 80 kg (matches its own target exactly) x 7 reps (also inside 6-8).
+# `computeRoutineDiff` (`src/domain/routine-diff.ts`) flags Bench's weight
+# change as material regardless of Squat being unchanged, so "Update
+# routine?" fires; `RoutineRepositoryImpl.updateFromWorkout`'s
+# `computeUpdatedRepTarget` (`src/data/routines/routine-repository.ts:294`)
+# preserves the 6-8 range verbatim on both exercises (7 is inside it) while
+# only Bench's weight target rewrites to 65 — this is the exact "in-range
+# reps preserve the range (only weight target updates)" acceptance line
+# (`docs/plan/04-feature-spec-routines-history-stats.md` §2.4) made
+# concretely assertable, not just "a routine changed somehow."
+#
+# ## Every testID below, confirmed present in source at authoring time
+# (grep commands + file:line citations in this task's own execution-log
+# entry / `docs/qa/M3-checklist.md`):
+#   new-routine-button                                RoutinesHubScreen.tsx:507
+#   routine-editor-screen(-title-input|-cancel|-save|-add-exercise|-exercise-picker)
+#                                                      RoutineEditorScreen.tsx:144,329,334,346,401,410
+#   routine-editor-screen-card-<exerciseId>            RoutineEditorScreen.tsx:378 (keyed on the
+#                                                        library exercise id — deterministic,
+#                                                        NOT a per-run-random uuid, unlike the
+#                                                        active-workout exercise-card prefix below)
+#   <card>-rest-timer-row, <card>-rest-timer-sheet,    RoutineExerciseCard.tsx:243,256,266,285,316
+#   <card>-table, <card>-table-row-<n>, <card>-add-set
+#   <card>-table-header-reps-press                     SetTable.tsx:106-116 (bulk rep-range toggle
+#                                                        for every set in that exercise's table)
+#   <row>-value-weight, <row>-value-reps,              SetRow.tsx:421,436,451
+#   <row>-value-reps_from, <row>-value-reps_to
+#   <rest-timer-sheet>-wheel-option-90, -done           WheelPicker.tsx:119, RestTimerSheet.tsx:76,82
+#   exercise-row-<id>                                  ExerciseRow.tsx:113 (dataset-static id)
+#   active-workout-exercise-picker(-search|-confirm)    ActiveWorkoutScreen.tsx:1078 (shared sheet,
+#                                                        confirmed already by flow 1's own audit)
+#   routine-card-<id>(-start|-menu)                     FolderSection.tsx:187/218, RoutineCard.tsx:66,87
+#   routine-actions-sheet-edit                          RoutinesHubScreen.tsx:604-609
+#   active-workout(-finish), active-workout-exercise-<id>-table-row-<n>-*
+#                                                        ActiveWorkoutScreen.tsx:214,922,985;
+#                                                        ExerciseSetTableSection.tsx:267
+#   active-workout-save-sheet(-save)                    ActiveWorkoutScreen.tsx:1063-1064,
+#                                                        SaveWorkoutSheet.tsx:80,317
+#   history-detail-stat-volume                          confirmed by flow 1's own audit
+#   "Update routine?" Alert, "Keep original"/"Update    ActiveWorkoutScreen.tsx:609-627 (exact
+#   routine" buttons                                    title/message/button strings, read verbatim)
+#
+# `<card>` = `routine-editor-screen-card-<libraryExerciseId>` in the editor
+# (deterministic); `<row>` = `<card>-table-row-<n>`. On the active-workout
+# screen the exercise-card prefix (`active-workout-exercise-<workoutExerciseId>`)
+# IS a fresh per-run uuid (`WorkoutRepository.addExercises`/`startFromRoutine`),
+# so those selectors use a regex + `index` (Bench is routine-exercise 0 =
+# first-added = first-rendered card, Squat is routine-exercise 1 = second),
+# exactly like flow 1's own `.*-table-row-0-value-weight$` convention —
+# `index` disambiguates the two matching cards the same regex would
+# otherwise hit (flow 1/3 never needed `index` because they only ever have
+# one exercise card on screen at a time).
+appId: com.tejitpabari.kyro
+name: Create routine & start it
+tags:
+  - smoke
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: allow
+
+# ---------------------------------------------------------------------------
+# Create the routine: title, 2 exercises, weight + 6-8 rep-range target on
+# each, 90 s rest timer on each.
+# ---------------------------------------------------------------------------
+- assertVisible:
+    id: "new-routine-button"
+- tapOn:
+    id: "new-routine-button"
+- assertVisible:
+    id: "routine-editor-screen-title-input"
+- tapOn:
+    id: "routine-editor-screen-title-input"
+- inputText: "E2E Push Day"
+- hideKeyboard
+
+# --- Exercise 1: Barbell Bench Press - Medium Grip -------------------------
+- tapOn:
+    id: "routine-editor-screen-add-exercise"
+- assertVisible:
+    id: "routine-editor-screen-exercise-picker"
+- tapOn:
+    id: "routine-editor-screen-exercise-picker-search"
+- inputText: "Barbell Bench Press - Medium Grip"
+- tapOn:
+    id: "exercise-row-Barbell_Bench_Press_-_Medium_Grip"
+- tapOn:
+    id: "routine-editor-screen-exercise-picker-confirm"
+- waitForAnimationToEnd
+
+# Target weight 60 kg on the exercise's own (only, index 0) set.
+- tapOn:
+    id: "routine-editor-screen-card-Barbell_Bench_Press_-_Medium_Grip-table-row-0-value-weight"
+- inputText: "60"
+- hideKeyboard
+
+# Toggle rep-range mode via the REPS column header tap (bulk toggle for
+# every set in this exercise — 04 §2.1's "or" reading; there is only the one
+# set here so bulk vs. per-set is equivalent).
+- tapOn:
+    id: "routine-editor-screen-card-Barbell_Bench_Press_-_Medium_Grip-table-header-reps-press"
+- tapOn:
+    id: "routine-editor-screen-card-Barbell_Bench_Press_-_Medium_Grip-table-row-0-value-reps_from"
+- inputText: "6"
+- tapOn:
+    id: "routine-editor-screen-card-Barbell_Bench_Press_-_Medium_Grip-table-row-0-value-reps_to"
+- inputText: "8"
+- hideKeyboard
+- assertVisible:
+    text: "6-8"
+
+# Rest timer -> 90 s (`75, 90, 105, ...` step list, `restTimerSecondsOptions()`).
+- tapOn:
+    id: "routine-editor-screen-card-Barbell_Bench_Press_-_Medium_Grip-rest-timer-row"
+- assertVisible:
+    id: "routine-editor-screen-card-Barbell_Bench_Press_-_Medium_Grip-rest-timer-sheet"
+- scrollUntilVisible:
+    element:
+      id: "routine-editor-screen-card-Barbell_Bench_Press_-_Medium_Grip-rest-timer-sheet-wheel-option-90"
+    direction: DOWN
+- tapOn:
+    id: "routine-editor-screen-card-Barbell_Bench_Press_-_Medium_Grip-rest-timer-sheet-wheel-option-90"
+- tapOn:
+    id: "routine-editor-screen-card-Barbell_Bench_Press_-_Medium_Grip-rest-timer-sheet-done"
+- assertVisible:
+    text: "Rest Timer: 1min 30s"
+
+# --- Exercise 2: Barbell Squat ----------------------------------------------
+- tapOn:
+    id: "routine-editor-screen-add-exercise"
+- tapOn:
+    id: "routine-editor-screen-exercise-picker-search"
+- inputText: "Barbell Squat"
+- tapOn:
+    id: "exercise-row-Barbell_Squat"
+- tapOn:
+    id: "routine-editor-screen-exercise-picker-confirm"
+- waitForAnimationToEnd
+
+- tapOn:
+    id: "routine-editor-screen-card-Barbell_Squat-table-row-0-value-weight"
+- inputText: "80"
+- hideKeyboard
+
+- tapOn:
+    id: "routine-editor-screen-card-Barbell_Squat-table-header-reps-press"
+- tapOn:
+    id: "routine-editor-screen-card-Barbell_Squat-table-row-0-value-reps_from"
+- inputText: "6"
+- tapOn:
+    id: "routine-editor-screen-card-Barbell_Squat-table-row-0-value-reps_to"
+- inputText: "8"
+- hideKeyboard
+
+- tapOn:
+    id: "routine-editor-screen-card-Barbell_Squat-rest-timer-row"
+- scrollUntilVisible:
+    element:
+      id: "routine-editor-screen-card-Barbell_Squat-rest-timer-sheet-wheel-option-90"
+    direction: DOWN
+- tapOn:
+    id: "routine-editor-screen-card-Barbell_Squat-rest-timer-sheet-wheel-option-90"
+- tapOn:
+    id: "routine-editor-screen-card-Barbell_Squat-rest-timer-sheet-done"
+
+# --- Save -------------------------------------------------------------------
+- tapOn:
+    id: "routine-editor-screen-save"
+- assertNotVisible:
+    id: "routine-editor-screen-title-input"
+- assertVisible:
+    id: "new-routine-button"
+
+# ---------------------------------------------------------------------------
+# Start the routine -> placeholders show targets.
+# ---------------------------------------------------------------------------
+- assertVisible:
+    id: "routine-card-.*-start"
+- tapOn:
+    id: "routine-card-.*-start"
+- assertVisible:
+    id: "active-workout"
+
+# Both target rep-ranges render as "6-8" in the PREVIOUS column (a
+# rep-range target never autofills a concrete REPS number — the REPS input
+# itself stays blank/placeholder-only per `domain/previous-values.ts`'s
+# `autofillFrom()` — so this asserts on the visible label text, not on the
+# REPS input's own value, per 04 §2.3's "a rep-range placeholder never
+# auto-commits" decision).
+- assertVisible:
+    text: ".*6-8.*"
+
+# --- Log Bench Press (routine-exercise 0, first card): 65 kg x 7 reps -------
+# 65 kg deliberately differs from the 60 kg target (material change, 02
+# §14.4); 7 reps is inside the 6-8 target range (in-range preserve rule).
+- tapOn:
+    id: ".*-table-row-0-value-weight$"
+    index: 0
+- inputText: "65"
+- tapOn:
+    id: ".*-table-row-0-value-reps$"
+    index: 0
+- inputText: "7"
+- hideKeyboard
+- tapOn:
+    id: ".*-table-row-0-check$"
+    index: 0
+- assertVisible:
+    id: "active-workout-timer-pill"
+
+# --- Log Squat (routine-exercise 1, second card): 80 kg x 7 reps -----------
+# 80 kg matches its own target exactly (no weight diff on this exercise);
+# 7 reps is inside 6-8 too.
+- tapOn:
+    id: ".*-table-row-0-value-weight$"
+    index: 1
+- inputText: "80"
+- tapOn:
+    id: ".*-table-row-0-value-reps$"
+    index: 1
+- inputText: "7"
+- hideKeyboard
+- tapOn:
+    id: ".*-table-row-0-check$"
+    index: 1
+
+# ---------------------------------------------------------------------------
+# Complete -> update-routine prompt -> accept.
+# ---------------------------------------------------------------------------
+- tapOn:
+    id: "active-workout-finish"
+- assertVisible:
+    id: "active-workout-save-sheet"
+- tapOn:
+    id: "active-workout-save-sheet-save"
+
+# `computeRoutineDiff` finds Bench's weight-target change material ->
+# `ActiveWorkoutScreen.tsx`'s exact Alert copy (read verbatim from source):
+#   title: "Update routine?"
+#   message: "Your workout differs from E2E Push Day."
+#   buttons: "Keep original" (cancel-style) / "Update routine"
+# Native OS alert — Maestro matches its buttons by visible text, not testID.
+- assertVisible:
+    text: "Update routine?"
+- tapOn:
+    text: "Update routine"
+
+# Lands on the finished workout's own history detail (unchanged tail,
+# `finishSave()`), same as flows 1/3.
+- assertVisible:
+    id: "history-detail-stat-volume"
+
+# ---------------------------------------------------------------------------
+# Routine shows new targets: Bench's weight target rewrote to 65 kg, its
+# 6-8 rep range preserved verbatim (7 was inside it) — the exact 04 §2.4
+# "in-range reps preserve the range, only weight target updates" rule.
+# ---------------------------------------------------------------------------
+- tapOn:
+    text: "Workout"
+- assertVisible:
+    id: "routine-card-.*-menu"
+- tapOn:
+    id: "routine-card-.*-menu"
+- assertVisible:
+    id: "routine-actions-sheet-edit"
+- tapOn:
+    id: "routine-actions-sheet-edit"
+- assertVisible:
+    id: "routine-editor-screen-title-input"
+
+# Bench Press: weight target now 65 (was 60); range still 6-8 (7 was
+# in-range, so the range is preserved verbatim, not collapsed).
+- assertVisible:
+    id: "routine-editor-screen-card-Barbell_Bench_Press_-_Medium_Grip-table-row-0-value-weight"
+    text: "65"
+- assertVisible:
+    id: "routine-editor-screen-card-Barbell_Bench_Press_-_Medium_Grip-table-row-0-value-reps_from"
+    text: "6"
+- assertVisible:
+    id: "routine-editor-screen-card-Barbell_Bench_Press_-_Medium_Grip-table-row-0-value-reps_to"
+    text: "8"
+
+# Squat: weight target unchanged at 80 (achieved value equalled the target,
+# nothing to rewrite); range still 6-8.
+- assertVisible:
+    id: "routine-editor-screen-card-Barbell_Squat-table-row-0-value-weight"
+    text: "80"
+- assertVisible:
+    id: "routine-editor-screen-card-Barbell_Squat-table-row-0-value-reps_from"
+    text: "6"
+- assertVisible:
+    id: "routine-editor-screen-card-Barbell_Squat-table-row-0-value-reps_to"
+    text: "8"

@@ -23,7 +23,7 @@ Technical blueprint. Data-layer specifics in `05`; testing of everything here in
 | Haptics/sound | `expo-haptics`, `expo-audio` |
 | Files/share | `expo-file-system`, `expo-sharing`, `expo-document-picker`, `expo-image-picker`, `expo-image-manipulator` |
 | Gestures/animation | `react-native-gesture-handler`, `react-native-reanimated` 4 |
-| Drag reorder | `react-native-reanimated-dnd` (or `react-native-draggable-flatlist` if it proves more stable on RN 0.85 — decide at M3 spike) |
+| Drag reorder | `react-native-reanimated-dnd` (**decided M3-03**: `2.0.0` — its peer deps `react-native-reanimated >=4.2.0`/`react-native-worklets >=0.7.0`/`react-native >=0.80.0` match this repo's installed versions exactly and its README claims explicit New Architecture/Reanimated-4 support; `react-native-draggable-flatlist` was 14 months stale and only declared `reanimated >=2.8.0`, pre-dating the Reanimated-4/worklets split. See `RoutinesHubScreen.tsx`'s header for the full reasoning and `docs/plan/EXECUTION-LOG.md`'s M3-03 row.) |
 | KV cache | `expo-sqlite/kv-store` (Zustand persistence, small flags) |
 | Crash/monitoring | `@sentry/react-native` via config plugin (P13) |
 | Cloud sync | `@supabase/supabase-js` + `react-native-url-polyfill` (session storage adapter on `expo-sqlite/kv-store`) (D9, `12`) |

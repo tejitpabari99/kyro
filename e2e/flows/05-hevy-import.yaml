@@ -1,0 +1,190 @@
+# M5-10 — E2E flow 5 (08 §6 item 5): Hevy CSV import.
+#
+# Import the bundled fixture CSV via a mocked picker -> preview screen shows
+# counts -> confirm -> import report -> History tab populated, PRs visible.
+#
+# ## Environment note (docs/plan/BLOCKERS.md)
+#
+# Authored only — **not executed**. This sandbox has no macOS/Xcode/iOS
+# Simulator/Maestro binary, the same constraint every prior flow's own
+# authoring pass hit (M2-18 for flows 01/03/07, M3-08 for flow 02, M4-12 for
+# flow 04 — see each task's own `EXECUTION-LOG.md` row / `docs/qa/*-
+# checklist.md`). Every testID referenced below was grep-confirmed against
+# the real source at authoring time (table below) — the furthest a flow
+# file's content can be validated without a real rendered app, matching the
+# established method exactly.
+#
+# ## The new `__DEV__` mocked-picker hook this flow depends on (M5-10, Part 1a)
+#
+# `src/features/data-transfer/HevyImportScreen.tsx`'s "Choose CSV File"
+# button normally calls the real `pickFile()` (`src/lib/hevy-import-file.ts`),
+# which lazily `require()`s `expo-document-picker` — on this headless
+# sandbox (and under Maestro, which has no way to drive a real OS file-
+# picker sheet either) that native module doesn't exist, so `pickFile()`
+# always resolves `null` and the button was, before this task, completely
+# unusable by any E2E flow. `HevyImportScreen` now accepts a
+# `devFixtureImportEnabled` prop (default `false`); when both that prop AND
+# `__DEV__` are true, tapping "Choose CSV File" writes the bundled
+# `src/domain/__fixtures__/hevy-import/sample-csv-content.ts` fixture (a
+# drift-guarded, byte-identical in-memory copy of `sample.csv` in the same
+# directory) to a real cache file (`lib/csv-export-file.ts`'s
+# `writeCacheTextFile` — the same helper CSV export already uses) and feeds
+# that file's own real `uri` through the *exact* same `importService
+# .preview(uri)` call the real picker path takes — nothing about
+# `preview()`/`confirm()` changes, only which file gets handed to them.
+# `app/import/hevy.tsx` (the only real route) passes
+# `devFixtureImportEnabled={__DEV__}`, so the bypass is live in any dev
+# build (which is what `maestro test` runs against) and structurally absent
+# from a production/TestFlight build's own behavior regardless. Same
+# "`__DEV__`-gated hook that never ships to production" framing as
+# `TimerPill.tsx`'s own `-debug-notification-id` hook (flow 07's header) —
+# see `HevyImportScreen.tsx`'s own header ("M5-10 addition") for the full
+# design, including why this needed a *second* gate beyond bare `__DEV__`
+# (Jest's own `__DEV__` is also `true`, and `HevyImportScreen.test.tsx`
+# already asserts on `pickFile()` being called with its own mocked uri — a
+# bare `__DEV__` check would have silently broken those existing tests).
+#
+# ## Fixture shape (`domain/__fixtures__/hevy-import/sample.csv`,
+# already hand-verified by M5-07's own review/tests) — what this flow can
+# assert deterministically vs. what depends on library-match state
+#
+# 4 well-formed workouts (Push Day/Cardio/Mixed Day/Quirky Day, 14 sets
+# total) + 1 malformed row ("Broken Entry", line 16, missing `start_time`).
+# This is a **fresh** install (`clearState: true`), so `duplicateWorkoutCount`
+# is always 0 regardless of the app's exercise library state — the preview
+# screen's confirm button therefore always reads "Import 4" deterministically
+# (`newWorkoutCount = workoutsFoundCount(4) - duplicateWorkoutCount(0)`,
+# `PreviewSection`'s own button-label ternary, `HevyImportScreen.tsx`).
+# Malformed-row count (1, "Broken Entry") is likewise independent of the
+# library. What is NOT asserted here: which specific exercise titles land in
+# "matched" vs. "unmatched" — the fixture's own titles ("Bench Press",
+# "Cable Fly", "Treadmill Run", "Air Squat", "Plank Hold", "Wall Sit",
+# "River Run", "Weighted Situp", "Incline Dumbbell Press", "Sled Push") were
+# checked directly against the real vendored `assets/exercise-db.json`
+# (873 entries) at authoring time: only "Incline Dumbbell Press" and
+# "Sled Push" match an existing name/alias exactly (case-insensitive); the
+# other 8 titles have zero matches and will auto-create as custom exercises
+# on a real fresh install. (`hevy-import-service.test.ts`'s own "4 built-ins
+# matched" unit test pre-seeds its OWN 4-exercise library with names chosen
+# to match — that is a deliberately controlled unit-test fixture, not a
+# claim about the real vendored dataset, and this flow does not reuse its
+# specific matched/unmatched split for that reason.) The preview screen's
+# "NEW CUSTOM EXERCISES" card (`-unmatched-card`) is still asserted visible
+# below since at least 8 of the fixture's 10 distinct titles are guaranteed
+# unmatched against the real library either way.
+#
+# ## "PRs visible" — why a list-level regex, not one specific card
+#
+# `history-list-model.ts`'s `buildHistoryCard` sums, per workout, every
+# `RecordAward` (from `RecordsService.getSnapshot(exerciseId).awards`) whose
+# `workoutId` equals that card's own workout — a full-history computation,
+# not something tied to whether a title matched the library. On a fresh
+# install, this import is the *entire* history: every one of the fixture's
+# 10 distinct exercise titles gets its first-ever (and for most, only)
+# occurrence in one of these 4 workouts, and a first-ever eligible set
+# trivially sets a record in every category that exercise type is eligible
+# for (`domain/records.ts`'s `eligibilityForExerciseType` — nothing existed
+# before it to compare against). So multiple cards are expected to show a
+# "🏆 N PR(s)" badge (`HistoryWorkoutCard.tsx`'s own literal emoji copy,
+# 07 §6) — which specific workout(s) is not asserted (that would depend on
+# exact tie-break/eligibility details not worth hard-coding here); a
+# list-level `text` regex match is the simpler, more robust check the task
+# text itself suggests, and is what's used below.
+#
+# ## Every testID/text selector below, confirmed present in source at
+# authoring time:
+#
+# | testID / selector | Source |
+# |---|---|
+# | "Profile" tab label | `app/(tabs)/_layout.tsx:68` |
+# | `profile-screen-settings-button` | `src/features/profile/ProfileScreen.tsx:250` |
+# | `settings-screen` | `app/(tabs)/profile/settings/index.tsx:339` |
+# | `settings-import-hevy-csv-row` (-> `router.push('/import/hevy')`) | `app/(tabs)/profile/settings/index.tsx:597,601` |
+# | `hevy-import-screen`, `-close`, `-idle`, `-choose-file` | `HevyImportScreen.tsx:202,217,227,235` |
+# | `hevy-import-screen-preview` (root), `-unmatched-card`, `-preview-cancel`, `-preview-confirm` | `HevyImportScreen.tsx:317,357,420,429` |
+# | `hevy-import-screen-report`, `-done` | `HevyImportScreen.tsx:453,516` |
+# | "Import 4" confirm-button text (`newWorkoutCount` ternary) | `HevyImportScreen.tsx:424` (`PreviewSection`) |
+# | "Line 16: ..." malformed-row text (`preview.malformedRows.map`) | `HevyImportScreen.tsx:403-411` |
+# | "Import complete" report heading text | `HevyImportScreen.tsx:459` (`ReportSection`) |
+# | "History" tab label | `app/(tabs)/_layout.tsx:50` |
+# | `history-list`, cards `history-list-card-<workoutId>` | `HistoryListScreen.tsx:212,281` (testID default `'history-list'`) |
+# | "🏆 N PR(s)" card stats-strip text | `HistoryWorkoutCard.tsx:62` |
+#
+# `devFixtureImportEnabled={__DEV__}` itself has no testID/text footprint —
+# it only changes which file `pickFile`'s caller hands to `preview()`, see
+# the section above.
+appId: com.tejitpabari.kyro
+name: Hevy CSV import (mocked picker)
+tags:
+  - smoke
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: allow
+
+# ---------------------------------------------------------------------------
+# Navigate to the import screen: Profile -> Settings -> Import Hevy CSV.
+# ---------------------------------------------------------------------------
+- tapOn:
+    text: "Profile"
+- tapOn:
+    id: "profile-screen-settings-button"
+- assertVisible:
+    id: "settings-screen"
+- tapOn:
+    id: "settings-import-hevy-csv-row"
+- assertVisible:
+    id: "hevy-import-screen"
+- assertVisible:
+    id: "hevy-import-screen-idle"
+
+# ---------------------------------------------------------------------------
+# Import via the mocked picker (Part 1a) -> preview counts.
+# ---------------------------------------------------------------------------
+- tapOn:
+    id: "hevy-import-screen-choose-file"
+- assertVisible:
+    id: "hevy-import-screen-preview"
+
+# Deterministic count check (see file header): 4 workouts found, 0
+# duplicates on a fresh install -> confirm button reads "Import 4".
+- assertVisible:
+    id: "hevy-import-screen-preview-confirm"
+    text: "Import 4"
+
+# New custom exercises card present (at least 8 of the fixture's 10 distinct
+# titles are guaranteed unmatched against the real vendored library — see
+# file header).
+- assertVisible:
+    id: "hevy-import-screen-unmatched-card"
+
+# The one malformed row ("Broken Entry", missing start_time) reported by
+# real line number.
+- assertVisible:
+    text: ".*Line 16.*"
+
+# ---------------------------------------------------------------------------
+# Confirm -> import report.
+# ---------------------------------------------------------------------------
+- tapOn:
+    id: "hevy-import-screen-preview-confirm"
+- assertVisible:
+    id: "hevy-import-screen-report"
+- assertVisible:
+    text: "Import complete"
+
+- tapOn:
+    id: "hevy-import-screen-done"
+
+# ---------------------------------------------------------------------------
+# History tab populated, PRs visible.
+# ---------------------------------------------------------------------------
+- tapOn:
+    text: "History"
+- assertVisible:
+    id: "history-list"
+- assertVisible:
+    id: "history-list-card-.*"
+- assertVisible:
+    text: ".*🏆.*PR.*"

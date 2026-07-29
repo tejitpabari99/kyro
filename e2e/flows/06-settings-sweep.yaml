@@ -1,0 +1,179 @@
+# M5-10 — E2E flow 6 (08 §6 item 6): settings sweep.
+#
+# Units kg -> lbs (logger values convert), theme dark -> light, RPE on
+# (column appears), first-day-of-week (calendar shifts).
+#
+# ## Environment note (docs/plan/BLOCKERS.md)
+#
+# Authored only — **not executed**. Same "no macOS/Xcode/iOS Simulator/
+# Maestro binary" constraint every prior flow's own authoring pass hit
+# (M2-18 for flows 01/03/07, M3-08 for flow 02, M4-12 for flow 04, this
+# task's own flow 05) — every testID/text selector below was grep-confirmed
+# against the real source at authoring time (table below).
+#
+# ## Two new `__DEV__`-gated debug hooks this flow depends on (M5-10, Parts
+# 1b/1c) — same pattern/framing as `TimerPill.tsx`'s existing
+# `-debug-notification-id` hook (flow 07's own header)
+#
+# 1b. **`settings-debug-theme-mode`** (`app/(tabs)/profile/settings/
+#     index.tsx`) — before this task, nothing anywhere in the app exposed
+#     which theme preference (`'system' | 'light' | 'dark'`) is actually
+#     active as inspectable text; a Maestro flow had no way to assert a
+#     theme toggle "took." This `__DEV__`-gated `<Text>`, right under the
+#     THEME segmented control, renders `settings.theme` (the raw setting
+#     value already read into this screen's own `theme` local) verbatim.
+#     Never rendered in a production/TestFlight build.
+# 1c. **`${testID}-weekday-${index}`** on `CalendarMonth`'s 7 weekday-header
+#     cells (`src/ui/CalendarMonth.tsx`) — before this task these had no
+#     testID at all (plain `<Text>`), so a first-day-of-week change (which
+#     genuinely reorders these 7 labels, `calendar-month-model.ts`'s
+#     `weekdayLabels()`) had no stable per-cell handle to assert against.
+#     Unlike 1b, this one is a **pure additive testID, not `__DEV__`-gated**
+#     — every other testID in this codebase is unconditionally present
+#     (only *debug-only extra state*, like 1b/flow 07's hook, gets the
+#     `__DEV__` gate), and adding a testID to an existing `<Text>` changes
+#     no behavior.
+#
+# ## Structure: all four settings changes first, then one spot-check pass
+#
+# Unlike a literal step-by-step transcription of 08 §6 item 6's own summary
+# sentence, every settings change happens up front (Units -> Theme -> RPE ->
+# First day of week, in the doc's own order) while still on the Settings
+# screen, and the "did it actually apply" checks happen afterward in one
+# pass — starting a workout mid-way through the settings sweep and
+# backgrounding it (via `global-workout-bar`) to keep toggling would work
+# too, but reads as more fragile for no real benefit: every setting here is
+# read live off `useSettingsStore` wherever it's needed (`ActiveWorkoutScreen`
+# via `ExerciseSetTableSection`, `CalendarScreen`), so a card built *after*
+# the setting already changed reflects it from its very first render either
+# way. Same kind of explicit structural deviation flow 1's own header
+# documents for its own two-phase split.
+#
+# ## Units: SetTable header text, not a converted numeric value
+#
+# 08 §6 item 6's own wording ("logger values convert") admits either
+# reading; this flow asserts `SetTable`'s own `KG`/`LBS` column-header label
+# (`domain/set-table-columns.ts`'s `weightLabel()`) flipping after the unit
+# toggle, rather than a specific already-typed weight value's converted
+# display number. The header-text check is exact and rounding-free (`'KG'`
+# vs `'LBS'`, a plain string swap with no floating-point conversion
+# involved) — a numeric assertion (e.g. "960 kg" -> "2116.4 lbs") would also
+# need to bake in `domain/units.ts`'s own display-rounding rule (05 §5:
+# nearest 0.5 lb at/above 10 lb) into this YAML file, which is strictly more
+# fragile for the same acceptance point (the setting applies live to the
+# logger) without adding real coverage `csv-codec`/`units.ts`'s own unit
+# tests don't already carry.
+#
+# ## Every testID/text selector below, confirmed present in source at
+# authoring time:
+#
+# | testID / selector | Source |
+# |---|---|
+# | "Profile" tab label | `app/(tabs)/_layout.tsx:68` |
+# | `profile-screen-settings-button` | `src/features/profile/ProfileScreen.tsx:250` |
+# | `settings-screen` | `app/(tabs)/profile/settings/index.tsx:339` |
+# | `settings-weight-unit-control` (+ `-kg`/`-lbs` options) | `app/(tabs)/profile/settings/index.tsx:397`, `SegmentedControl.tsx:68` |
+# | `settings-theme-control` (+ `-system`/`-light`/`-dark` options) | `app/(tabs)/profile/settings/index.tsx:358`, `SegmentedControl.tsx:68` |
+# | `settings-debug-theme-mode` (M5-10 new hook, Part 1b) | `app/(tabs)/profile/settings/index.tsx:379` |
+# | `settings-rpe-enabled` (Switch, testID lands on the Switch itself) | `app/(tabs)/profile/settings/index.tsx:474`, `SettingsToggleRow.tsx:44` |
+# | `settings-first-day-of-week-control` (+ `-monday`/`-sunday`/`-saturday` options) | `app/(tabs)/profile/settings/index.tsx:426`, `SegmentedControl.tsx:68` |
+# | "Workout" tab label | `app/(tabs)/_layout.tsx:41` |
+# | `start-empty-workout`, `active-workout(-*)` | confirmed by flow 01/03's own audit |
+# | `active-workout-exercise-picker(-search|-confirm)`, `exercise-row-Barbell_Bench_Press_-_Medium_Grip` | confirmed by flow 01/03's own audit |
+# | `.*-table-header-weight$`, `.*-table-header-rpe$` | `SetTable.tsx:106` (`${testID}-header-${column.key}`), composed via `ExerciseCard.tsx`'s `${testID}-table` (`ExerciseSetTableSection` testID) |
+# | "History" tab label | `app/(tabs)/_layout.tsx:50` |
+# | `history-list-calendar-button` | `HistoryListScreen.tsx:228` (testID default `'history-list'`) |
+# | `calendar-screen`, `calendar-screen-month` | `CalendarScreen.tsx:176,212` (testID default `'calendar-screen'`) |
+# | `calendar-screen-month-weekday-0` (M5-10 new hook, Part 1c) | `CalendarMonth.tsx:143` (`${testID}-weekday-${index}`), mounted as `${testID}-month` from `CalendarScreen.tsx:212` |
+appId: com.tejitpabari.kyro
+name: Settings sweep (units, theme, RPE, first day of week)
+tags:
+  - smoke
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: allow
+
+# ---------------------------------------------------------------------------
+# Navigate to Settings and flip every setting this flow covers.
+# ---------------------------------------------------------------------------
+- tapOn:
+    text: "Profile"
+- tapOn:
+    id: "profile-screen-settings-button"
+- assertVisible:
+    id: "settings-screen"
+
+# Units: kg -> lbs (default is kg, SETTINGS_DEFAULTS).
+- tapOn:
+    id: "settings-weight-unit-control-lbs"
+
+# Theme: dark -> light (default is 'system'), each toggle re-confirmed via
+# the new `settings-debug-theme-mode` hook (Part 1b).
+- tapOn:
+    id: "settings-theme-control-dark"
+- assertVisible:
+    id: "settings-debug-theme-mode"
+    text: "dark"
+- tapOn:
+    id: "settings-theme-control-light"
+- assertVisible:
+    id: "settings-debug-theme-mode"
+    text: "light"
+
+# RPE on (default is off, SETTINGS_DEFAULTS).
+- tapOn:
+    id: "settings-rpe-enabled"
+
+# First day of week: monday (default) -> sunday.
+- tapOn:
+    id: "settings-first-day-of-week-control-sunday"
+
+# ---------------------------------------------------------------------------
+# Units + RPE spot-check: start a workout, add an exercise, its own SetTable
+# already reflects both live settings from its very first render.
+# ---------------------------------------------------------------------------
+- tapOn:
+    text: "Workout"
+- assertVisible:
+    id: "start-empty-workout"
+- tapOn:
+    id: "start-empty-workout"
+- assertVisible:
+    id: "active-workout"
+
+- tapOn:
+    id: "active-workout-add-exercise"
+- tapOn:
+    id: "active-workout-exercise-picker-search"
+- inputText: "Barbell Bench Press - Medium Grip"
+- tapOn:
+    id: "exercise-row-Barbell_Bench_Press_-_Medium_Grip"
+- tapOn:
+    id: "active-workout-exercise-picker-confirm"
+- waitForAnimationToEnd
+
+# Units applied: the weight column header now reads LBS, not KG.
+- assertVisible:
+    id: ".*-table-header-weight$"
+    text: "LBS"
+
+# RPE column appears (weight_reps is rep-based, so `rpe_enabled` adds this
+# column per `domain/set-table-columns.ts`'s `columnsForExerciseType`).
+- assertVisible:
+    id: ".*-table-header-rpe$"
+    text: "RPE"
+
+# ---------------------------------------------------------------------------
+# First-day-of-week spot-check: the calendar's own weekday header shifts.
+# ---------------------------------------------------------------------------
+- tapOn:
+    text: "History"
+- tapOn:
+    id: "history-list-calendar-button"
+- assertVisible:
+    id: "calendar-screen"
+- assertVisible:
+    id: "calendar-screen-month-weekday-0"
+    text: "SUN"
