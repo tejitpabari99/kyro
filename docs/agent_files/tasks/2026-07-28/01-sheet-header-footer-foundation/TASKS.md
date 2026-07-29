@@ -38,6 +38,66 @@ assumption made to keep moving and why. None of these block execution.
    Assumption: verified — there is none. Task 11 adopts `SheetHeader` for the title only; no
    `ScreenFooter` is added (SF is a no-op for this file).
 
+## Parallelization
+
+Dependency shape: Tasks 1–4 are the shared primitives (`Sheet.tsx`, `SheetHeader.tsx`,
+`ScreenFooter.tsx`, `ButtonRow.tsx`+`Button.tsx`) that essentially every call-site task (5–28)
+imports. All 24 call-site tasks were checked file-by-file (via `git ls-files`) and each touches a
+distinct production file (plus its own co-located test file, also unique) — there is zero overlap
+between any two call-site tasks, so once the primitives tier is done, tasks 5–28 are all mutually
+independent and gate only on tier 0, not on each other. The team runs a hard cap of 2
+tasks/agents in parallel at any time, so below is that dependency graph flattened into waves of
+at most 2.
+
+- **Wave 1: Tasks 1, 2** — `Sheet.tsx`/`Sheet.test.tsx` (Task 1) and the new
+  `SheetHeader.tsx`/`SheetHeader.test.tsx` (Task 2) touch completely disjoint files with no shared
+  imports between them; both are foundational primitives with no dependency on each other.
+- **Wave 2: Tasks 3, 4** — the new `ScreenFooter.tsx`/`ScreenFooter.test.tsx` (Task 3) and the new
+  `ButtonRow.tsx`/`ButtonRow.test.tsx` + `Button.tsx`'s `fullWidth` addition (Task 4) touch
+  disjoint files from each other and from Wave 1. Sequenced after Wave 1 only to respect the
+  2-per-wave cap, not because of any real dependency — all four primitive tasks (1–4) are
+  mutually independent and together form the prerequisite tier that every call-site task (5–28)
+  below needs fully landed first (each retrofit imports `SheetHeader`/`ScreenFooter` and often
+  relies on Task 1's baseline `Sheet.tsx` inset behavior; Task 26 additionally imports
+  `ButtonRow`).
+- **Wave 3: Tasks 5, 6** — `app/dev/gallery.tsx` (Task 5) and
+  `app/(tabs)/profile/settings/index.tsx` (Task 6) are disjoint files in unrelated route trees,
+  no shared imports beyond the now-landed primitives.
+- **Wave 4: Tasks 7, 8** — `src/features/calendar/CalendarScreen.tsx` (Task 7) and
+  `src/features/exercises/ExerciseTypeSheet.tsx` (Task 8) are disjoint files in unrelated
+  features.
+- **Wave 5: Tasks 9, 10** — `src/features/exercises/MultiSelectOptionSheet.tsx` (Task 9) and
+  `src/features/measurements/LogEntrySheet.tsx` (Task 10) are disjoint files in unrelated
+  features.
+- **Wave 6: Tasks 11, 12** — `src/features/profile/ProfileScreen.tsx` (Task 11) and
+  `src/features/routines/FolderNameSheet.tsx` (Task 12) are disjoint files in unrelated features.
+- **Wave 7: Tasks 13, 14** — `src/features/routines/MoveToFolderSheet.tsx` (Task 13,
+  verify-only) and `src/features/routines/RoutineActionsSheet.tsx` (Task 14, verify-only) are
+  disjoint files; both make zero code changes so there is no edit surface to conflict over
+  regardless.
+- **Wave 8: Tasks 15, 16** — `src/features/routines/RoutineExerciseMenuSheet.tsx` (Task 15,
+  verify-only) and `src/features/routines/RoutineSetRow.tsx` (Task 16, verify-only) are disjoint
+  files, both verify-only with no code changes.
+- **Wave 9: Tasks 17, 18** — `src/features/workout/AddToSupersetSheet.tsx` (Task 17) and
+  `src/features/workout/ConnectedSetRow.tsx` (Task 18, verify-only, covers 2 inline sheets in
+  that one file) are disjoint files; Task 18 makes zero code changes.
+- **Wave 10: Tasks 19, 20** — `src/features/workout/DurationEditSheet.tsx` (Task 19) and
+  `src/features/workout/DurationTimerSheet.tsx` (Task 20) are disjoint files (similarly-named but
+  unrelated components), no shared imports beyond the primitives.
+- **Wave 11: Tasks 21, 22** — `src/features/workout/EditWorkoutMetaSheet.tsx` (Task 21) and
+  `src/features/workout/ExerciseCardMenuSheet.tsx` (Task 22, verify-only) are disjoint files;
+  Task 22 makes zero code changes.
+- **Wave 12: Tasks 23, 24** — `src/features/workout/NoteEditSheet.tsx` (Task 23) and
+  `src/features/workout/PlateCalculatorSheet.tsx` (Task 24) are disjoint files, no shared
+  imports beyond the primitives.
+- **Wave 13: Tasks 25, 26** — `src/features/workout/RestTimerSheet.tsx` (Task 25) and
+  `src/features/workout/SaveWorkoutSheet.tsx` (Task 26, additionally imports `ButtonRow` from
+  Wave 2) are disjoint files with no shared imports between them.
+- **Wave 14: Tasks 27, 28** — `src/features/workout/TimerPill.tsx` (Task 27) and
+  `src/features/workout/ReorderExercisesSheet.tsx` (Task 28) are disjoint files; Task 28's
+  deliberate non-addition of a Cancel control (left to an unrelated external PRD, "PRD C") has no
+  bearing on Task 27's file. This is the final wave — no tasks remain after it.
+
 ## Task 1 — `Sheet.tsx`: true full-height, edge-to-edge `full`, baseline bottom inset
 
 - Files:
