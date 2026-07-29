@@ -39,6 +39,42 @@
 
 ---
 
+## Parallelization
+
+Files touched, one line each: Task 1 → `RoutineCard.tsx`; Task 2 →
+`HistoryWorkoutCard.tsx`; Task 3 → `HistoryListScreen.test.tsx`; Task 4 →
+`RoutinesHubScreen.test.tsx`; Task 5 → `HistoryListScreen.test.tsx` (same
+file as Task 3). Every other file pair is disjoint. Capped at 2 concurrent
+tasks/agents per the hard constraint below.
+
+- **Wave 1 — Tasks 1, 2** (concurrent). Neither has a stated `Depends on`.
+  Task 1 edits only `src/features/routines/RoutineCard.tsx`; Task 2 edits
+  only `src/features/history/HistoryWorkoutCard.tsx` — disjoint files in
+  disjoint feature folders (routines vs. history), no shared imports or
+  types between the two components, so they're safe to run at the same
+  time.
+- **Wave 2 — Tasks 3, 4** (concurrent). Task 3 depends on Task 2 (only
+  makes sense once `HistoryWorkoutCard` stops rendering `exerciseLines`);
+  Task 4 depends on Task 1 (asserts the new `footnote` type scale Task 1
+  introduces) — both prerequisites landed in Wave 1, so both are now
+  unblocked. Task 3 edits `src/features/history/__tests__/
+  HistoryListScreen.test.tsx`; Task 4 edits `src/features/routines/
+  __tests__/RoutinesHubScreen.test.tsx` — disjoint files (history tests vs.
+  routines tests), and neither task's `Depends on` names the other, so
+  they're safe to run at the same time.
+- **Wave 3 — Task 5** (alone). Task 5 depends on both Task 2 *and* Task 3.
+  It can't be paired with anything at this point: every other task (1–4)
+  has already landed by the start of this wave, so there's nothing left to
+  run it alongside. It also can't be pulled earlier into Wave 2 alongside
+  Task 3 — it edits the exact same file Task 3 edits
+  (`HistoryListScreen.test.tsx`), and it explicitly depends on Task 3's
+  edit landing first (removing the now-false assertion) so the file's
+  existing suite is green before Task 5 appends more tests to it;
+  editing the same file concurrently in two different, dependent states is
+  not safe, unlike Wave 1/2's genuinely disjoint-file pairs.
+
+---
+
 ### Task 1 — Restyle `RoutineCard.tsx`: drop `Card`, plain `View` + hairline divider
 
 - **Files:**
