@@ -135,3 +135,36 @@ describe('Button — press/disabled behavior', () => {
     expect(flatStyle.opacity).toBe(1);
   });
 });
+
+describe('Button — fullWidth', () => {
+  it.each(['sm', 'md'] as ButtonSize[])(
+    'applies alignSelf:stretch for size="%s" when fullWidth is set',
+    async (size) => {
+      await render(
+        <ThemeProvider preference="dark">
+          <Button label="Finish" size={size} fullWidth onPress={() => {}} />
+        </ThemeProvider>,
+      );
+
+      const button = screen.getByRole('button');
+      const flatStyle = Array.isArray(button.props.style)
+        ? Object.assign({}, ...button.props.style)
+        : button.props.style;
+      expect(flatStyle.alignSelf).toBe('stretch');
+    },
+  );
+
+  it('is a no-op for size="lg" (already stretch)', async () => {
+    await render(
+      <ThemeProvider preference="dark">
+        <Button label="Finish" size="lg" fullWidth onPress={() => {}} />
+      </ThemeProvider>,
+    );
+
+    const button = screen.getByRole('button');
+    const flatStyle = Array.isArray(button.props.style)
+      ? Object.assign({}, ...button.props.style)
+      : button.props.style;
+    expect(flatStyle.alignSelf).toBe('stretch');
+  });
+});
