@@ -70,4 +70,23 @@ describe('ExerciseTypeSheet', () => {
     // cheapest reliable signal without reaching into lucide's internals.
     expect(row).toBeTruthy();
   });
+
+  it('pressing the header Cancel control calls onDismiss', async () => {
+    const onDismiss = jest.fn();
+    await render(
+      <ThemeProvider preference="dark">
+        <ExerciseTypeSheet
+          testID="type-sheet"
+          visible
+          onDismiss={onDismiss}
+          value={null}
+          onChange={jest.fn()}
+        />
+      </ThemeProvider>,
+    );
+
+    await fireEvent.press(screen.getByTestId('type-sheet-header-left'));
+
+    expect(onDismiss).toHaveBeenCalled();
+  });
 });

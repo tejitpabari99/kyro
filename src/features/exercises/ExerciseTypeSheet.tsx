@@ -17,10 +17,12 @@
  */
 import React from 'react';
 import { Check } from 'lucide-react-native';
-import { ScrollView, Text, View } from 'react-native';
+import { ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EXERCISE_TYPE_DESCRIPTIONS, EXERCISE_TYPE_OPTIONS, type ExerciseType } from '@/domain/enums';
 import { Sheet } from '@/ui/Sheet';
+import { SheetHeader } from '@/ui/SheetHeader';
 import { ListRow } from '@/ui/ListRow';
 import { useTheme } from '@/ui/theme-provider';
 
@@ -39,7 +41,8 @@ export function ExerciseTypeSheet({
   onChange,
   testID,
 }: ExerciseTypeSheetProps): React.JSX.Element {
-  const { colors, typography, spacing } = useTheme();
+  const { colors, spacing } = useTheme();
+  const insets = useSafeAreaInsets();
 
   const select = (next: ExerciseType): void => {
     onChange(next);
@@ -48,10 +51,13 @@ export function ExerciseTypeSheet({
 
   return (
     <Sheet visible={visible} onDismiss={onDismiss} detent="full" testID={testID}>
-      <View style={{ paddingHorizontal: spacing['4'], paddingBottom: spacing['2'] }}>
-        <Text style={[typography.headline, { color: colors.text.primary }]}>Exercise Type</Text>
-      </View>
-      <ScrollView>
+      <SheetHeader
+        testID={testID ? `${testID}-header` : undefined}
+        title="Exercise Type"
+        left={{ kind: 'label', label: 'Cancel', onPress: onDismiss }}
+        safeTop
+      />
+      <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + spacing['2'] }}>
         {EXERCISE_TYPE_OPTIONS.map((option, index) => (
           <ListRow
             key={option.value}
