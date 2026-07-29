@@ -61,7 +61,9 @@ import { Button } from '@/ui/Button';
 import { CalendarMonth, type CalendarMonthDayCell } from '@/ui/CalendarMonth';
 import { EmptyState } from '@/ui/EmptyState';
 import { ListRow } from '@/ui/ListRow';
+import { ScreenFooter } from '@/ui/ScreenFooter';
 import { Sheet } from '@/ui/Sheet';
+import { SheetHeader } from '@/ui/SheetHeader';
 import { useTheme } from '@/ui/theme-provider';
 
 import { buildMonthGrid, formatMonthLabel, formatStreakLabel, weekdayLabels } from './calendar-month-model';
@@ -226,11 +228,12 @@ export function CalendarScreen({
         onDismiss={handleDismissSheet}
         detent="half"
       >
+        <SheetHeader
+          testID={`${testID}-day-sheet-header`}
+          title={selectedDate ?? ''}
+          safeTop={false}
+        />
         <View style={{ padding: spacing['4'] }}>
-          <Text style={[typography.headline, { color: colors.text.primary, marginBottom: spacing['3'] }]}>
-            {selectedDate ?? ''}
-          </Text>
-
           {dayWorkoutsQuery.isLoading ? (
             <ActivityIndicator color={colors.accent.primary} />
           ) : isDayEmpty ? (
@@ -243,12 +246,14 @@ export function CalendarScreen({
               >
                 No workouts on this day.
               </Text>
-              <Button
-                testID={`${testID}-log-past-workout`}
-                label="Log past workout"
-                variant="tonal"
-                onPress={handleLogPastWorkout}
-              />
+              <ScreenFooter testID={`${testID}-day-sheet-footer`}>
+                <Button
+                  testID={`${testID}-log-past-workout`}
+                  label="Log past workout"
+                  variant="tonal"
+                  onPress={handleLogPastWorkout}
+                />
+              </ScreenFooter>
             </View>
           ) : (
             <View>
