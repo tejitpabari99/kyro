@@ -42,6 +42,66 @@ moving and why. None of these block execution.
    yet. This is an execution-order choice for this document, not a PRD decision — the PRD
    itself doesn't mandate an order, only that all of §6's rows land.
 
+## Parallelization
+
+Task-dependency and file-touch analysis for running this PRD with at most 2 concurrent
+agents (hard cap). No two tasks in the list below touch the same file — every task's
+`Files:` block was cross-checked against every other task's, and there is zero overlap
+across all 19 — so every pairing here is chosen purely for dependency-order safety, not
+merge-conflict avoidance. Tasks 2 and 4 gate the largest number of downstream tasks (both
+via explicit "depends on Task 2/4" notes and via the Slot→Stack conversions those
+downstream back-buttons attach to), so they're scheduled first to unlock maximum
+parallelism as early as possible.
+
+1. **Wave 1 — Tasks 2, 4**: Both are foundational (directory rename + Slot→Stack for
+   `home/`; Slot→Stack for `profile/`) with no dependency on any other task, and they touch
+   fully disjoint file trees (`app/(tabs)/history/*` → `app/(tabs)/home/*` vs.
+   `app/(tabs)/profile/_layout.tsx`). Landed first because Tasks 5, 6, 8, 9, 10, 11, 12, 13,
+   14, 15, 16, 17, 18 all key off one or both of them.
+2. **Wave 2 — Tasks 5, 1**: Task 5 depends on Task 4 (needs the Profile segment's Stack
+   container for its new back button), now satisfied. Task 1 has no dependencies at all.
+   Files don't overlap (`app/(tabs)/exercises/*` + new `profile/exercises.tsx` +
+   `ExerciseBrowseScreen.tsx`/test vs. `app/(tabs)/_layout.tsx`).
+3. **Wave 3 — Tasks 14, 3**: Task 14 depends on Task 2 (`/history`→`/home` route renames)
+   and Task 5 (the `/profile/exercises` target it repoints the "Exercises" shortcut to),
+   both now landed. Task 3 has no dependencies. Files don't overlap (`ProfileScreen.tsx` +
+   its interactions test vs. `app/(tabs)/workout/_layout.tsx`).
+4. **Wave 4 — Tasks 6, 7**: Task 6's `<Redirect href="/home" />` target only exists as a
+   real route once Task 2 lands (satisfied); this dependency isn't called out explicitly in
+   the task's own text but follows the same logic Open Question #5 applies to the other
+   `/home`-targeting tasks. Task 7 has no dependencies. Files don't overlap (`app/index.tsx`
+   vs. `app/_layout.tsx` — the root layout, distinct from every tab-segment `_layout.tsx`
+   touched by earlier waves).
+5. **Wave 5 — Tasks 8, 9**: Task 8 depends on Task 2 (route-rename target); Task 9 depends
+   on Task 4 (Stack container for its back button) — both satisfied. Files don't overlap
+   (`HistoryListScreen.tsx` vs. `StatisticsScreen.tsx` + test).
+6. **Wave 6 — Tasks 10, 11**: Both depend only on Task 4 (satisfied); Task 11 is explicitly
+   noted as independent of Task 5. Files don't overlap (`MeasuresHomeScreen.tsx` + test vs.
+   `app/(tabs)/profile/settings/index.tsx` + test).
+7. **Wave 7 — Tasks 12, 13**: Task 12 depends on Task 2 (route rename) and Task 4 (Stack
+   container); Task 13's real dependency is Task 2 only (it's reached through the `home/`
+   segment's Stack, not Profile's — its own text calls out "no direct file dependency"
+   otherwise) — both satisfied. Files don't overlap (`CalendarScreen.tsx` + test vs.
+   `HistoryDetailScreen.tsx` + test — same feature directory, different files).
+8. **Wave 8 — Tasks 15, 16**: Both are single-line `/history/…` → `/home/…` route renames
+   depending only on Task 2 (satisfied). Files don't overlap (`EditWorkoutScreen.tsx` vs.
+   `ActiveWorkoutScreen.tsx`).
+9. **Wave 9 — Tasks 17, 18**: Both are route renames (one call site, two call sites
+   respectively) depending only on Task 2 (satisfied). Files don't overlap
+   (`ExerciseHistoryTab.tsx` vs. `ExerciseRecordsTab.tsx`).
+10. **Wave 10 — Task 19 (alone)**: Explicitly depends on every one of Tasks 1–18 ("depends
+    on every prior task, land this last") — it rewrites the tab-shell smoke test to assert
+    the final 3-tab route tree, updated empty-state copy, and the new `/profile/exercises`
+    case, none of which are meaningful until every other task has landed. By the time this
+    wave runs, no other task remains to pair it with — it is the terminal task by
+    construction, not a scheduling artifact.
+
+This is 10 waves total (nine 2-task waves plus one solo final wave) — the minimum possible
+under the 2-task cap: 18 of the 19 tasks are mutually parallelizable once their individual
+dependencies clear (⌈18/2⌉ = 9 waves), and the longest dependency chain (Task 4 → Task 5 →
+Task 14) needs 3 sequential stages before Task 19's wave, both of which this schedule
+satisfies exactly.
+
 ## Task 1 — `app/(tabs)/_layout.tsx`: 3-tab structure
 
 - Files: `/root/projects/kyro/app/(tabs)/_layout.tsx`
