@@ -25,7 +25,9 @@ import { ChevronDown, ChevronUp, GripVertical } from 'lucide-react-native';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { Button } from '@/ui/Button';
+import { ScreenFooter } from '@/ui/ScreenFooter';
 import { Sheet } from '@/ui/Sheet';
+import { SheetHeader } from '@/ui/SheetHeader';
 import { useTheme } from '@/ui/theme-provider';
 
 export interface ReorderableExercise {
@@ -86,11 +88,12 @@ export function ReorderExercisesSheet({
 
   return (
     <Sheet visible={visible} onDismiss={onDismiss} detent="full" testID={testID}>
-      <View style={{ paddingHorizontal: spacing['4'], flex: 1 }}>
-        <Text style={[typography.headline, { color: colors.text.primary, marginBottom: spacing['3'] }]}>
-          Reorder Exercises
-        </Text>
-        <ScrollView style={{ flex: 1 }}>
+      <View style={{ flex: 1 }}>
+        <SheetHeader testID={`${testID}-header`} title="Reorder Exercises" safeTop />
+        {/* PRD C (reorder-exercises-sheet-fixes) owns adding a Cancel/dismiss
+            control to this header per §4.5's corollary — deliberately not
+            added here to avoid two PRDs editing the same header row. */}
+        <ScrollView contentContainerStyle={{ paddingHorizontal: spacing['4'] }}>
           {draft.map((exercise, index) => (
             <View
               key={exercise.id}
@@ -134,14 +137,15 @@ export function ReorderExercisesSheet({
               </Pressable>
             </View>
           ))}
+          <ScreenFooter testID={`${testID}-footer`}>
+            <Button
+              testID={`${testID}-save`}
+              label="Save Order"
+              variant="primary"
+              onPress={handleSave}
+            />
+          </ScreenFooter>
         </ScrollView>
-        <Button
-          testID={`${testID}-save`}
-          label="Save Order"
-          variant="primary"
-          onPress={handleSave}
-          style={{ marginTop: spacing['4'] }}
-        />
       </View>
     </Sheet>
   );
