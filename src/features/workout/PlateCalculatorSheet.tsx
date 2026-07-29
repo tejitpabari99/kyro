@@ -42,7 +42,9 @@ import { formatWeightLb, lbToKg } from '@/domain/units';
 import { useSettingsStore } from '@/features/settings/settings-store';
 import { Button } from '@/ui/Button';
 import { NumericInput, sanitizeNumericInput } from '@/ui/NumericInput';
+import { ScreenFooter } from '@/ui/ScreenFooter';
 import { Sheet } from '@/ui/Sheet';
+import { SheetHeader } from '@/ui/SheetHeader';
 import { useTheme } from '@/ui/theme-provider';
 
 import { useKeyboardFocusStore } from './keyboardFocusStore';
@@ -137,11 +139,13 @@ export function PlateCalculatorSheet({
 
   return (
     <Sheet visible={visible} onDismiss={onDismiss} detent="full" testID={testID}>
+      <SheetHeader
+        testID={`${testID}-header`}
+        title="Plate Calculator"
+        right={{ kind: 'label', label: 'Done', tone: 'accent', onPress: onDismiss }}
+        safeTop
+      />
       <ScrollView contentContainerStyle={{ paddingHorizontal: spacing['4'], paddingBottom: spacing['6'] }}>
-        <Text style={[typography.headline, { color: colors.text.primary, marginBottom: spacing['3'] }]}>
-          Plate Calculator
-        </Text>
-
         <Text style={[typography.footnote, { color: colors.text.secondary, marginBottom: spacing['2'] }]}>
           TARGET WEIGHT ({weightSuffix(weightUnit)})
         </Text>
@@ -211,67 +215,66 @@ export function PlateCalculatorSheet({
               {weightSuffix(weightUnit)}
             </Text>
 
-            {result.exact ? (
-              <Button
-                testID={`${testID}-use-value`}
-                label="Use this value"
-                variant="primary"
-                onPress={() => handleUseValue({ perSide: result.perSide, achieved: result.achieved })}
-                style={{ marginTop: spacing['4'] }}
-              />
-            ) : (
-              <>
-                <Text
-                  style={[typography.footnote, { color: colors.text.secondary, marginTop: spacing['2'] }]}
-                >
-                  Exact target isn&apos;t achievable with this equipment — nearest options:
-                </Text>
-                {result.lower !== null ? (
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      marginTop: spacing['3'],
-                    }}
-                  >
-                    <Text style={[typography.body, { color: colors.text.primary }]}>
-                      Lower: {displayLabel(result.lower.achieved, weightUnit)}
-                      {weightSuffix(weightUnit)}
-                    </Text>
-                    <Button
-                      testID={`${testID}-use-lower`}
-                      label="Use this value"
-                      variant="tonal"
-                      size="sm"
-                      onPress={() => handleUseValue(result.lower as PlateSolution)}
-                    />
-                  </View>
-                ) : null}
-                {result.upper !== null ? (
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      marginTop: spacing['2'],
-                    }}
-                  >
-                    <Text style={[typography.body, { color: colors.text.primary }]}>
-                      Upper: {displayLabel(result.upper.achieved, weightUnit)}
-                      {weightSuffix(weightUnit)}
-                    </Text>
-                    <Button
-                      testID={`${testID}-use-upper`}
-                      label="Use this value"
-                      variant="tonal"
-                      size="sm"
-                      onPress={() => handleUseValue(result.upper as PlateSolution)}
-                    />
-                  </View>
-                ) : null}
-              </>
-            )}
+            <ScreenFooter testID={`${testID}-footer`}>
+              {result.exact ? (
+                <Button
+                  testID={`${testID}-use-value`}
+                  label="Use this value"
+                  variant="primary"
+                  onPress={() => handleUseValue({ perSide: result.perSide, achieved: result.achieved })}
+                />
+              ) : (
+                <>
+                  <Text style={[typography.footnote, { color: colors.text.secondary }]}>
+                    Exact target isn&apos;t achievable with this equipment — nearest options:
+                  </Text>
+                  {result.lower !== null ? (
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        marginTop: spacing['3'],
+                      }}
+                    >
+                      <Text style={[typography.body, { color: colors.text.primary }]}>
+                        Lower: {displayLabel(result.lower.achieved, weightUnit)}
+                        {weightSuffix(weightUnit)}
+                      </Text>
+                      <Button
+                        testID={`${testID}-use-lower`}
+                        label="Use this value"
+                        variant="tonal"
+                        size="sm"
+                        onPress={() => handleUseValue(result.lower as PlateSolution)}
+                      />
+                    </View>
+                  ) : null}
+                  {result.upper !== null ? (
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        marginTop: spacing['2'],
+                      }}
+                    >
+                      <Text style={[typography.body, { color: colors.text.primary }]}>
+                        Upper: {displayLabel(result.upper.achieved, weightUnit)}
+                        {weightSuffix(weightUnit)}
+                      </Text>
+                      <Button
+                        testID={`${testID}-use-upper`}
+                        label="Use this value"
+                        variant="tonal"
+                        size="sm"
+                        onPress={() => handleUseValue(result.upper as PlateSolution)}
+                      />
+                    </View>
+                  ) : null}
+                </>
+              )}
+            </ScreenFooter>
           </>
         ) : null}
       </ScrollView>
