@@ -14,6 +14,58 @@ line-number drift found in `ExerciseCardMenuSheet.tsx`,
 
 ---
 
+## Parallelization
+
+Waves are capped at 2 concurrent tasks (hard constraint: only 2
+people/agents ever work this project at once). Determined from each task's
+stated dependency and its `Files:` list — two tasks are only paired when
+they touch fully disjoint files (or, per Task 1/2, disjoint-file deletions
+whose end state doesn't depend on relative order) and neither is blocked
+waiting on the other.
+
+- **Wave 1 — Task 1, Task 2.** Task 1 deletes
+  `AddWarmUpSetsSheet.tsx`/its test; Task 2 deletes `domain/warmup-calc.ts`/
+  its test. Completely disjoint files. Task 2's own text notes
+  `warmup-calc` has exactly one production importer (`AddWarmUpSetsSheet.tsx`,
+  Task 1) — but that's a *reasoning* dependency about why the module is safe
+  to delete, not a file-order dependency: both are outright file deletions,
+  so doing them at the same time converges on the same end state regardless
+  of which lands first (confirmed by grep: `warmup-calc` today only appears
+  in `AddWarmUpSetsSheet.tsx`, `warmup-calc.test.ts` itself, and a
+  comment-only citation in `plate-calc.ts`). Task 1's note "do this first"
+  is about giving the *later* compile-dependent tasks (3–6) a clean
+  TypeScript signal, not about ordering vs. Task 2.
+
+- **Wave 2 — Task 3, Task 7.** Task 3 (edit
+  `ExerciseCardMenuSheet.tsx`) explicitly depends on Tasks 1–2, both done in
+  Wave 1. Task 7 (doc-comment-only touch-ups across six files —
+  `ConnectedSetRow.tsx`, `workoutStoreContext.ts`, `EditWorkoutScreen.tsx`,
+  `PlateCalculatorSheet.tsx`, `measurement-units.ts`,
+  `LogEntrySheet.test.tsx`) only depends on Task 1 (its own text: "can be
+  done any time after Task 1 (no compile dependency)"), also satisfied.
+  Task 3's file and Task 7's six files are entirely disjoint from each
+  other, so they can run concurrently.
+
+- **Wave 3 — Task 4, Task 5.** Task 4 (edit `ExerciseCard.tsx`) and Task 5
+  (edit `ExerciseCardMenuSheet.test.tsx`) each explicitly depend only on
+  Task 3, done in Wave 2. Their files are disjoint (`ExerciseCard.tsx` vs.
+  `ExerciseCardMenuSheet.test.tsx`), and neither depends on the other, so
+  they can run concurrently.
+
+- **Wave 4 — Task 6 (alone).** Depends on Task 4, done in Wave 3. Cannot be
+  paired: Task 7 (its only remaining same-eligibility peer from an earlier
+  wave) is already complete by this point, and the only task left after
+  this one — Task 8 — can't run alongside it because Task 8 depends on
+  Task 6 itself finishing. Nothing else is both ready and unblocked at this
+  point.
+
+- **Wave 5 — Task 8 (alone).** The final verification sweep explicitly
+  requires Tasks 1–7 all complete (grep sweep, `tsc --noEmit`, full Jest
+  run) before it can run meaningfully, and it's the last task in the list —
+  there is nothing left to pair it with.
+
+---
+
 ### Task 1 — Delete `AddWarmUpSetsSheet.tsx` and its test
 
 - **Files:**
