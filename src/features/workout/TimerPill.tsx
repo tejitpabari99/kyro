@@ -68,8 +68,11 @@ import { formatDuration } from '@/domain/units';
 import { useSettingsStore } from '@/features/settings/settings-store';
 import { selection, timerComplete } from '@/lib/haptics';
 import { playTimerChime } from '@/lib/sound';
+import { Button } from '@/ui/Button';
 import { ProgressRing } from '@/ui/ProgressRing';
+import { ScreenFooter } from '@/ui/ScreenFooter';
 import { Sheet } from '@/ui/Sheet';
+import { SheetHeader } from '@/ui/SheetHeader';
 import { Snackbar } from '@/ui/Snackbar';
 import { useTheme } from '@/ui/theme-provider';
 
@@ -301,29 +304,40 @@ export function TimerPill({ testID = 'timer-pill' }: TimerPillProps): React.JSX.
         onDismiss={() => setSheetVisible(false)}
         detent="full"
       >
-        <View style={styles.sheetContent}>
-          <ProgressRing
-            testID={`${testID}-sheet-ring`}
-            progress={progress}
-            size={SHEET_RING_SIZE}
-            strokeWidth={SHEET_RING_STROKE}
-            color={colors.accent.primary}
-            trackColor={colors.bg.elevated}
-          >
-            <Text
-              testID={`${testID}-sheet-remaining`}
-              style={[typography.display, { color: colors.text.primary }]}
+        <View style={{ flex: 1 }}>
+          <SheetHeader testID={`${testID}-sheet-header`} title="Rest Timer" safeTop />
+          <View style={styles.sheetContent}>
+            <ProgressRing
+              testID={`${testID}-sheet-ring`}
+              progress={progress}
+              size={SHEET_RING_SIZE}
+              strokeWidth={SHEET_RING_STROKE}
+              color={colors.accent.primary}
+              trackColor={colors.bg.elevated}
             >
-              {remainingText}
-            </Text>
-          </ProgressRing>
-          <View style={{ marginTop: spacing['6'] }}>
-            <TimerControlsRow
-              testIDPrefix={`${testID}-sheet`}
-              onAdjust={handleAdjust}
-              onSkip={handleSkip}
-            />
+              <Text
+                testID={`${testID}-sheet-remaining`}
+                style={[typography.display, { color: colors.text.primary }]}
+              >
+                {remainingText}
+              </Text>
+            </ProgressRing>
+            <View style={{ marginTop: spacing['6'] }}>
+              <TimerControlsRow
+                testIDPrefix={`${testID}-sheet`}
+                onAdjust={handleAdjust}
+                onSkip={handleSkip}
+              />
+            </View>
           </View>
+          <ScreenFooter testID={`${testID}-sheet-footer`}>
+            <Button
+              testID={`${testID}-sheet-close`}
+              label="Close"
+              variant="tonal"
+              onPress={() => setSheetVisible(false)}
+            />
+          </ScreenFooter>
         </View>
       </Sheet>
     </>
