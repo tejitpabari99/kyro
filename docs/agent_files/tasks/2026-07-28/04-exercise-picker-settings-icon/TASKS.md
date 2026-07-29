@@ -34,6 +34,56 @@
 
 ---
 
+## Parallelization
+
+Capped at 2 concurrent tasks per wave. File touch-points: Tasks 1 creates a new
+file; Tasks 2, 3, 4, 5, 6 all edit `src/features/workout/ExercisePickerSheet.tsx`
+(the same file, in that build order); Tasks 7 and 8 both edit
+`src/features/workout/__tests__/ExerciseCard.operations.test.tsx` (the same
+file, but in genuinely disjoint locations).
+
+1. **Wave 1 — Tasks 1, 2.** Task 1 creates the new
+   `ExercisePickerOptionsSheet.tsx` file; Task 2 only adds four import lines
+   (three from existing libraries, plus a `./ExercisePickerOptionsSheet`
+   import) to `ExercisePickerSheet.tsx`. Different files, and Task 2's import
+   line is given verbatim in the task text — it doesn't require reading Task
+   1's file contents, only that the file eventually exists at that path with
+   the named export, which Task 1 guarantees regardless of landing order. Safe
+   to run concurrently.
+2. **Wave 2 — Task 3.** Adds the `optionsSheetVisible` state hook to
+   `ExercisePickerSheet.tsx`. Same file as Task 2 (must land after it to avoid
+   a same-file conflict), and nothing else is ready yet: Tasks 4–6 all need
+   this state and are also same-file edits, and Tasks 7–8 need the whole
+   feature built. Can't be paired.
+3. **Wave 3 — Task 4.** Adds `handleResetFilters`/`handleOpenAppSettings`,
+   both of which call `setOptionsSheetVisible` from Task 3. Same file as
+   Tasks 2/3/5/6 — even though this task doesn't itself depend on Task 5,
+   two agents editing the same growing file concurrently risk clobbering or
+   mis-anchoring each other's patch, so it stays sequential. Can't be paired.
+4. **Wave 4 — Task 5.** Edits the header `View` block to add the gear
+   `Pressable`, using `SettingsIcon`/`Pressable` (Task 2's imports) and
+   `setOptionsSheetVisible` (Task 3's state). Same file as Task 4 — kept
+   sequential for the same same-file-conflict reason as Wave 3, even though
+   Task 5 doesn't read anything Task 4 wrote. Can't be paired.
+5. **Wave 5 — Task 6.** Renders `<ExercisePickerOptionsSheet />`, wiring
+   props from Tasks 1 (component), 3 (`optionsSheetVisible`), and 4
+   (`handleResetFilters`/`handleOpenAppSettings`). The task text itself says
+   to do this "last among the implementation tasks" — same file as Tasks
+   2–5, must land after all of them. Can't be paired.
+6. **Wave 6 — Tasks 7, 8.** Both add test coverage to
+   `ExerciseCard.operations.test.tsx`, and both require the full feature
+   (Waves 1–5) to exist since they exercise the real rendered gear
+   icon/options sheet. They touch the same file, but in clearly disjoint,
+   non-adjacent locations: Task 7 appends a brand-new `describe` block for
+   the options-sheet suite; Task 8 inserts one assertion line into a
+   pre-existing, unrelated `describe('ExerciseCard — Replace Exercise (02
+   §3)', ...)` test. This is disjoint-region editing, not sequential appends
+   to the same block, so it's safe to pair — whichever of the two lands
+   second should re-read the file first so its patch anchors against the
+   other's already-applied change.
+
+---
+
 ### Task 1 — Create `ExercisePickerOptionsSheet.tsx`
 
 - **Files:**
