@@ -307,7 +307,7 @@ export function LogEntrySheet({
       />
       <ScrollView
         testID={`${testID}-scroll`}
-        contentContainerStyle={{ paddingHorizontal: spacing['4'], paddingBottom: spacing['8'] }}
+        contentContainerStyle={{ paddingHorizontal: spacing['4'] }}
       >
         {entryQuery.isError || photosQuery.isError ? (
           <View style={{ marginBottom: spacing['4'] }}>
