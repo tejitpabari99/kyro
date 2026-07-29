@@ -167,6 +167,15 @@ describe('ExerciseCard — chrome (02 §3)', () => {
 
     await fireEvent.press(screen.getByTestId('card-name'));
     await waitFor(() => expect(screen.getByTestId('card-detail-sheet')).toBeTruthy());
+    // The sheet itself mounts synchronously, but its content (including the
+    // tabs) stays behind an `ActivityIndicator` until the underlying
+    // exercise `useQuery` resolves — wait for the tabs to actually exist
+    // before pressing into them, or this races the query and intermittently
+    // fails to find the "history" tab testID (flaky under load/full-suite
+    // runs where the query's promise settles a tick or two later).
+    await waitFor(() =>
+      expect(screen.getByTestId('card-detail-sheet-content-tabs-history')).toBeTruthy(),
+    );
 
     // Drive real content through History, Charts, and Records — proves the
     // sheet is wired to the real repository/records service, not just its
