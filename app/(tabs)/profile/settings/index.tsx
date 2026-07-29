@@ -124,6 +124,7 @@ import { ListRow } from '@/ui/ListRow';
 import { SegmentedControl } from '@/ui/SegmentedControl';
 import { SettingsToggleRow } from '@/ui/SettingsToggleRow';
 import { Sheet } from '@/ui/Sheet';
+import { SheetHeader } from '@/ui/SheetHeader';
 import { useTheme, type ThemePreference } from '@/ui/theme-provider';
 import { WheelPicker } from '@/ui/WheelPicker';
 
@@ -672,15 +673,12 @@ export default function SettingsScreen(): React.JSX.Element {
         visible={restTimerSheetVisible}
         onDismiss={() => setRestTimerSheetVisible(false)}
       >
+        <SheetHeader
+          testID="settings-default-rest-timer-sheet-header"
+          title="Default Rest Timer"
+          safeTop={false}
+        />
         <View style={{ paddingHorizontal: spacing['4'], alignItems: 'center' }}>
-          <Text
-            style={[
-              typography.headline,
-              { color: colors.text.primary, marginBottom: spacing['3'], alignSelf: 'flex-start' },
-            ]}
-          >
-            Default Rest Timer
-          </Text>
           <WheelPicker
             testID="settings-default-rest-timer-wheel"
             options={DEFAULT_REST_TIMER_OPTIONS}
@@ -697,15 +695,12 @@ export default function SettingsScreen(): React.JSX.Element {
         visible={weeklyGoalSheetVisible}
         onDismiss={() => setWeeklyGoalSheetVisible(false)}
       >
+        <SheetHeader
+          testID="settings-weekly-goal-sheet-header"
+          title="Weekly Workout Goal"
+          safeTop={false}
+        />
         <View style={{ paddingHorizontal: spacing['4'], alignItems: 'center' }}>
-          <Text
-            style={[
-              typography.headline,
-              { color: colors.text.primary, marginBottom: spacing['3'], alignSelf: 'flex-start' },
-            ]}
-          >
-            Weekly Workout Goal
-          </Text>
           <WheelPicker
             testID="settings-weekly-goal-wheel"
             options={WEEKLY_GOAL_OPTIONS}
