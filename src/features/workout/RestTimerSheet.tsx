@@ -16,10 +16,12 @@
  * call).
  */
 import React, { useMemo } from 'react';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 
 import { Button } from '@/ui/Button';
+import { ScreenFooter } from '@/ui/ScreenFooter';
 import { Sheet } from '@/ui/Sheet';
+import { SheetHeader } from '@/ui/SheetHeader';
 import { useTheme } from '@/ui/theme-provider';
 import { WheelPicker } from '@/ui/WheelPicker';
 
@@ -42,7 +44,7 @@ export function RestTimerSheet({
   onChange,
   testID = 'rest-timer-sheet',
 }: RestTimerSheetProps): React.JSX.Element {
-  const { colors, typography, spacing } = useTheme();
+  const { spacing } = useTheme();
 
   const options = useMemo(
     () => [
@@ -63,29 +65,24 @@ export function RestTimerSheet({
 
   return (
     <Sheet visible={visible} onDismiss={onDismiss} testID={testID}>
+      <SheetHeader testID={`${testID}-header`} title="Rest Timer" safeTop={false} />
       <View style={{ paddingHorizontal: spacing['4'], alignItems: 'center' }}>
-        <Text
-          style={[
-            typography.headline,
-            { color: colors.text.primary, marginBottom: spacing['3'], alignSelf: 'flex-start' },
-          ]}
-        >
-          Rest Timer
-        </Text>
         <WheelPicker
           testID={`${testID}-wheel`}
           options={options}
           value={wheelValue}
           onChange={handleChange}
         />
+      </View>
+      <ScreenFooter testID={`${testID}-footer`}>
         <Button
           testID={`${testID}-done`}
           label="Done"
           variant="tonal"
           onPress={onDismiss}
-          style={{ marginTop: spacing['4'], alignSelf: 'stretch' }}
+          style={{ alignSelf: 'stretch' }}
         />
-      </View>
+      </ScreenFooter>
     </Sheet>
   );
 }

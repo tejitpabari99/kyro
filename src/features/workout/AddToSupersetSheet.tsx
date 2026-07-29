@@ -22,7 +22,9 @@ import { ScrollView, Text, View } from 'react-native';
 
 import { Button } from '@/ui/Button';
 import { ListRow } from '@/ui/ListRow';
+import { ScreenFooter } from '@/ui/ScreenFooter';
 import { Sheet } from '@/ui/Sheet';
+import { SheetHeader } from '@/ui/SheetHeader';
 import { useTheme } from '@/ui/theme-provider';
 
 export interface SupersetCandidate {
@@ -72,11 +74,9 @@ export function AddToSupersetSheet({
 
   return (
     <Sheet visible={visible} onDismiss={onDismiss} testID={testID}>
-      <View style={{ paddingHorizontal: spacing['4'], flex: 1 }}>
-        <Text style={[typography.headline, { color: colors.text.primary, marginBottom: spacing['3'] }]}>
-          Add to Superset
-        </Text>
-        <ScrollView style={{ flex: 1 }}>
+      <View style={{ flex: 1 }}>
+        <SheetHeader testID={`${testID}-header`} title="Add to Superset" safeTop={false} />
+        <ScrollView contentContainerStyle={{ paddingHorizontal: spacing['4'] }}>
           {candidates.length === 0 ? (
             <Text style={[typography.subhead, { color: colors.text.secondary }]}>
               No other exercises in this workout yet.
@@ -97,15 +97,16 @@ export function AddToSupersetSheet({
               />
             ))
           )}
+          <ScreenFooter testID={`${testID}-footer`}>
+            <Button
+              testID={`${testID}-confirm`}
+              label={selected.length > 0 ? `Group ${selected.length + 1} Exercises` : 'Group Exercises'}
+              variant="primary"
+              disabled={selected.length === 0}
+              onPress={handleConfirm}
+            />
+          </ScreenFooter>
         </ScrollView>
-        <Button
-          testID={`${testID}-confirm`}
-          label={selected.length > 0 ? `Group ${selected.length + 1} Exercises` : 'Group Exercises'}
-          variant="primary"
-          disabled={selected.length === 0}
-          onPress={handleConfirm}
-          style={{ marginTop: spacing['4'] }}
-        />
       </View>
     </Sheet>
   );

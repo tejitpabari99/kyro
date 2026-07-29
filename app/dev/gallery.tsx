@@ -25,9 +25,11 @@ import { Chip } from '@/ui/Chip';
 import { EmptyState } from '@/ui/EmptyState';
 import { ListRow } from '@/ui/ListRow';
 import { NumericInput } from '@/ui/NumericInput';
+import { ScreenFooter } from '@/ui/ScreenFooter';
 import { SearchBar } from '@/ui/SearchBar';
 import { SegmentedControl } from '@/ui/SegmentedControl';
 import { Sheet } from '@/ui/Sheet';
+import { SheetHeader } from '@/ui/SheetHeader';
 import { Snackbar } from '@/ui/Snackbar';
 import { StatColumn, StatTile } from '@/ui/StatColumn';
 import { useTheme, type ThemePreference } from '@/ui/theme-provider';
@@ -166,14 +168,15 @@ export default function DevGalleryScreen(): React.JSX.Element {
           onDismiss={() => setSheetVisible(false)}
           detent="half"
         >
+          <SheetHeader testID="gallery-sheet-header" title="Sheet Demo" safeTop={false} />
           <View style={{ padding: spacing['4'] }}>
             <Text style={[{ color: colors.text.primary }]}>
               Sheet content — drag down or tap the scrim to dismiss.
             </Text>
-            <View style={{ marginTop: spacing['4'] }}>
-              <Button label="Close" onPress={() => setSheetVisible(false)} />
-            </View>
           </View>
+          <ScreenFooter testID="gallery-sheet-footer">
+            <Button label="Close" onPress={() => setSheetVisible(false)} />
+          </ScreenFooter>
         </Sheet>
       </Section>
 

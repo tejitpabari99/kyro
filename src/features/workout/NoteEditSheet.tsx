@@ -9,10 +9,12 @@
  * never been set.
  */
 import React, { useState } from 'react';
-import { Text, TextInput, View } from 'react-native';
+import { TextInput, View } from 'react-native';
 
 import { Button } from '@/ui/Button';
+import { ScreenFooter } from '@/ui/ScreenFooter';
 import { Sheet } from '@/ui/Sheet';
+import { SheetHeader } from '@/ui/SheetHeader';
 import { useTheme } from '@/ui/theme-provider';
 
 export interface NoteEditSheetProps {
@@ -54,10 +56,8 @@ export function NoteEditSheet({
 
   return (
     <Sheet visible={visible} onDismiss={onDismiss} testID={testID}>
+      <SheetHeader testID={`${testID}-header`} title="Note" safeTop={false} />
       <View style={{ paddingHorizontal: spacing['4'], flex: 1 }}>
-        <Text style={[typography.headline, { color: colors.text.primary, marginBottom: spacing['3'] }]}>
-          Note
-        </Text>
         <TextInput
           testID={`${testID}-input`}
           value={draft}
@@ -78,14 +78,10 @@ export function NoteEditSheet({
             },
           ]}
         />
-        <Button
-          testID={`${testID}-save`}
-          label="Save"
-          variant="primary"
-          onPress={handleSave}
-          style={{ marginTop: spacing['4'] }}
-        />
       </View>
+      <ScreenFooter testID={`${testID}-footer`}>
+        <Button testID={`${testID}-save`} label="Save" variant="primary" onPress={handleSave} />
+      </ScreenFooter>
     </Sheet>
   );
 }

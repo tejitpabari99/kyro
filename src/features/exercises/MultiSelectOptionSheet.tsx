@@ -14,11 +14,12 @@
  */
 import React, { useState } from 'react';
 import { Check } from 'lucide-react-native';
-import { ScrollView, Text, View } from 'react-native';
+import { ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Sheet } from '@/ui/Sheet';
+import { SheetHeader } from '@/ui/SheetHeader';
 import { ListRow } from '@/ui/ListRow';
-import { Button } from '@/ui/Button';
 import { useTheme } from '@/ui/theme-provider';
 
 export interface MultiSelectOption<T extends string> {
@@ -45,7 +46,8 @@ export function MultiSelectOptionSheet<T extends string>({
   onChange,
   testID,
 }: MultiSelectOptionSheetProps<T>): React.JSX.Element {
-  const { colors, typography, spacing } = useTheme();
+  const { colors, spacing } = useTheme();
+  const insets = useSafeAreaInsets();
 
   // Local draft so toggles don't commit until `Done` — reset from `value`
   // every time the sheet transitions to open (matches `FilterOptionSheet`'s
@@ -78,19 +80,19 @@ export function MultiSelectOptionSheet<T extends string>({
 
   return (
     <Sheet visible={visible} onDismiss={onDismiss} detent="full" testID={testID}>
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          paddingHorizontal: spacing['4'],
-          paddingBottom: spacing['2'],
+      <SheetHeader
+        testID={testID ? `${testID}-header` : undefined}
+        title={title}
+        right={{
+          kind: 'label',
+          label: 'Done',
+          tone: 'accent',
+          onPress: commit,
+          testID: testID ? `${testID}-done` : undefined,
         }}
-      >
-        <Text style={[typography.headline, { color: colors.text.primary }]}>{title}</Text>
-        <Button label="Done" variant="ghost" size="sm" testID={testID ? `${testID}-done` : undefined} onPress={commit} />
-      </View>
-      <ScrollView>
+        safeTop
+      />
+      <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + spacing['2'] }}>
         {options.map((option, index) => (
           <ListRow
             key={option.value}
