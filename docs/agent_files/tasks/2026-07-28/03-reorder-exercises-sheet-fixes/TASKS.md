@@ -11,6 +11,47 @@ independently re-verified by reading each call site: `ActiveWorkoutScreen.tsx:12
 `testID`, `visible`, `onDismiss`, `exercises`, `onSave` — the full and only
 `ReorderExercisesSheetProps` shape, unchanged. This claim holds.)
 
+## Parallelization
+
+All 5 tasks touch the same single file, `ReorderExercisesSheet.tsx` (plus, optionally,
+test files for Task 4/5), so independence here means "edits land in disjoint, non-overlapping
+regions of that file with no read/write dependency between them" rather than "different files
+entirely." Verified against the file on disk: the import block sits at lines ~24-29, the
+`useTheme()` destructure at line 59, the title `Text` at lines ~90-92, and the `Button` at
+lines ~138-144 — matching the before-snippets in Tasks 1-3 exactly, confirming the claimed
+edit locations are accurate and non-overlapping. Capped at 2 concurrent tasks per wave.
+
+1. **Wave 1 — Task 1 + Task 2 (parallel)**
+   Both edit `ReorderExercisesSheet.tsx`, but in disjoint regions: Task 1 touches the import
+   block (~L24-29) and inserts one new line immediately after the `useTheme()` destructure
+   (~L59); Task 2 replaces only the title `<Text>` block (~L90-92), ~30 lines away. Neither
+   task reads, references, or depends on the other's output (Task 2's title change doesn't use
+   `insets`, and Task 1's `insets` declaration isn't consumed until Task 3). This is a trivially
+   non-overlapping same-file edit — safe to work concurrently and merge.
+
+2. **Wave 2 — Task 3 (alone)**
+   Task 3 replaces the `Button` block (~L138-144) with a version that references `insets`,
+   which only exists in scope once Task 1 has landed — a hard dependency on Wave 1's Task 1
+   output. It cannot be paired with Task 4 (which requires Tasks 1-3 *all* landed before it can
+   run) or Task 5 (which requires both Task 2's and Task 3's changes landed, and Task 3 itself
+   isn't done yet at this point), so it runs solo.
+
+3. **Wave 3 — Task 4 (alone)**
+   Task 4 is the verification gate: typecheck, lint, and the 3 existing spec files, run against
+   the full Tasks 1-3 diff. It depends on all of Wave 1 + Wave 2 being complete. It is not
+   paired with Task 5 even though Task 5 is technically ready (Task 2 + Task 3 have landed) —
+   Task 5's "additions to one of the 3 existing spec files" option would edit the very files
+   Task 4 is executing/reading, so running them concurrently risks a flaky or misleading result
+   (a new-test failure getting conflated with an actual Tasks 1-3 regression). Task 4 completing
+   cleanly first is what makes Task 5's result trustworthy.
+
+4. **Wave 4 — Task 5 (alone, optional)**
+   Task 5 adds direct style assertions for the `textAlign` from Task 2 and the `size="lg"` from
+   Task 3, and is explicitly optional/nice-to-have per the PRD. It depends on Task 2 and Task 3
+   content and is best sequenced after Task 4's clean verification pass (Wave 3) so any breakage
+   it introduces isn't mistaken for a Tasks 1-3 regression. No other task remains to pair it
+   with, so it runs solo.
+
 # Tasks: Reorder Exercises Sheet — Title, Button, and Bottom-Gap Fixes
 
 ### Task 1 — Import `useSafeAreaInsets` and call the hook
