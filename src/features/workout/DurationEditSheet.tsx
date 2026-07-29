@@ -26,7 +26,9 @@ import { Text, View } from 'react-native';
 
 import { Button } from '@/ui/Button';
 import { NumericInput } from '@/ui/NumericInput';
+import { ScreenFooter } from '@/ui/ScreenFooter';
 import { Sheet } from '@/ui/Sheet';
+import { SheetHeader } from '@/ui/SheetHeader';
 import { useTheme } from '@/ui/theme-provider';
 
 export interface DurationEditSheetProps {
@@ -120,11 +122,8 @@ export function DurationEditSheet({
 
   return (
     <Sheet visible={visible} onDismiss={onDismiss} testID={testID}>
+      <SheetHeader testID={`${testID}-header`} title="Edit Duration" safeTop={false} />
       <View style={{ paddingHorizontal: spacing['4'] }}>
-        <Text style={[typography.title2, { color: colors.text.primary, marginBottom: spacing['4'] }]}>
-          Edit Duration
-        </Text>
-
         <View style={{ marginBottom: spacing['5'] }}>
           <Text style={sectionLabelStyle}>Start Time</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing['2'] }}>
@@ -198,14 +197,15 @@ export function DurationEditSheet({
             style={{ marginTop: spacing['3'], alignSelf: 'flex-start' }}
           />
         </View>
-
+      </View>
+      <ScreenFooter testID={`${testID}-footer`}>
         <Button
           testID={`${testID}-pause-resume`}
           label={isPaused ? 'Resume Workout' : 'Pause Workout'}
           variant="tonal"
           onPress={isPaused ? onResume : onPause}
         />
-      </View>
+      </ScreenFooter>
     </Sheet>
   );
 }
