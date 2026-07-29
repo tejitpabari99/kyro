@@ -9,10 +9,12 @@
  * cross-feature-reusable components).
  */
 import React, { useState } from 'react';
-import { Text, TextInput, View } from 'react-native';
+import { TextInput, View } from 'react-native';
 
 import { Button } from '@/ui/Button';
+import { ScreenFooter } from '@/ui/ScreenFooter';
 import { Sheet } from '@/ui/Sheet';
+import { SheetHeader } from '@/ui/SheetHeader';
 import { useTheme } from '@/ui/theme-provider';
 
 export interface FolderNameSheetProps {
@@ -59,10 +61,8 @@ export function FolderNameSheet({
 
   return (
     <Sheet visible={visible} onDismiss={onDismiss} testID={testID}>
+      <SheetHeader testID={`${testID}-header`} title={title} safeTop={false} />
       <View style={{ paddingHorizontal: spacing['4'], flex: 1 }}>
-        <Text style={[typography.headline, { color: colors.text.primary, marginBottom: spacing['3'] }]}>
-          {title}
-        </Text>
         <TextInput
           testID={`${testID}-input`}
           value={draft}
@@ -80,14 +80,15 @@ export function FolderNameSheet({
             },
           ]}
         />
-        <Button
-          testID={`${testID}-save`}
-          label="Save"
-          variant="primary"
-          disabled={!canSave}
-          onPress={handleSave}
-          style={{ marginTop: spacing['4'] }}
-        />
+        <ScreenFooter testID={`${testID}-footer`}>
+          <Button
+            testID={`${testID}-save`}
+            label="Save"
+            variant="primary"
+            disabled={!canSave}
+            onPress={handleSave}
+          />
+        </ScreenFooter>
       </View>
     </Sheet>
   );

@@ -85,7 +85,9 @@ import { pickProgressPhoto, type ProgressPhotoPickSource } from '@/lib/progress-
 import { progressPhotoUri } from '@/lib/progress-photos';
 import { Button } from '@/ui/Button';
 import { NumericInput } from '@/ui/NumericInput';
+import { ScreenFooter } from '@/ui/ScreenFooter';
 import { Sheet } from '@/ui/Sheet';
+import { SheetHeader } from '@/ui/SheetHeader';
 import { useTheme } from '@/ui/theme-provider';
 
 import {
@@ -297,14 +299,16 @@ export function LogEntrySheet({
 
   return (
     <Sheet testID={testID} visible={visible} onDismiss={onDismiss} detent="full">
+      <SheetHeader
+        testID={`${testID}-header`}
+        title="Log Measurements"
+        left={{ kind: 'back', onPress: onDismiss }}
+        safeTop
+      />
       <ScrollView
         testID={`${testID}-scroll`}
         contentContainerStyle={{ paddingHorizontal: spacing['4'], paddingBottom: spacing['8'] }}
       >
-        <Text style={[typography.title2, { color: colors.text.primary, marginBottom: spacing['4'] }]}>
-          Log Measurements
-        </Text>
-
         {entryQuery.isError || photosQuery.isError ? (
           <View style={{ marginBottom: spacing['4'] }}>
             <Text
@@ -463,14 +467,16 @@ export function LogEntrySheet({
           </Text>
         ) : null}
 
-        <Button
-          label="Save"
-          variant="primary"
-          size="lg"
-          testID={`${testID}-save`}
-          loading={saveMutation.isPending}
-          onPress={() => saveMutation.mutate()}
-        />
+        <ScreenFooter testID={`${testID}-footer`}>
+          <Button
+            label="Save"
+            variant="primary"
+            size="lg"
+            testID={`${testID}-save`}
+            loading={saveMutation.isPending}
+            onPress={() => saveMutation.mutate()}
+          />
+        </ScreenFooter>
       </ScrollView>
     </Sheet>
   );

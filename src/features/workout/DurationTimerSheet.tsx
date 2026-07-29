@@ -21,7 +21,9 @@ import { Text, View, type TextStyle } from 'react-native';
 
 import { formatDuration } from '@/domain/units';
 import { Button } from '@/ui/Button';
+import { ScreenFooter } from '@/ui/ScreenFooter';
 import { Sheet } from '@/ui/Sheet';
+import { SheetHeader } from '@/ui/SheetHeader';
 import { useTheme } from '@/ui/theme-provider';
 
 export interface DurationTimerSheetProps {
@@ -96,27 +98,27 @@ export function DurationTimerSheet({
 
   return (
     <Sheet visible={visible} onDismiss={onDismiss} testID={testID}>
+      <SheetHeader testID={`${testID}-header`} title="Inline Timer" safeTop={false} />
       <View style={{ paddingHorizontal: spacing['4'], paddingBottom: spacing['4'], alignItems: 'center' }}>
-        <Text style={[typography.title2, { color: colors.text.primary, marginBottom: spacing['4'] }]}>
-          Inline Timer
-        </Text>
         <Text
           testID={`${testID}-elapsed`}
           style={[elapsedStyle, { color: colors.accent.text, marginBottom: spacing['5'] }]}
         >
           {formatDuration(elapsedSeconds) ?? '0:00'}
         </Text>
-        {startedAt === null ? (
-          <Button testID={`${testID}-start`} label="Start" variant="primary" onPress={handleStart} />
-        ) : (
-          <Button
-            testID={`${testID}-stop`}
-            label="Stop"
-            variant="destructive"
-            emphasis="fill"
-            onPress={handleStop}
-          />
-        )}
+        <ScreenFooter testID={`${testID}-footer`}>
+          {startedAt === null ? (
+            <Button testID={`${testID}-start`} label="Start" variant="primary" onPress={handleStart} />
+          ) : (
+            <Button
+              testID={`${testID}-stop`}
+              label="Stop"
+              variant="destructive"
+              emphasis="fill"
+              onPress={handleStop}
+            />
+          )}
+        </ScreenFooter>
       </View>
     </Sheet>
   );

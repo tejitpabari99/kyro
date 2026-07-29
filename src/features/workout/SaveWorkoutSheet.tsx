@@ -37,8 +37,11 @@ import type { FinishMeta } from '@/data/workouts/types';
 import type { WeightUnit } from '@/domain/enums';
 import { formatDuration } from '@/domain/units';
 import { Button } from '@/ui/Button';
+import { ButtonRow } from '@/ui/ButtonRow';
 import { NumericInput } from '@/ui/NumericInput';
+import { ScreenFooter } from '@/ui/ScreenFooter';
 import { Sheet } from '@/ui/Sheet';
+import { SheetHeader } from '@/ui/SheetHeader';
 import { StatColumn } from '@/ui/StatColumn';
 import { useTheme } from '@/ui/theme-provider';
 
@@ -167,15 +170,12 @@ export function SaveWorkoutSheet({
 
   return (
     <Sheet visible={visible} onDismiss={onDismiss} detent="full" testID={testID}>
+      <SheetHeader testID={`${testID}-header`} title="Save Workout" safeTop />
       <ScrollView
         style={{ paddingHorizontal: spacing['4'] }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Text style={[typography.title2, { color: colors.text.primary, marginBottom: spacing['4'] }]}>
-          Save Workout
-        </Text>
-
         <View style={{ marginBottom: spacing['4'] }}>
           <Text style={sectionLabelStyle}>Title</Text>
           <TextInput
@@ -324,14 +324,18 @@ export function SaveWorkoutSheet({
           </View>
         ) : null}
 
-        <Button
-          testID={`${testID}-save`}
-          label="Save Workout"
-          variant="primary"
-          size="lg"
-          onPress={handleSave}
-          style={{ marginBottom: spacing['6'] }}
-        />
+        <ScreenFooter testID={`${testID}-footer`}>
+          <ButtonRow>
+            <Button testID={`${testID}-cancel`} label="Cancel" variant="tonal" size="md" onPress={onDismiss} />
+            <Button
+              testID={`${testID}-save`}
+              label="Save Workout"
+              variant="primary"
+              size="md"
+              onPress={handleSave}
+            />
+          </ButtonRow>
+        </ScreenFooter>
       </ScrollView>
     </Sheet>
   );
