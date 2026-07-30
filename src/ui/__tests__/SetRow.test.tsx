@@ -9,11 +9,12 @@
  */
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import React from 'react';
-import type { TextInput } from 'react-native';
+import { StyleSheet, type TextInput } from 'react-native';
 
 import { SetRow, type SetRowProps } from '../SetRow';
 import { ThemeProvider } from '../theme-provider';
 import type { SetRowColumn } from '../set-table-types';
+import { colors } from '@/ui/tokens';
 
 const WEIGHT_REPS_COLUMNS: SetRowColumn[] = [
   { key: 'weight', kind: 'weight', label: 'KG' },
@@ -296,6 +297,18 @@ describe('SetRow — SET / PREVIOUS / ✓ / delete', () => {
       </ThemeProvider>,
     );
     expect(screen.getByTestId('row-check').props.accessibilityState.checked).toBe(true);
+  });
+
+  it('pins the completed-state row tint to bg.accentSubtle and check-cell fill to accent.primary — PRD J §7 regression guard, not a fix', async () => {
+    await render(
+      <ThemeProvider preference="dark">
+        <SetRow {...baseProps({ isCompleted: true })} />
+      </ThemeProvider>,
+    );
+    const rowStyle = StyleSheet.flatten(screen.getByTestId('row-content').props.style);
+    expect(rowStyle.backgroundColor).toBe(colors.dark.bg.accentSubtle);
+    const checkStyle = screen.getByTestId('row-check').props.style;
+    expect(checkStyle.backgroundColor).toBe(colors.dark.accent.primary);
   });
 
   it('tapping the delete button (always mounted, revealed by swipe in real usage) fires onDelete', async () => {
