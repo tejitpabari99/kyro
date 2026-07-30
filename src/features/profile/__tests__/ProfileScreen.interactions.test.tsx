@@ -167,9 +167,9 @@ afterEach(() => {
 describe('ProfileScreen — shortcut cards', () => {
   it.each([
     ['profile-statistics-shortcut', '/profile/statistics'],
-    ['profile-archived-exercises-shortcut', '/profile/exercises-archived'],
+    ['profile-archived-exercises-shortcut', '/profile/exercises'],
     ['profile-measures-shortcut', '/profile/measures'],
-    ['profile-calendar-shortcut', '/history/calendar'],
+    ['profile-calendar-shortcut', '/home/calendar'],
   ])('the %s card navigates to %s', async (testID, path) => {
     await renderScreen(makeWorkoutRepository(), { list: async () => [] });
 
@@ -207,14 +207,14 @@ describe('ProfileScreen — recent workouts', () => {
     expect(screen.getByText('Pull Day')).toBeTruthy();
 
     fireEvent.press(screen.getByTestId('profile-recent-card-w-1'));
-    expect(router.push).toHaveBeenCalledWith('/history/w-1');
+    expect(router.push).toHaveBeenCalledWith('/home/w-1');
   });
 
   it('navigates to History on "See All"', async () => {
     await renderScreen(makeWorkoutRepository(), { list: async () => [] });
 
     fireEvent.press(screen.getByTestId('profile-see-all-history'));
-    expect(router.push).toHaveBeenCalledWith('/history');
+    expect(router.push).toHaveBeenCalledWith('/home');
   });
 });
 

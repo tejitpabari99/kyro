@@ -23,17 +23,17 @@
  *    `computeWeekStreak` (the exact function `StatisticsScreen.tsx`/
  *    `CalendarScreen.tsx` already use) rather than a third re-derivation of
  *    the same streak rule.
- * 3. **Shortcut cards** — Statistics · Exercises (Archived management) ·
- *    Measures · Calendar, a 2×2 grid. "Exercises" here specifically means
- *    the *archived-exercise management* shortcut 04 §7 calls out
- *    ("Exercises[archived mgmt]") — general exercise browsing already has
- *    its own tab; this card routes to `/profile/exercises-archived`
- *    (M1-10), unchanged from the old placeholder's row of the same name.
- *    "Measures" routes to `/profile/measures` (M5-02/M5-03's route tree,
- *    reachable only by direct URL before this task — see that route file's
- *    own header). "Calendar" routes to `/history/calendar` (M4-06's
- *    existing route — 04 §7 doesn't fix a URL, and this is the one that
- *    already exists).
+ * 3. **Shortcut cards** — Statistics · Exercises · Measures · Calendar, a
+ *    2×2 grid. "Exercises" now opens general exercise browsing
+ *    (`/profile/exercises`, relocated from the removed Exercises tab —
+ *    see the tabs-navigation-restructure work); archived-exercise
+ *    management moved to Settings instead (a separate task adds an
+ *    "Archived Exercises" row there). "Measures" routes to
+ *    `/profile/measures` (M5-02/M5-03's route tree, reachable only by
+ *    direct URL before this task — see that route file's own header).
+ *    "Calendar" routes to `/home/calendar` (M4-06's existing route,
+ *    renamed from `/history/calendar` — 04 §7 doesn't fix a URL, and this
+ *    is the one that already exists).
  * 4. **Recent workouts (3)** — reuses `history-list-model.ts`'s
  *    `buildHistoryCard` + `HistoryWorkoutCard.tsx` (the exact same card
  *    component/model `HistoryListScreen.tsx` renders) rather than a fourth
@@ -45,11 +45,10 @@
  *    prefix `invalidateAfterWorkoutMutation` already invalidates broadly,
  *    so finishing/editing/deleting a workout anywhere refreshes this list
  *    too without this screen needing its own invalidation call). A "See
- *    All" row links to History (`/history`, the tab route already covers
- *    this — no push needed via `router`, but this screen isn't inside the
- *    History tab's own stack, so a `router.push('/(tabs)/history')` is used
- *    exactly like `HistoryWorkoutCard`'s own tap-through convention for
- *    cross-tab navigation).
+ *    All" row links to Home (`/home`, the tab route already covers this —
+ *    renamed from `/history`), and each recent-workout card press pushes
+ *    `/home/${workoutId}` exactly like `HistoryWorkoutCard`'s own
+ *    tap-through convention for cross-tab navigation.
  * 5. Dev-only rows (Design Gallery, Load Fixture Data) — unchanged from the
  *    old placeholder, `__DEV__`-gated exactly as before.
  */
@@ -57,8 +56,8 @@ import React, { useMemo, useState } from 'react';
 import { router } from 'expo-router';
 import {
   BarChart3,
+  BookOpen,
   CalendarDays,
-  ArchiveRestore,
   Database,
   FlaskConical,
   Ruler,
@@ -289,9 +288,9 @@ export function ProfileScreen({
           />
           <ShortcutCard
             testID={`${testID}-archived-exercises-shortcut`}
-            icon={<ArchiveRestore size={22} strokeWidth={1.75} color={colors.accent.text} />}
+            icon={<BookOpen size={22} strokeWidth={1.75} color={colors.accent.text} />}
             label="Exercises"
-            onPress={() => router.push('/profile/exercises-archived')}
+            onPress={() => router.push('/profile/exercises')}
           />
           <ShortcutCard
             testID={`${testID}-measures-shortcut`}
@@ -303,7 +302,7 @@ export function ProfileScreen({
             testID={`${testID}-calendar-shortcut`}
             icon={<CalendarDays size={22} strokeWidth={1.75} color={colors.accent.text} />}
             label="Calendar"
-            onPress={() => router.push('/history/calendar')}
+            onPress={() => router.push('/home/calendar')}
           />
         </View>
 
@@ -313,7 +312,7 @@ export function ProfileScreen({
             testID={`${testID}-see-all-history`}
             accessibilityRole="button"
             accessibilityLabel="See all workouts"
-            onPress={() => router.push('/history')}
+            onPress={() => router.push('/home')}
           >
             <Text style={[typography.footnote, { color: colors.accent.text }]}>See All</Text>
           </Pressable>
@@ -333,7 +332,7 @@ export function ProfileScreen({
                 key={item.workoutId}
                 testID={`${testID}-recent-card-${item.workoutId}`}
                 item={item}
-                onPress={(workoutId) => router.push(`/history/${workoutId}` as never)}
+                onPress={(workoutId) => router.push(`/home/${workoutId}` as never)}
               />
             ))}
           </View>
