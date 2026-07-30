@@ -199,7 +199,7 @@ export function ExerciseRecordsTab({
   const showLeastAssistance = exerciseType === 'bodyweight_assisted_reps';
 
   return (
-    <View testID={testID} style={{ flex: 1, padding: spacing['4'] }}>
+    <View testID={testID} style={{ padding: spacing['4'] }}>
       {trophyCards.map(({ key, recordType, holder }) => (
         <PrCard
           key={key}
