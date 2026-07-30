@@ -46,10 +46,12 @@ jest.mock('expo-router', () => ({
   router: { push: jest.fn(), back: jest.fn(), replace: jest.fn() },
 }));
 
-// `ExerciseCard`'s name-tap opens `ExerciseDetailSheet` -> the real
-// `ExerciseDetailScreen`, which imports `@/lib/files` (native-only top-level
-// imports, unavailable under Jest, 08 §5) — mocked wholesale, same
-// convention `ExerciseDetailScreen.test.tsx` established.
+// The "Add Exercise"/"Replace" picker (`ExercisePickerSheet`) renders each
+// row via `ExerciseRow`, which calls `resolveExerciseThumbnailSource`
+// (`exercise-thumbnail.ts`) to resolve custom-exercise photo thumbnails —
+// that helper imports `@/lib/files` (native-only top-level imports,
+// unavailable under Jest, 08 §5) — mocked wholesale, same convention
+// `ExerciseDetailScreen.test.tsx` established.
 jest.mock('@/lib/files');
 
 // M2-19 follow-up review (§3.3): removing an exercise whose set owns a
