@@ -734,6 +734,18 @@ describe('ActiveWorkoutScreen — footer layout (02 §2, revised — sub-project
       expect.objectContaining({ paddingBottom: 50 }),
     );
   });
+
+  it('renders the footer even when the workout has zero exercises (G4 regression guard)', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+    await useActiveWorkoutStore.getState().startEmpty({ title: 'Test Workout', startTime: Date.now() });
+    // No `addExercises(...)` call — `workout.exercises` stays empty, same
+    // "empty start" shape as the `describe('ActiveWorkoutScreen — empty
+    // start (02 §1)')` block above.
+
+    await renderScreen(exerciseRepo);
+    await waitFor(() => expect(screen.getByTestId('screen-footer')).toBeTruthy());
+  });
 });
 
 /** Seeds one exercise with a checked first set (60kg x 8) and, when `withUncheckedSecondSet`, a second bare/unchecked set — the fixture every finish-flow case below builds on. */
