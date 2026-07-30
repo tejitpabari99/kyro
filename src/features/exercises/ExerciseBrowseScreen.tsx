@@ -30,9 +30,18 @@
  *  - `/exercise/new` (+ optional `name` param) — the create-custom-exercise
  *    form, M1-09.
  *  - `/exercise/[id]` — the exercise detail screen, M1-08.
+ *
+ * --- Back button (PRD I §4.2/§4.5) --------------------------------------
+ * This screen correctly had no back control while it was a tab root; the
+ * tabs-navigation-restructure PRD relocates it under `profile/exercises.tsx`
+ * (no longer its own tab), so it's now a pushed route and needs one. A
+ * mechanical, narrow carve-out from this file's "internal content
+ * untouched" scope — not a content/logic change — matching the same
+ * hand-rolled `ChevronLeft` + `Pressable` + `router.back()` convention
+ * `ArchivedExercisesScreen.tsx` already established.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Search as SearchIcon } from 'lucide-react-native';
+import { ChevronLeft, Plus, Search as SearchIcon } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
@@ -187,7 +196,19 @@ export function ExerciseBrowseScreen({
           paddingBottom: spacing['2'],
         }}
       >
-        <Text style={[typography.title1, { color: colors.text.primary }]}>Exercises</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Pressable
+            testID={`${testID}-back`}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            hitSlop={8}
+            onPress={() => router.back()}
+            style={{ marginRight: spacing['3'] }}
+          >
+            <ChevronLeft size={24} strokeWidth={1.75} color={colors.text.primary} />
+          </Pressable>
+          <Text style={[typography.title1, { color: colors.text.primary }]}>Exercises</Text>
+        </View>
         <Pressable
           testID={`${testID}-create-button`}
           accessibilityRole="button"

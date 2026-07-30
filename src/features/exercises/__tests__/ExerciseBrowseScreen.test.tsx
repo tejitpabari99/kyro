@@ -46,7 +46,7 @@ import { FIXTURE_CUSTOM_NO_IMAGES, FIXTURE_EXERCISES, FakeExerciseRepository } f
 
 jest.mock('expo-router', () => ({
   ...jest.requireActual('expo-router'),
-  router: { push: jest.fn() },
+  router: { push: jest.fn(), back: jest.fn() },
 }));
 
 // `ExerciseRow` -> `resolveExerciseThumbnailSource` (M1-12 fix) now resolves
@@ -110,7 +110,17 @@ async function selectFilterOption(testIdPrefix: string, value: string): Promise<
 describe('ExerciseBrowseScreen (M1-07)', () => {
   beforeEach(() => {
     jest.mocked(router.push).mockClear();
+    jest.mocked(router.back).mockClear();
     getMockScrollToIndex().mockClear();
+  });
+
+  it('the back button calls router.back()', async () => {
+    renderScreen(new FakeExerciseRepository(FIXTURE_EXERCISES));
+    await waitFor(() => expect(screen.getByTestId('exercise-browse-screen-list')).toBeTruthy());
+
+    await fireEvent.press(screen.getByTestId('exercise-browse-screen-back'));
+
+    expect(router.back).toHaveBeenCalledTimes(1);
   });
 
   it('renders the fixture exercises by name (sanity check the data flows through to rows)', async () => {
