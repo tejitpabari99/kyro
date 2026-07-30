@@ -167,7 +167,7 @@ afterEach(() => {
 describe('ProfileScreen — shortcut cards', () => {
   it.each([
     ['profile-statistics-shortcut', '/profile/statistics'],
-    ['profile-archived-exercises-shortcut', '/profile/exercises'],
+    ['profile-exercises-shortcut', '/profile/exercises'],
     ['profile-measures-shortcut', '/profile/measures'],
     ['profile-calendar-shortcut', '/home/calendar'],
   ])('the %s card navigates to %s', async (testID, path) => {

@@ -287,7 +287,7 @@ export function ProfileScreen({
             onPress={() => router.push('/profile/statistics')}
           />
           <ShortcutCard
-            testID={`${testID}-archived-exercises-shortcut`}
+            testID={`${testID}-exercises-shortcut`}
             icon={<BookOpen size={22} strokeWidth={1.75} color={colors.accent.text} />}
             label="Exercises"
             onPress={() => router.push('/profile/exercises')}
