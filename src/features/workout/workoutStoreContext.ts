@@ -6,7 +6,7 @@
  * past-workout editor — **without** either screen ever touching the other's
  * data.
  *
- * Before this file existed, those four components all hardcoded the
+ * Before this file existed, those three components all hardcoded the
  * app-wide `useActiveWorkoutStore` singleton directly (`import {
  * useActiveWorkoutStore } from './activeWorkoutStore'`) — correct for the
  * live logger (there is only ever one real active workout, by the
