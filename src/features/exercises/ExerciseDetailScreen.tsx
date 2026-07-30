@@ -1,32 +1,21 @@
 /**
- * `ExerciseDetailScreen` (M1-08) — 03 §3's exercise detail page: 16:9
- * `ExerciseMedia` header, `SegmentedControl` tabs About | History | Charts |
- * Records. Holds the data fetch (`ExerciseRepository.get(exerciseId)` via
- * TanStack Query, same "feature component owns data + layout, route file
- * only wires real deps" split `ExerciseBrowseScreen`/M1-07 established) so
- * `app/exercise/[id].tsx` stays a thin wiring shim.
+ * `ExerciseDetailScreen` (M1-08, restructured AD-2) — 03 §3's exercise
+ * detail page: `SegmentedControl` tab row (Summary | History | How to) above
+ * the 16:9 `ExerciseMedia` header, then the tab content. Holds the data
+ * fetch (`ExerciseRepository.get(exerciseId)` via TanStack Query, same
+ * "feature component owns data + layout, route file only wires real deps"
+ * split `ExerciseBrowseScreen`/M1-07 established) so `app/exercise/[id].tsx`
+ * stays a thin wiring shim.
  *
- * **About tab** (built fully now, per this task's scope): exercise type
- * label, equipment label, primary muscle as a filled `Chip`, secondary
- * muscles as outline `Chip`s, numbered instruction steps. `Chip` (07 §5)
- * only has two visual states — active (accent-tinted fill + accent text)
- * and inactive (bordered `bg.elevated`) — reused directly here as the
- * "filled"/"outline" pair 03 §3 asks for (`active` for the primary chip,
- * inactive for secondaries), with `showCaret={false}` and no `onPress`
- * since these are read-only tags, not filter controls. "No instructions
- * added — edit to add" renders whenever `instructions` is empty — 03 §3's
- * text frames this as a customs-only case, but the task brief asks to
- * verify that against the real data or handle it generically either way:
- * the real vendored dataset actually has 5 built-ins with zero mapped
- * instructions (`Iron_Cross`, `One-Arm_Kettlebell_Swings`, `Push_Press`,
- * `Side_Bridge`, `Side_Jackknife` — the exact 5 M1-04's build run logged as
- * "missing instructions" warnings), so the generic empty-array check is the
- * only correct implementation, not just a defensive fallback.
- *
- * **History/Charts/Records tabs:** themed `EmptyState` placeholders only
- * (real functionality is M4-09's job, 03 §3). Records' copy is 03 §3's own
- * verbatim text ("No records yet"); History/Charts don't have doc-specified
- * copy, so reasonable placeholder copy was written for them.
+ * **Summary tab** (`ExerciseSummaryTab`, M4-09/AD-5) composes the chart and
+ * records content into one scroll; it gates on `historyQuery`/`historicalSets`
+ * only — no historical sets already implies no records, so no separate
+ * records-loading gate is needed. **History tab** (`ExerciseHistoryTab`)
+ * shares the same `historyQuery` data feed. **How to tab** (`HowToTab`)
+ * holds the exercise type/equipment/muscle/instructions content that used to
+ * live in this file's inline `AboutTab`. The merged Summary/History empty
+ * state ("No data yet" / "No history yet") is a themed `EmptyState`
+ * placeholder shown until the exercise has logged sets.
  *
  * **Sheet-reuse forward-compat (M1-08 task note, not a hard requirement):**
  * this component renders its own lightweight in-content back affordance
@@ -47,7 +36,6 @@ import {
   LineChart,
   Pencil,
   Trash2,
-  Trophy,
 } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -64,6 +52,7 @@ import {
 import { ExerciseReferencedError } from '@/data/exercises/errors';
 import type { ExerciseRepository } from '@/data/exercises/types';
 import type { ExerciseHistorySet, WorkoutRepository } from '@/data/workouts/types';
+import { EMPTY_RECORDS_SNAPSHOT } from '@/domain/records';
 import { useSettingsStore } from '@/features/settings/settings-store';
 import { useRecordsSnapshot } from '@/features/stats/records-service';
 import { deleteExercisePhotos } from '@/lib/files';
@@ -73,17 +62,16 @@ import { SegmentedControl } from '@/ui/SegmentedControl';
 import { Sheet } from '@/ui/Sheet';
 import { useTheme } from '@/ui/theme-provider';
 
-import { ExerciseChartsTab } from './ExerciseChartsTab';
 import { setExerciseFormPrefill } from './exercise-form-prefill';
 import { ExerciseHistoryTab } from './ExerciseHistoryTab';
 import { ExerciseMedia } from './ExerciseMedia';
-import { ExerciseRecordsTab } from './ExerciseRecordsTab';
+import { ExerciseSummaryTab } from './ExerciseSummaryTab';
+import { HowToTab } from './HowToTab';
 
 const DETAIL_TABS = [
-  { value: 'about', label: 'About' },
+  { value: 'summary', label: 'Summary' },
   { value: 'history', label: 'History' },
-  { value: 'charts', label: 'Charts' },
-  { value: 'records', label: 'Records' },
+  { value: 'howto', label: 'How to' },
 ] as const;
 
 type DetailTab = (typeof DETAIL_TABS)[number]['value'];
@@ -113,7 +101,7 @@ function DetailEmptyTab({
   tab,
   testID,
 }: {
-  tab: 'history' | 'charts' | 'records';
+  tab: 'history' | 'summary';
   testID: string;
 }): React.JSX.Element {
   const { colors } = useTheme();
@@ -124,16 +112,10 @@ function DetailEmptyTab({
       caption: 'Log a set with this exercise to see it here.',
       icon: <HistoryIcon size={40} strokeWidth={1.75} color={colors.text.tertiary} />,
     },
-    charts: {
-      title: 'No chart data yet',
-      caption: 'Charts appear once you’ve logged a few sessions.',
+    summary: {
+      title: 'No data yet',
+      caption: "Charts and records appear once you've logged a few sessions.",
       icon: <LineChart size={40} strokeWidth={1.75} color={colors.text.tertiary} />,
-    },
-    records: {
-      // 03 §3 verbatim: "Empty state: 'No records yet'."
-      title: 'No records yet',
-      caption: 'PRs and set records appear here once you’ve logged this exercise.',
-      icon: <Trophy size={40} strokeWidth={1.75} color={colors.text.tertiary} />,
     },
   };
 
@@ -152,7 +134,7 @@ export function ExerciseDetailScreen({
   const { colors, spacing, typography } = useTheme();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const [tab, setTab] = useState<DetailTab>('about');
+  const [tab, setTab] = useState<DetailTab>('summary');
   const [actionsSheetVisible, setActionsSheetVisible] = useState(false);
   const queryClient = useQueryClient();
 
@@ -353,6 +335,14 @@ export function ExerciseDetailScreen({
         />
       ) : (
         <>
+          <SegmentedControl
+            testID={`${testID}-tabs`}
+            options={DETAIL_TABS}
+            value={tab}
+            onChange={setTab}
+            style={{ marginHorizontal: spacing['4'], marginTop: spacing['1'] }}
+          />
+
           <ExerciseMedia
             testID={`${testID}-media`}
             exercise={exercise}
@@ -373,17 +363,25 @@ export function ExerciseDetailScreen({
             {exercise.name}
           </Text>
 
-          <SegmentedControl
-            testID={`${testID}-tabs`}
-            options={DETAIL_TABS}
-            value={tab}
-            onChange={setTab}
-            style={{ marginHorizontal: spacing['4'], marginTop: spacing['3'] }}
-          />
-
           <View style={{ flex: 1, marginTop: spacing['2'] }}>
-            {tab === 'about' ? (
-              <AboutTab exercise={exercise} testID={`${testID}-about`} />
+            {tab === 'summary' ? (
+              historyQuery.isLoading ? (
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <ActivityIndicator color={colors.accent.primary} />
+                </View>
+              ) : historicalSets.length === 0 ? (
+                <DetailEmptyTab tab="summary" testID={`${testID}-summary`} />
+              ) : (
+                <ExerciseSummaryTab
+                  testID={`${testID}-summary`}
+                  historicalSets={historicalSets}
+                  exercise={exercise}
+                  weightUnit={weightUnit}
+                  distanceUnit={distanceUnit}
+                  warmupInStats={warmupInStats}
+                  snapshot={recordsQuery.data?.snapshot ?? EMPTY_RECORDS_SNAPSHOT}
+                />
+              )
             ) : tab === 'history' ? (
               historyQuery.isLoading ? (
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -401,37 +399,8 @@ export function ExerciseDetailScreen({
                   rpeEnabled={rpeEnabled}
                 />
               )
-            ) : tab === 'charts' ? (
-              historyQuery.isLoading ? (
-                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                  <ActivityIndicator color={colors.accent.primary} />
-                </View>
-              ) : historicalSets.length === 0 ? (
-                <DetailEmptyTab tab="charts" testID={`${testID}-charts`} />
-              ) : (
-                <ExerciseChartsTab
-                  testID={`${testID}-charts`}
-                  historicalSets={historicalSets}
-                  exercise={exercise}
-                  weightUnit={weightUnit}
-                  distanceUnit={distanceUnit}
-                  warmupInStats={warmupInStats}
-                />
-              )
-            ) : recordsQuery.isLoading ? (
-              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                <ActivityIndicator color={colors.accent.primary} />
-              </View>
-            ) : !recordsQuery.data || recordsQuery.data.awards.length === 0 ? (
-              <DetailEmptyTab tab="records" testID={`${testID}-records`} />
             ) : (
-              <ExerciseRecordsTab
-                testID={`${testID}-records`}
-                snapshot={recordsQuery.data.snapshot}
-                historicalSets={historicalSets}
-                exerciseType={exercise.exerciseType}
-                weightUnit={weightUnit}
-              />
+              <HowToTab exercise={exercise} testID={`${testID}-howto`} />
             )}
           </View>
         </>
