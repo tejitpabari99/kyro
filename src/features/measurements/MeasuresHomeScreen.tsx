@@ -22,7 +22,7 @@
  * rather than firing a second ranged query per field.
  */
 import React, { useState } from 'react';
-import { Plus, TriangleAlert } from 'lucide-react-native';
+import { ChevronLeft, Plus, TriangleAlert } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useQueries } from '@tanstack/react-query';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
@@ -104,6 +104,8 @@ export function MeasuresHomeScreen({
     <View testID={testID} style={{ flex: 1, backgroundColor: colors.bg.base }}>
       <View
         style={{
+          flexDirection: 'row',
+          alignItems: 'center',
           paddingHorizontal: spacing['4'],
           // BUGFIX-01: `insets.top` clears the status bar/notch — see
           // `app/_layout.tsx`'s header.
@@ -111,6 +113,16 @@ export function MeasuresHomeScreen({
           paddingBottom: spacing['2'],
         }}
       >
+        <Pressable
+          testID={`${testID}-back`}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          hitSlop={8}
+          onPress={() => router.back()}
+          style={{ marginRight: spacing['3'] }}
+        >
+          <ChevronLeft size={24} strokeWidth={1.75} color={colors.text.primary} />
+        </Pressable>
         <Text style={[typography.title1, { color: colors.text.primary }]}>Measures</Text>
       </View>
 

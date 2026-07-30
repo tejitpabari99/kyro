@@ -38,7 +38,7 @@ import { MeasuresHomeScreen } from '../MeasuresHomeScreen';
 
 jest.mock('expo-router', () => ({
   ...jest.requireActual('expo-router'),
-  router: { push: jest.fn() },
+  router: { push: jest.fn(), back: jest.fn() },
 }));
 
 jest.mock('@/lib/progress-photo-capture');
@@ -127,6 +127,12 @@ describe('MeasuresHomeScreen', () => {
     await repository.upsert('2020-01-01', { waistCm: 95 });
     await renderScreen(repository);
     expect(await screen.findByTestId('home-row-waistCm')).toBeTruthy();
+  });
+
+  it('pressing the back chevron calls router.back', async () => {
+    await renderScreen(repository);
+    await fireEvent.press(await screen.findByTestId('home-back'));
+    expect(router.back).toHaveBeenCalledTimes(1);
   });
 
   it('tapping a row navigates to that field’s detail route', async () => {
