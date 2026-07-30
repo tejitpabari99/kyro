@@ -111,10 +111,12 @@ import type { PreviousSet, PreviousSetsQuery } from '@/data/workouts/types';
 import type { DistanceUnit, WeightUnit } from '@/domain/enums';
 import { computeSupersetGroups, type SupersetMemberInput } from '@/domain/supersets';
 import { Button } from '@/ui/Button';
+import { KeyboardDoneBar } from '@/ui/KeyboardDoneBar';
 import { useTheme } from '@/ui/theme-provider';
 
 import { AddToSupersetSheet, type SupersetCandidate } from '../workout/AddToSupersetSheet';
 import { ExercisePickerSheet, type ExercisePickerMode } from '../workout/ExercisePickerSheet';
+import { NOTES_KEYBOARD_ACCESSORY_VIEW_ID } from '../workout/InlineNoteField';
 import { ReorderExercisesSheet } from '../workout/ReorderExercisesSheet';
 import { RoutineExerciseCard } from './RoutineExerciseCard';
 import {
@@ -449,6 +451,8 @@ export function RoutineEditorScreen({
         candidates={supersetCandidates}
         onConfirm={handleAddToSupersetConfirm}
       />
+
+      <KeyboardDoneBar testID={`${testID}-notes-keyboard-done-bar`} nativeID={NOTES_KEYBOARD_ACCESSORY_VIEW_ID} />
     </View>
   );
 }
