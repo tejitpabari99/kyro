@@ -277,9 +277,9 @@ function ConnectedSetRowImpl({
   // likely calling Hooks conditionally" invalid-hook-call crash that used
   // to fire here deterministically (always at the very next hook call,
   // `useState(menuVisible)` below). See the sibling fix in
-  // `ExerciseSetTableSection.tsx`, `AddWarmUpSetsSheet.tsx`, and
+  // `ExerciseSetTableSection.tsx` and
   // `EditWorkoutScreen.tsx` (`editStore` -> `useEditStore`) for the other
-  // three call sites of the same anti-pattern.
+  // two call sites of the same anti-pattern.
   const useStore = useWorkoutStore();
   const isEditMode = useIsEditWorkoutMode();
   const set = useStore(selectWorkoutSet(setId));

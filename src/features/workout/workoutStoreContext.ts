@@ -1,7 +1,7 @@
 /**
  * `WorkoutStoreContext` / `EditWorkoutModeContext` (M4-05, 02 §15) — the seam
- * that lets `ConnectedSetRow`/`ExerciseCard`/`ExerciseSetTableSection`/
- * `AddWarmUpSetsSheet` (the shared "full logger" chrome `ActiveWorkoutScreen`
+ * that lets `ConnectedSetRow`/`ExerciseCard`/`ExerciseSetTableSection`
+ * (the shared "full logger" chrome `ActiveWorkoutScreen`
  * assembles) be reused, unchanged in behavior, by `EditWorkoutScreen` — the
  * past-workout editor — **without** either screen ever touching the other's
  * data.
@@ -58,7 +58,7 @@ export type WorkoutStoreHook = UseBoundStore<StoreApi<ActiveWorkoutState>>;
 /** Defaults to the real singleton — see file header. */
 export const WorkoutStoreContext = createContext<WorkoutStoreHook>(useActiveWorkoutStore);
 
-/** `ConnectedSetRow`/`ExerciseCard`/`ExerciseSetTableSection`/`AddWarmUpSetsSheet` call this instead of importing `useActiveWorkoutStore` directly — see file header. */
+/** `ConnectedSetRow`/`ExerciseCard`/`ExerciseSetTableSection` call this instead of importing `useActiveWorkoutStore` directly — see file header. */
 export function useWorkoutStore(): WorkoutStoreHook {
   return useContext(WorkoutStoreContext);
 }

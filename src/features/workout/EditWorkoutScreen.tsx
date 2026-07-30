@@ -27,7 +27,7 @@
  * `loadForEdit` action (`getFull(workoutId)`, no `getActive()` involved, no
  * `state==='active'` check anywhere in the mutators it then calls). Every
  * shared child component (`ExerciseCard`, `ExerciseSetTableSection`,
- * `ConnectedSetRow`, `AddWarmUpSetsSheet`) reads/writes *whichever* store
+ * `ConnectedSetRow`) reads/writes *whichever* store
  * instance `WorkoutStoreContext` hands it (`workoutStoreContext.ts`) —
  * defaulting to the real singleton for the live logger, and to this screen's
  * own instance here, via the `<WorkoutStoreContext.Provider>` below.
@@ -62,7 +62,7 @@
  * ## PREVIOUS values exclude this workout itself
  *
  * `previousSetsExcludeWorkoutId={workoutId}` is threaded down to every
- * `ExerciseCard` (-> `ExerciseSetTableSection`/`AddWarmUpSetsSheet`) — see
+ * `ExerciseCard` (-> `ExerciseSetTableSection`) — see
  * `PreviousSetsQuery.beforeWorkoutId`'s own doc comment
  * (`@/data/workouts/types`): PREVIOUS must never reference the workout being
  * edited itself, nor anything chronologically after it.

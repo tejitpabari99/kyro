@@ -1,8 +1,7 @@
 /**
  * `LogEntrySheet` tests (M5-02 acceptance gate) — real `MeasurementRepositoryImpl`
  * over an in-memory `better-sqlite3` driver (08 §5: never mock repositories),
- * same convention `AddWarmUpSetsSheet.test.tsx` already establishes for an
- * equivalent sheet. `@/lib/progress-photo-capture`/`@/lib/progress-photos`
+ * the same convention this codebase's sheet tests already establish. `@/lib/progress-photo-capture`/`@/lib/progress-photos`
  * (the native-touching seams this component reaches, `expo-file-system`/
  * `expo-image-manipulator`/`expo-image-picker` transitively — the same real,
  * re-encoding implementation M5-03's photo screens use, post-merge

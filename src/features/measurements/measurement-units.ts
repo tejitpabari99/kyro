@@ -7,13 +7,13 @@
  * §6.1's own note).
  *
  * Two conversion tiers, mirroring `domain/units.ts`'s own documented split
- * and `AddWarmUpSetsSheet.tsx`'s `toDisplay`/`toCanonicalKg` precedent for
- * an *editable* field:
+ * and the same `toDisplay`/`toCanonicalKg`-shaped precedent for an
+ * *editable* field used elsewhere in this codebase:
  *  - {@link toEditableDisplayValue} / {@link toCanonicalFromDisplay}: raw,
  *    full-precision, round-trip-safe conversion for the log-entry sheet's
  *    editable `NumericInput`s — a rounded pre-fill would silently discard
- *    precision the user never gets to see (same rationale
- *    `AddWarmUpSetsSheet.tsx`'s `toDisplay` doc comment gives). 04 §6
+ *    precision the user never gets to see (same rationale an editable
+ *    field's display-conversion helper should always give). 04 §6
  *    acceptance: "imperial entry stores canonical kg/cm exactly and
  *    round-trips display" — kg<->lb and cm<->in are both pure linear
  *    (through-the-origin) conversions, so converting the same typed value
