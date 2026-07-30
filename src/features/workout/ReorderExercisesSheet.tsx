@@ -142,6 +142,7 @@ export function ReorderExercisesSheet({
               testID={`${testID}-save`}
               label="Save Order"
               variant="primary"
+              size="lg"
               onPress={handleSave}
             />
           </ScreenFooter>
