@@ -30,6 +30,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import React from 'react';
 import { Alert } from 'react-native';
+import { SafeAreaInsetsContext, type EdgeInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -122,14 +123,22 @@ async function renderScreen(
   exerciseRepo: ExerciseRepository,
   overrides: Partial<React.ComponentProps<typeof ActiveWorkoutScreen>> = {},
   theme: 'dark' | 'light' = 'dark',
+  insetsOverride?: EdgeInsets,
 ) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { gcTime: 0 } } });
-  const result = await render(
+  const tree = (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider preference={theme}>
         <ActiveWorkoutScreen testID="screen" exerciseRepository={exerciseRepo} {...overrides} />
       </ThemeProvider>
-    </QueryClientProvider>,
+    </QueryClientProvider>
+  );
+  const result = await render(
+    insetsOverride ? (
+      <SafeAreaInsetsContext.Provider value={insetsOverride}>{tree}</SafeAreaInsetsContext.Provider>
+    ) : (
+      tree
+    ),
   );
   // Spread so every existing `await renderScreen(...)`/`const { rerender } =
   // await renderScreen(...)` call site keeps working unchanged — `queryClient`
