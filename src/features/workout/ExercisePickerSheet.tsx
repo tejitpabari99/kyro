@@ -97,6 +97,7 @@ export function ExercisePickerSheet({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [superset, setSuperset] = useState(false);
   const [detailExerciseId, setDetailExerciseId] = useState<string | null>(null);
+  const [optionsSheetVisible, setOptionsSheetVisible] = useState(false);
 
   // Reset every transient picker state on each open transition — the same
   // mid-render "derive state from a prop change" pattern used throughout
