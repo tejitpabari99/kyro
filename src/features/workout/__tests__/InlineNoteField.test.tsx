@@ -111,6 +111,57 @@ describe('InlineNoteField', () => {
     expect(screen.queryByTestId('card-placeholder')).toBeNull();
   });
 
+  it('typing text into a previously empty (null) note then blurring commits it via onSave', async () => {
+    const onSave = jest.fn();
+    await render(
+      <ThemeProvider preference="dark">
+        <InlineNoteField testID="card" value={null} onSave={onSave} />
+      </ThemeProvider>,
+    );
+
+    await fireEvent.press(screen.getByTestId('card-placeholder'));
+    const input = screen.getByTestId('card-input');
+    await fireEvent.changeText(input, 'Brand new note');
+    await fireEvent(input, 'blur');
+
+    expect(onSave).toHaveBeenCalledWith('Brand new note');
+    expect(screen.queryByTestId('card-input')).toBeNull();
+  });
+
+  it('entering edit mode and blurring without changing the text does not call onSave', async () => {
+    const onSave = jest.fn();
+    await render(
+      <ThemeProvider preference="dark">
+        <InlineNoteField testID="card" value="existing note" onSave={onSave} />
+      </ThemeProvider>,
+    );
+
+    await fireEvent.press(screen.getByTestId('card-row'));
+    const input = screen.getByTestId('card-input');
+    await fireEvent(input, 'blur');
+
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('card-input')).toBeNull();
+    expect(screen.getByTestId('card-text')).toBeTruthy();
+  });
+
+  it('opening and closing the field with no note (null value) and no typing does not call onSave', async () => {
+    const onSave = jest.fn();
+    await render(
+      <ThemeProvider preference="dark">
+        <InlineNoteField testID="card" value={null} onSave={onSave} />
+      </ThemeProvider>,
+    );
+
+    await fireEvent.press(screen.getByTestId('card-placeholder'));
+    const input = screen.getByTestId('card-input');
+    await fireEvent(input, 'blur');
+
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('card-input')).toBeNull();
+    expect(screen.getByTestId('card-placeholder')).toBeTruthy();
+  });
+
   it('typing only whitespace then blurring commits null, not the whitespace string', async () => {
     const onSave = jest.fn();
     await render(

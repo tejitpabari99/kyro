@@ -40,7 +40,15 @@ export function InlineNoteField({
 
   const commit = (): void => {
     const trimmed = draft.trim();
-    onSave(trimmed.length > 0 ? draft : null);
+    const next = trimmed.length > 0 ? draft : null;
+    // Normalize `value` the same way display mode does (line ~75: `value != null &&
+    // value.length > 0`) before comparing, so an empty-string `value` is treated the
+    // same as `null` — otherwise a no-op blur on an already-empty note would be
+    // misread as a change (null !== '') and fire a spurious onSave.
+    const normalizedValue = value != null && value.length > 0 ? value : null;
+    if (next !== normalizedValue) {
+      onSave(next);
+    }
     setEditing(false);
   };
 
