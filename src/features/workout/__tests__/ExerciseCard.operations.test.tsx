@@ -239,6 +239,7 @@ describe('ExerciseCard — Replace Exercise (02 §3)', () => {
     await waitFor(() =>
       expect(screen.getAllByTestId(`exercise-row-${deadlift.id}`).length).toBeGreaterThan(0),
     );
+    expect(screen.getByTestId('screen-exercise-picker-options-button')).toBeTruthy();
     await fireEvent.press(screen.getAllByTestId(`exercise-row-${deadlift.id}`)[0]!);
 
     await waitFor(() => expect(screen.getByText('Deadlift')).toBeTruthy());
