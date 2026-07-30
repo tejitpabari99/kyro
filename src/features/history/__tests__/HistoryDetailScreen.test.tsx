@@ -300,6 +300,25 @@ describe('HistoryDetailScreen — header + stats row', () => {
   });
 });
 
+describe('HistoryDetailScreen — back button (09 Task 13)', () => {
+  it('calls router.back() when the back chevron is pressed', async () => {
+    const full = makeWorkoutFull();
+    const workoutRepository: Pick<WorkoutRepository, 'getFull'> = {
+      getFull: async (id) => (id === full.id ? full : null),
+    };
+    const exerciseRepository: Pick<ExerciseRepository, 'get'> = {
+      get: async (id) => (id === 'ex-1' ? makeExercise() : null),
+    };
+
+    await renderScreen(workoutRepository, exerciseRepository);
+    await waitFor(() => expect(screen.getByText('Morning Workout')).toBeTruthy());
+
+    await fireEvent.press(screen.getByTestId('detail-back'));
+
+    expect(router.back).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('HistoryDetailScreen — read-only set table (07 §5)', () => {
   it('renders each set row read-only: correct values, no editable inputs, no delete chrome', async () => {
     const full = makeWorkoutFull();

@@ -116,7 +116,7 @@
  */
 import React, { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Ellipsis, History } from 'lucide-react-native';
+import { ChevronLeft, Ellipsis, History } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -447,6 +447,18 @@ export function HistoryDetailScreen({
           gap: spacing['4'],
         }}
       >
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing['2'] }}>
+          <Pressable
+            testID={`${testID}-back`}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            hitSlop={8}
+            onPress={() => router.back()}
+          >
+            <ChevronLeft size={24} strokeWidth={1.75} color={colors.text.primary} />
+          </Pressable>
+        </View>
+
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <View style={{ flex: 1 }}>
             <Text style={[typography.title2, { color: colors.text.primary }]}>{workout.title}</Text>
