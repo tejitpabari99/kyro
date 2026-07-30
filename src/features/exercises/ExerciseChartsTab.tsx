@@ -13,7 +13,7 @@
  * right-aligned in the chart card header).
  */
 import React, { useMemo, useState } from 'react';
-import { ScrollView, Text } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 
 import type { Exercise } from '@/data/exercises/types';
 import type { ExerciseHistorySet } from '@/data/workouts/types';
@@ -110,24 +110,7 @@ export function ExerciseChartsTab({
   const data = useMemo(() => toChartPoints(rangedSeries), [rangedSeries]);
 
   return (
-    <ScrollView testID={testID} contentContainerStyle={{ padding: spacing['4'] }}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ gap: spacing['2'], paddingBottom: spacing['3'] }}
-      >
-        {availableMetrics.map((option) => (
-          <Chip
-            key={option}
-            testID={`${testID}-metric-${option}`}
-            label={CHART_METRIC_LABELS[option]}
-            active={option === activeMetric}
-            showCaret={false}
-            onPress={() => setMetric(option)}
-          />
-        ))}
-      </ScrollView>
-
+    <View testID={testID}>
       <LineChart
         testID={`${testID}-chart`}
         data={data}
@@ -148,6 +131,23 @@ export function ExerciseChartsTab({
         emptyStateLabel="No data yet"
       />
 
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ gap: spacing['2'], paddingBottom: spacing['3'] }}
+      >
+        {availableMetrics.map((option) => (
+          <Chip
+            key={option}
+            testID={`${testID}-metric-${option}`}
+            label={CHART_METRIC_LABELS[option]}
+            active={option === activeMetric}
+            showCaret={false}
+            onPress={() => setMetric(option)}
+          />
+        ))}
+      </ScrollView>
+
       {data.length === 0 ? (
         <Text
           testID={`${testID}-no-range-data`}
@@ -156,6 +156,6 @@ export function ExerciseChartsTab({
           No sessions in this range.
         </Text>
       ) : null}
-    </ScrollView>
+    </View>
   );
 }
