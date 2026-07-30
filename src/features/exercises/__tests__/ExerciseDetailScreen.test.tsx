@@ -1,12 +1,13 @@
 /**
- * `ExerciseDetailScreen` tests (M1-08 acceptance gate): About tab content
- * verified against the real `Barbell_Bench_Press_-_Medium_Grip` record
- * loaded directly from the actual vendored `assets/exercise-db.json` (not
- * hand-copied strings — the record is read from the real file at test time
- * and mapped to the `Exercise` shape here, so this test can never drift
- * from the real data); tab switching (`SegmentedControl` behavioral test);
- * History/Charts/Records `EmptyState` placeholders; the customs-with-no-
- * instructions empty-state copy; RNTL smoke both themes.
+ * `ExerciseDetailScreen` tests (M1-08 acceptance gate, restructured for
+ * AD-2's Summary/History/How to tabs): How-to tab content verified against
+ * the real `Barbell_Bench_Press_-_Medium_Grip` record loaded directly from
+ * the actual vendored `assets/exercise-db.json` (not hand-copied strings —
+ * the record is read from the real file at test time and mapped to the
+ * `Exercise` shape here, so this test can never drift from the real data);
+ * tab switching (`SegmentedControl` behavioral test, Summary default);
+ * History/Summary (chart+records) `EmptyState` placeholders; the
+ * customs-with-no-instructions empty-state copy; RNTL smoke both themes.
  *
  * M1-10 update: `ExerciseDetailScreen` now imports `@/lib/files`
  * (`deleteExercisePhotos`, wired into the delete flow) — that module's own
@@ -14,6 +15,13 @@
  * `expo-image-manipulator`/`expo-image-picker`) are unavailable under Jest
  * (08 §5), so it's mocked wholesale here the same way every other consumer
  * of that seam does.
+ *
+ * Tab-restructure note: the default tab is now `summary`, not `about`/`howto`
+ * — its content depends on `historyQuery`/`historicalSets`, so most generic
+ * "has the screen loaded" waits in this file gate on `` `${testID}-name` ``
+ * (renders unconditionally once `exercise` resolves, independent of which
+ * tab/tab-loading-state is active) rather than on any one tab's content
+ * testID.
  */
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import React from 'react';
@@ -121,68 +129,72 @@ beforeEach(() => {
   });
 });
 
-describe('ExerciseDetailScreen — About tab matches real exercise data', () => {
+describe('ExerciseDetailScreen — How to tab matches real exercise data', () => {
   it("renders Barbell Bench Press - Medium Grip's real type/equipment/muscles/instructions", async () => {
     const repository = new FakeExerciseRepository([REAL_EXERCISE]);
     await renderScreen(repository, REAL_ID);
 
-    await waitFor(() => expect(screen.getByTestId('detail-about')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('detail-name')).toBeTruthy());
+    // How to is no longer the default tab (Summary is) — switch explicitly.
+    await fireEvent.press(screen.getByTestId('detail-tabs-howto'));
+    await waitFor(() => expect(screen.getByTestId('detail-howto')).toBeTruthy());
 
     expect(screen.getByText(REAL_EXERCISE.name)).toBeTruthy();
     // exercise_type: "weight_reps" -> "Weight & Reps" (03 §3's own example).
-    expect(screen.getByTestId('detail-about-type')).toHaveTextContent('Weight & Reps');
+    expect(screen.getByTestId('detail-howto-type')).toHaveTextContent('Weight & Reps');
     // equipment: "barbell" -> "Barbell".
-    expect(screen.getByTestId('detail-about-equipment')).toHaveTextContent('Barbell');
+    expect(screen.getByTestId('detail-howto-equipment')).toHaveTextContent('Barbell');
     // primary_muscle_group: "chest" -> filled chip "Chest".
-    expect(screen.getByTestId('detail-about-primary-muscle-chip')).toHaveTextContent('Chest');
+    expect(screen.getByTestId('detail-howto-primary-muscle-chip')).toHaveTextContent('Chest');
     // secondary_muscle_groups: ["shoulders", "triceps"] -> outline chips.
-    expect(screen.getByTestId('detail-about-secondary-muscle-chip-shoulders')).toHaveTextContent(
+    expect(screen.getByTestId('detail-howto-secondary-muscle-chip-shoulders')).toHaveTextContent(
       'Shoulders',
     );
-    expect(screen.getByTestId('detail-about-secondary-muscle-chip-triceps')).toHaveTextContent(
+    expect(screen.getByTestId('detail-howto-secondary-muscle-chip-triceps')).toHaveTextContent(
       'Triceps',
     );
     // instructions: every real numbered step renders verbatim.
     REAL_EXERCISE.instructions.forEach((step, index) => {
-      const row = screen.getByTestId(`detail-about-instruction-${index}`);
+      const row = screen.getByTestId(`detail-howto-instruction-${index}`);
       expect(within(row).getByText(`${index + 1}.`)).toBeTruthy();
       expect(within(row).getByText(step)).toBeTruthy();
     });
-    expect(screen.queryByTestId('detail-about-no-instructions')).toBeNull();
+    expect(screen.queryByTestId('detail-howto-no-instructions')).toBeNull();
   });
 
   it('renders "No instructions added — edit to add" for a custom with zero instructions', async () => {
     const repository = new FakeExerciseRepository([FIXTURE_CUSTOM_NO_IMAGES]);
     await renderScreen(repository, FIXTURE_CUSTOM_NO_IMAGES.id);
 
-    await waitFor(() => expect(screen.getByTestId('detail-about')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('detail-name')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('detail-tabs-howto'));
+    await waitFor(() => expect(screen.getByTestId('detail-howto')).toBeTruthy());
 
-    expect(screen.getByTestId('detail-about-no-instructions')).toHaveTextContent(
+    expect(screen.getByTestId('detail-howto-no-instructions')).toHaveTextContent(
       'No instructions added — edit to add',
     );
   });
 });
 
 describe('ExerciseDetailScreen — tabs switch correctly', () => {
-  it('shows the About tab by default, then switches to History/Charts/Records on tab press', async () => {
+  it('shows the Summary tab by default, then switches to History/How to on tab press', async () => {
     const repository = new FakeExerciseRepository([REAL_EXERCISE]);
     await renderScreen(repository, REAL_ID);
 
-    await waitFor(() => expect(screen.getByTestId('detail-about')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('detail-name')).toBeTruthy());
+    // No workoutRepository passed here -> historyQuery is disabled -> historicalSets is
+    // empty -> Summary's default render is the merged empty state.
+    expect(screen.getByTestId('detail-summary')).toBeTruthy();
 
     await fireEvent.press(screen.getByTestId('detail-tabs-history'));
     expect(screen.getByText('No history yet')).toBeTruthy();
-    expect(screen.queryByTestId('detail-about')).toBeNull();
+    expect(screen.queryByTestId('detail-summary')).toBeNull();
 
-    await fireEvent.press(screen.getByTestId('detail-tabs-charts'));
-    expect(screen.getByText('No chart data yet')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('detail-tabs-howto'));
+    expect(screen.getByTestId('detail-howto')).toBeTruthy();
 
-    await fireEvent.press(screen.getByTestId('detail-tabs-records'));
-    // 03 §3 verbatim empty-state copy for Records.
-    expect(screen.getByText('No records yet')).toBeTruthy();
-
-    await fireEvent.press(screen.getByTestId('detail-tabs-about'));
-    expect(screen.getByTestId('detail-about')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('detail-tabs-summary'));
+    expect(screen.getByText('No data yet')).toBeTruthy();
   });
 });
 
@@ -199,13 +211,13 @@ describe('ExerciseDetailScreen — smoke render (both themes)', () => {
   it('renders in dark theme', async () => {
     const repository = new FakeExerciseRepository([REAL_EXERCISE]);
     await renderScreen(repository, REAL_ID, 'dark');
-    await waitFor(() => expect(screen.getByTestId('detail-about')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('detail-name')).toBeTruthy());
   });
 
   it('renders in light theme', async () => {
     const repository = new FakeExerciseRepository([REAL_EXERCISE]);
     await renderScreen(repository, REAL_ID, 'light');
-    await waitFor(() => expect(screen.getByTestId('detail-about')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('detail-name')).toBeTruthy());
   });
 });
 
@@ -224,12 +236,12 @@ describe('ExerciseDetailScreen — showBackButton', () => {
 });
 
 // ---------------------------------------------------------------------------
-// M4-09 — real History/Charts/Records tab content
+// M4-09 — real History/Summary (chart+records) tab content
 // ---------------------------------------------------------------------------
 
 // Recent-relative-to-`Date.now()`, not a fixed historical date — the
-// Charts tab defaults to the 3M range, which would otherwise filter out a
-// hardcoded far-past fixture date depending on when this suite runs.
+// Charts sub-tab defaults to the 3M range, which would otherwise filter out
+// a hardcoded far-past fixture date depending on when this suite runs.
 const DAY1 = Date.now() - 5 * 24 * 60 * 60 * 1000;
 const DAY2 = Date.now() - 1 * 24 * 60 * 60 * 1000;
 
@@ -304,7 +316,7 @@ describe('ExerciseDetailScreen — History tab (real content)', () => {
       </QueryClientProvider>,
     );
 
-    await waitFor(() => expect(screen.getByTestId('detail-about')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('detail-name')).toBeTruthy());
     await fireEvent.press(screen.getByTestId('detail-tabs-history'));
 
     await waitFor(() => expect(screen.getByTestId('detail-history-card-w2')).toBeTruthy());
@@ -327,73 +339,8 @@ describe('ExerciseDetailScreen — History tab (real content)', () => {
   });
 });
 
-describe('ExerciseDetailScreen — Charts tab (real content)', () => {
-  it('renders the metric selector + a populated chart, and switching metrics updates the active chip', async () => {
-    const repository = new FakeExerciseRepository([REAL_EXERCISE]);
-    render(
-      <QueryClientProvider client={newTestQueryClient()}>
-        <ThemeProvider preference="dark">
-          <ExerciseDetailScreen
-            repository={repository}
-            workoutRepository={fakeWorkoutRepository(EXERCISE_HISTORY_FIXTURE)}
-            exerciseId={REAL_ID}
-            testID="detail"
-          />
-        </ThemeProvider>
-      </QueryClientProvider>,
-    );
-
-    await waitFor(() => expect(screen.getByTestId('detail-about')).toBeTruthy());
-    await fireEvent.press(screen.getByTestId('detail-tabs-charts'));
-
-    // weight_reps -> 5 metrics (04 §4.3); Heaviest Weight is first/default.
-    await waitFor(() => expect(screen.getByTestId('detail-charts-metric-heaviest_weight')).toBeTruthy());
-    expect(screen.getByTestId('detail-charts-metric-best_1rm')).toBeTruthy();
-    expect(screen.getByTestId('detail-charts-metric-best_set_volume')).toBeTruthy();
-    expect(screen.getByTestId('detail-charts-metric-session_volume')).toBeTruthy();
-    expect(screen.getByTestId('detail-charts-metric-total_reps')).toBeTruthy();
-
-    // Real data present -> the chart plot renders, not the empty state.
-    expect(screen.getByTestId('detail-charts-chart-plot')).toBeTruthy();
-    expect(screen.queryByTestId('detail-charts-chart-empty')).toBeNull();
-
-    await fireEvent.press(screen.getByTestId('detail-charts-metric-total_reps'));
-    expect(screen.getByTestId('detail-charts-metric-total_reps').props.accessibilityState.selected).toBe(
-      true,
-    );
-    expect(
-      screen.getByTestId('detail-charts-metric-heaviest_weight').props.accessibilityState.selected,
-    ).toBe(false);
-  });
-
-  it('reps_only exercises show a single Total Reps metric', async () => {
-    const repsOnly: Exercise = { ...REAL_EXERCISE, id: 'reps-only-fixture', exerciseType: 'reps_only' };
-    const repository = new FakeExerciseRepository([repsOnly]);
-    render(
-      <QueryClientProvider client={newTestQueryClient()}>
-        <ThemeProvider preference="dark">
-          <ExerciseDetailScreen
-            repository={repository}
-            workoutRepository={fakeWorkoutRepository(
-              EXERCISE_HISTORY_FIXTURE.map((s) => ({ ...s })),
-            )}
-            exerciseId={repsOnly.id}
-            testID="detail"
-          />
-        </ThemeProvider>
-      </QueryClientProvider>,
-    );
-
-    await waitFor(() => expect(screen.getByTestId('detail-about')).toBeTruthy());
-    await fireEvent.press(screen.getByTestId('detail-tabs-charts'));
-
-    await waitFor(() => expect(screen.getByTestId('detail-charts-metric-total_reps')).toBeTruthy());
-    expect(screen.queryByTestId('detail-charts-metric-heaviest_weight')).toBeNull();
-  });
-});
-
-describe('ExerciseDetailScreen — Records tab (real content)', () => {
-  it('renders PR cards with value + date, and the Set Records table', async () => {
+describe('ExerciseDetailScreen — Summary tab (real content)', () => {
+  it('renders the metric selector + a populated chart, PR cards with value + date, and the Set Records table together, with metric-press updating the active chip', async () => {
     const repository = new FakeExerciseRepository([REAL_EXERCISE]);
 
     const recordsFixtureSets: HistoricalSet[] = [
@@ -428,21 +375,73 @@ describe('ExerciseDetailScreen — Records tab (real content)', () => {
       </QueryClientProvider>,
     );
 
-    await waitFor(() => expect(screen.getByTestId('detail-about')).toBeTruthy());
-    await fireEvent.press(screen.getByTestId('detail-tabs-records'));
+    // Summary is the default tab — no tab press needed; wait for the
+    // unconditional exercise-resolved gate, then let historyQuery settle.
+    await waitFor(() => expect(screen.getByTestId('detail-name')).toBeTruthy());
 
-    await waitFor(() => expect(screen.getByTestId('detail-records-pr-heaviest_weight')).toBeTruthy());
-    expect(within(screen.getByTestId('detail-records-pr-heaviest_weight')).getByText('80 kg')).toBeTruthy();
-    expect(screen.getByTestId('detail-records-pr-best_1rm')).toBeTruthy();
-    expect(screen.getByTestId('detail-records-pr-best_set_volume')).toBeTruthy();
-    expect(screen.getByTestId('detail-records-pr-most_reps')).toBeTruthy();
+    // Chart: weight_reps -> 5 metrics (04 §4.3); Heaviest Weight is first/default.
+    await waitFor(() =>
+      expect(screen.getByTestId('detail-summary-chart-metric-heaviest_weight')).toBeTruthy(),
+    );
+    expect(screen.getByTestId('detail-summary-chart-metric-best_1rm')).toBeTruthy();
+    expect(screen.getByTestId('detail-summary-chart-metric-best_set_volume')).toBeTruthy();
+    expect(screen.getByTestId('detail-summary-chart-metric-session_volume')).toBeTruthy();
+    expect(screen.getByTestId('detail-summary-chart-metric-total_reps')).toBeTruthy();
+
+    // Real data present -> the chart plot renders, not the empty state.
+    expect(screen.getByTestId('detail-summary-chart-chart-plot')).toBeTruthy();
+    expect(screen.queryByTestId('detail-summary-chart-chart-empty')).toBeNull();
+
+    await fireEvent.press(screen.getByTestId('detail-summary-chart-metric-total_reps'));
+    expect(
+      screen.getByTestId('detail-summary-chart-metric-total_reps').props.accessibilityState.selected,
+    ).toBe(true);
+    expect(
+      screen.getByTestId('detail-summary-chart-metric-heaviest_weight').props.accessibilityState.selected,
+    ).toBe(false);
+
+    // Records: PR cards with value + date, and the Set Records table — same
+    // render pass, no extra tab press (Summary already merges chart + records).
+    expect(screen.getByTestId('detail-summary-records-pr-heaviest_weight')).toBeTruthy();
+    expect(
+      within(screen.getByTestId('detail-summary-records-pr-heaviest_weight')).getByText('80 kg'),
+    ).toBeTruthy();
+    expect(screen.getByTestId('detail-summary-records-pr-best_1rm')).toBeTruthy();
+    expect(screen.getByTestId('detail-summary-records-pr-best_set_volume')).toBeTruthy();
+    expect(screen.getByTestId('detail-summary-records-pr-most_reps')).toBeTruthy();
 
     // Set Records table: bucket "8" (this set's own rep count) holds 80 kg;
     // every other bucket (1-10 minus 8, plus "10+") is empty ("—").
-    const table = screen.getByTestId('detail-records-set-records-table');
+    const table = screen.getByTestId('detail-summary-records-set-records-table');
     expect(within(table).getByText('80 kg')).toBeTruthy();
-    expect(within(screen.getByTestId('detail-records-set-record-1')).getByText('—')).toBeTruthy();
-    expect(within(screen.getByTestId('detail-records-set-record-10+')).getByText('—')).toBeTruthy();
+    expect(within(screen.getByTestId('detail-summary-records-set-record-1')).getByText('—')).toBeTruthy();
+    expect(within(screen.getByTestId('detail-summary-records-set-record-10+')).getByText('—')).toBeTruthy();
+  });
+
+  it('reps_only exercises show a single Total Reps metric', async () => {
+    const repsOnly: Exercise = { ...REAL_EXERCISE, id: 'reps-only-fixture', exerciseType: 'reps_only' };
+    const repository = new FakeExerciseRepository([repsOnly]);
+    render(
+      <QueryClientProvider client={newTestQueryClient()}>
+        <ThemeProvider preference="dark">
+          <ExerciseDetailScreen
+            repository={repository}
+            workoutRepository={fakeWorkoutRepository(
+              EXERCISE_HISTORY_FIXTURE.map((s) => ({ ...s })),
+            )}
+            exerciseId={repsOnly.id}
+            testID="detail"
+          />
+        </ThemeProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('detail-name')).toBeTruthy());
+
+    await waitFor(() =>
+      expect(screen.getByTestId('detail-summary-chart-metric-total_reps')).toBeTruthy(),
+    );
+    expect(screen.queryByTestId('detail-summary-chart-metric-heaviest_weight')).toBeNull();
   });
 
   it('assisted exercises show a least-assistance line instead of Heaviest/volume trophies', async () => {
@@ -475,17 +474,42 @@ describe('ExerciseDetailScreen — Records tab (real content)', () => {
     render(
       <QueryClientProvider client={newTestQueryClient()}>
         <ThemeProvider preference="dark">
-          <ExerciseDetailScreen repository={repository} exerciseId={assisted.id} testID="detail" />
+          <ExerciseDetailScreen
+            repository={repository}
+            // Records now render inside the Summary tab (M4-09/AD-5), and
+            // Summary only renders `ExerciseSummaryTab` (vs. the merged empty
+            // state) once `historicalSets` is non-empty — unlike the old
+            // standalone Records tab, this needs a `workoutRepository`
+            // fixture too, even though the assertions below are records-only.
+            workoutRepository={fakeWorkoutRepository([
+              {
+                setId: 'set-a1',
+                workoutId: 'w1',
+                workoutTitle: 'Assist Day',
+                workoutStartTime: DAY1,
+                setOrder: 0,
+                setType: 'normal',
+                isCompleted: true,
+                weightKg: 20,
+                reps: 6,
+                distanceMeters: null,
+                durationSeconds: null,
+                rpe: null,
+                customMetric: null,
+              },
+            ])}
+            exerciseId={assisted.id}
+            testID="detail"
+          />
         </ThemeProvider>
       </QueryClientProvider>,
     );
 
-    await waitFor(() => expect(screen.getByTestId('detail-about')).toBeTruthy());
-    await fireEvent.press(screen.getByTestId('detail-tabs-records'));
+    await waitFor(() => expect(screen.getByTestId('detail-name')).toBeTruthy());
 
-    await waitFor(() => expect(screen.getByTestId('detail-records-pr-most_reps')).toBeTruthy());
-    expect(screen.queryByTestId('detail-records-pr-heaviest_weight')).toBeNull();
-    expect(screen.queryByTestId('detail-records-set-records-table')).toBeNull();
-    expect(screen.getByTestId('detail-records-least-assistance')).toHaveTextContent('20 kg');
+    await waitFor(() => expect(screen.getByTestId('detail-summary-records-pr-most_reps')).toBeTruthy());
+    expect(screen.queryByTestId('detail-summary-records-pr-heaviest_weight')).toBeNull();
+    expect(screen.queryByTestId('detail-summary-records-set-records-table')).toBeNull();
+    expect(screen.getByTestId('detail-summary-records-least-assistance')).toHaveTextContent('20 kg');
   });
 });
