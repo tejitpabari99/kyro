@@ -496,6 +496,52 @@ describe('ExerciseDetailScreen — Summary tab (real content)', () => {
     expect(screen.getByTestId('detail-summary-records-pr-heaviest_weight')).toBeTruthy();
   });
 
+  // Coverage gap found during review: every other test in this describe
+  // block either configures `RecordsService` with real records (the
+  // above tests) or leans on the merged-empty-state branch entirely (zero
+  // `historicalSets`). This test targets the state in between —
+  // `historicalSets` non-empty (chart renders real data) but `recordsQuery`
+  // resolves to `EMPTY_RECORDS_SNAPSHOT` (the `beforeEach` default, not
+  // overridden here) — proving `ExerciseSummaryTab`/`ExerciseRecordsTab`
+  // render a sane "no records yet" shape (chart populated, zero PR cards,
+  // Set Records table present with every bucket dashed-out) rather than
+  // silently mis-rendering or omitting the RECORDS section altogether.
+  it('shows the chart with real data but no PR cards when there is history but no records yet', async () => {
+    const repository = new FakeExerciseRepository([REAL_EXERCISE]);
+
+    render(
+      <QueryClientProvider client={newTestQueryClient()}>
+        <ThemeProvider preference="dark">
+          <ExerciseDetailScreen
+            repository={repository}
+            workoutRepository={fakeWorkoutRepository(EXERCISE_HISTORY_FIXTURE)}
+            exerciseId={REAL_ID}
+            testID="detail"
+          />
+        </ThemeProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('detail-name')).toBeTruthy());
+
+    // Chart: driven by `historicalSets` alone, independent of records —
+    // renders real data even though no PR has ever been set.
+    await waitFor(() =>
+      expect(screen.getByTestId('detail-summary-chart-chart-plot')).toBeTruthy(),
+    );
+
+    // Records: the RECORDS section itself still renders (not omitted), but
+    // with zero trophy cards (every `RecordsSnapshot` slot is null) and a
+    // Set Records table whose buckets are all dashed-out placeholders.
+    expect(screen.getByTestId('detail-summary-records')).toBeTruthy();
+    expect(screen.queryByTestId('detail-summary-records-pr-heaviest_weight')).toBeNull();
+    expect(screen.queryByTestId('detail-summary-records-pr-best_1rm')).toBeNull();
+    expect(screen.queryByTestId('detail-summary-records-pr-best_set_volume')).toBeNull();
+    expect(screen.queryByTestId('detail-summary-records-pr-most_reps')).toBeNull();
+    const table = screen.getByTestId('detail-summary-records-set-records-table');
+    expect(within(table).getAllByText('—').length).toBeGreaterThan(0);
+  });
+
   it('reps_only exercises show a single Total Reps metric', async () => {
     const repsOnly: Exercise = { ...REAL_EXERCISE, id: 'reps-only-fixture', exerciseType: 'reps_only' };
     const repository = new FakeExerciseRepository([repsOnly]);

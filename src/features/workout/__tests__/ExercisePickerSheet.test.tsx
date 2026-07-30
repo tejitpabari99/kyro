@@ -69,7 +69,7 @@ const EXERCISE_B = FIXTURE_EXERCISES[2]!; // 'Dumbbell Bench Press'
 
 const TEST_ID = 'picker';
 
-function renderSheet(overrides: Partial<ExercisePickerSheetProps> = {}) {
+async function renderSheet(overrides: Partial<ExercisePickerSheetProps> = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { gcTime: 0 } } });
   const props: ExercisePickerSheetProps = {
     visible: true,
@@ -81,14 +81,29 @@ function renderSheet(overrides: Partial<ExercisePickerSheetProps> = {}) {
     testID: TEST_ID,
     ...overrides,
   };
-  const result = render(
+  const result = await render(
     <QueryClientProvider client={queryClient}>
       <ThemeProvider preference="dark">
         <ExercisePickerSheet {...props} />
       </ThemeProvider>
     </QueryClientProvider>,
   );
-  return { props, ...result };
+  // `rerender` re-renders the same element tree with new props while
+  // reusing this same `queryClient`/provider instance — needed by the
+  // visible-prop-toggle test below, which simulates the parent screen
+  // dismissing/reopening this component (a distinct code path from the
+  // useFocusEffect-driven restore the two tests above cover).
+  const rerenderWithProps = async (nextOverrides: Partial<ExercisePickerSheetProps>): Promise<void> => {
+    const nextProps: ExercisePickerSheetProps = { ...props, ...nextOverrides };
+    await result.rerender(
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider preference="dark">
+          <ExercisePickerSheet {...nextProps} />
+        </ThemeProvider>
+      </QueryClientProvider>,
+    );
+  };
+  return { props, rerenderWithProps, ...result };
 }
 
 async function waitForListReady(): Promise<void> {
@@ -103,7 +118,7 @@ async function simulateReturnToFocus(): Promise<void> {
 
 describe('ExercisePickerSheet — suspend/restore (AD-4)', () => {
   it('pressing a row\'s ⓘ suspends the sheet and navigates to exercise detail', async () => {
-    renderSheet();
+    await renderSheet();
     await waitForListReady();
 
     await fireEvent.press(screen.getByTestId(`exercise-row-${EXERCISE_A.id}-info`));
@@ -115,7 +130,7 @@ describe('ExercisePickerSheet — suspend/restore (AD-4)', () => {
   });
 
   it('returning to focus restores the sheet with search/selection state intact', async () => {
-    renderSheet();
+    await renderSheet();
     await waitForListReady();
 
     // Build up some transient state before suspending. `SearchBar`
@@ -140,5 +155,49 @@ describe('ExercisePickerSheet — suspend/restore (AD-4)', () => {
     expect(screen.getByTestId(TEST_ID)).toBeTruthy();
     expect(screen.getByTestId(`${TEST_ID}-counter`)).toHaveTextContent('1 selected');
     expect(screen.getByPlaceholderText('Search exercises').props.value).toBe('bench');
+  });
+
+  // Coverage gap found during review: the two tests above cover the
+  // `useFocusEffect`-driven restore path only. This test covers the other
+  // way `visible` can change while suspended — the *parent* screen itself
+  // flipping `visible` (e.g. the workout being discarded/closed out from
+  // under an in-flight ⓘ navigation), a real prop the parent fully
+  // controls, independent of focus events. `Sheet`'s own `visible` is
+  // `visible && !isNavigatingToDetail`, so this must stay false (no crash,
+  // no flash of content) while the parent's `visible` is false regardless
+  // of `isNavigatingToDetail`; and per the component's own "reset every
+  // transient state on each open transition" logic (distinct from the
+  // focus-effect restore), a later parent-driven reopen (`visible` false ->
+  // true) resets selection/search fresh rather than restoring it — only the
+  // focus-effect path preserves state, confirming the two mechanisms don't
+  // get confused with each other.
+  it('parent flipping visible to false while suspended stays hidden, and a parent-driven reopen resets state fresh (not restored)', async () => {
+    const { rerenderWithProps } = await renderSheet();
+    await waitForListReady();
+
+    await fireEvent.press(screen.getByTestId(`exercise-row-${EXERCISE_A.id}`));
+    await fireEvent.changeText(screen.getByPlaceholderText('Search exercises'), 'bench');
+    expect(screen.getByTestId(`${TEST_ID}-counter`)).toHaveTextContent('1 selected');
+
+    // ⓘ on a different row suspends the sheet (isNavigatingToDetail: true).
+    await fireEvent.press(screen.getByTestId(`exercise-row-${EXERCISE_B.id}-info`));
+    expect(screen.queryByTestId(TEST_ID)).toBeNull();
+
+    // Parent dismisses the picker outright while still suspended — no
+    // useFocusEffect fires here at all (that's a separate mechanism); the
+    // sheet must simply stay hidden, no crash.
+    await rerenderWithProps({ visible: false });
+    expect(screen.queryByTestId(TEST_ID)).toBeNull();
+
+    // Parent reopens via the `visible` prop directly (not a focus event).
+    // This is an "open transition" per the component's own reset logic —
+    // selection/search reset fresh, unlike the focus-effect restore tested
+    // above.
+    await rerenderWithProps({ visible: true });
+    await waitForListReady();
+
+    expect(screen.getByTestId(TEST_ID)).toBeTruthy();
+    expect(screen.getByTestId(`${TEST_ID}-counter`)).toHaveTextContent('0 selected');
+    expect(screen.getByPlaceholderText('Search exercises').props.value).toBe('');
   });
 });
