@@ -592,7 +592,6 @@ export function EditWorkoutScreen({
             visible={pickerVisible}
             onDismiss={handleClosePicker}
             repository={exerciseRepository}
-            workoutRepository={workoutRepository}
             mode={pickerMode}
             onAdd={(ids, superset) => void handlePickerAdd(ids, superset)}
             onReplace={handlePickerReplace}

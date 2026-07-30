@@ -20,7 +20,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { Settings as SettingsIcon } from 'lucide-react-native';
@@ -34,7 +34,6 @@ import {
   type MuscleGroup,
 } from '@/domain/enums';
 import type { Exercise, ExerciseRepository } from '@/data/exercises/types';
-import type { WorkoutRepository } from '@/data/workouts/types';
 import { AzRail } from '@/features/exercises/AzRail';
 import {
   buildExerciseRows,
@@ -54,7 +53,6 @@ import { Sheet } from '@/ui/Sheet';
 import { SheetHeader } from '@/ui/SheetHeader';
 import { useTheme } from '@/ui/theme-provider';
 
-import { ExerciseDetailSheet } from './ExerciseDetailSheet';
 import { ExercisePickerOptionsSheet } from './ExercisePickerOptionsSheet';
 
 const SEARCH_DEBOUNCE_MS = 150;
@@ -66,8 +64,6 @@ export interface ExercisePickerSheetProps {
   visible: boolean;
   onDismiss: () => void;
   repository: ExerciseRepository;
-  /** M4-09: threaded straight through to the ⓘ info button's `ExerciseDetailSheet` — see that component's own `workoutRepository` doc comment. Optional; omitted call sites (e.g. the routine editor's picker, which has no natural `WorkoutRepository` in scope) just fall back to the sheet's pre-M4-09 empty states. */
-  workoutRepository?: Pick<WorkoutRepository, 'exerciseHistory'>;
   mode: ExercisePickerMode;
   /** `mode: "add"` — selected exercise ids in tap (selection) order, plus whether the Superset toggle was on. */
   onAdd?: (exerciseIds: string[], superset: boolean) => void;
@@ -80,7 +76,6 @@ export function ExercisePickerSheet({
   visible,
   onDismiss,
   repository,
-  workoutRepository,
   mode,
   onAdd,
   onReplace,
@@ -96,7 +91,7 @@ export function ExercisePickerSheet({
   const [muscleSheetVisible, setMuscleSheetVisible] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [superset, setSuperset] = useState(false);
-  const [detailExerciseId, setDetailExerciseId] = useState<string | null>(null);
+  const [isNavigatingToDetail, setIsNavigatingToDetail] = useState(false);
   const [optionsSheetVisible, setOptionsSheetVisible] = useState(false);
 
   // Reset every transient picker state on each open transition — the same
@@ -113,9 +108,21 @@ export function ExercisePickerSheet({
       setEquipmentFilter(null);
       setSelectedIds([]);
       setSuperset(false);
-      setDetailExerciseId(null);
+      setIsNavigatingToDetail(false);
     }
   }
+
+  // Restores this sheet (and, by never having unmounted this component,
+  // its search/filter/selection state) whenever the screen that opened
+  // this picker regains focus — including the return trip from the
+  // `/exercise/[id]` push `handleInfoPress` below triggers. Runs on every
+  // focus (including this picker's own first mount), which is a
+  // harmless no-op `setState(false)` on any focus unrelated to this flow.
+  useFocusEffect(
+    useCallback(() => {
+      setIsNavigatingToDetail(false);
+    }, []),
+  );
 
   useEffect(() => {
     const handle = setTimeout(() => setDebouncedQuery(searchInput), SEARCH_DEBOUNCE_MS);
@@ -191,7 +198,8 @@ export function ExercisePickerSheet({
   );
 
   const handleInfoPress = useCallback((exercise: Exercise) => {
-    setDetailExerciseId(exercise.id);
+    setIsNavigatingToDetail(true);
+    router.push(`/exercise/${exercise.id}` as never);
   }, []);
 
   const handleConfirmAdd = (): void => {
@@ -236,7 +244,7 @@ export function ExercisePickerSheet({
   const showEmptyState = !allQuery.isLoading && rows.length === 0;
 
   return (
-    <Sheet visible={visible} onDismiss={onDismiss} detent="full" testID={testID}>
+    <Sheet visible={visible && !isNavigatingToDetail} onDismiss={onDismiss} detent="full" testID={testID}>
       <View style={{ flex: 1 }}>
         <SheetHeader
           testID={`${testID}-header`}
@@ -386,14 +394,6 @@ export function ExercisePickerSheet({
         options={MUSCLE_GROUP_OPTIONS}
         value={muscleFilter}
         onChange={setMuscleFilter}
-      />
-      <ExerciseDetailSheet
-        testID={`${testID}-detail-sheet`}
-        visible={detailExerciseId != null}
-        onDismiss={() => setDetailExerciseId(null)}
-        repository={repository}
-        workoutRepository={workoutRepository}
-        exerciseId={detailExerciseId}
       />
       <ExercisePickerOptionsSheet
         testID={`${testID}-options-sheet`}
