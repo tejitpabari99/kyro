@@ -8,9 +8,12 @@
  * stays a thin wiring shim.
  *
  * **Summary tab** (`ExerciseSummaryTab`, M4-09/AD-5) composes the chart and
- * records content into one scroll; it gates on `historyQuery`/`historicalSets`
- * only — no historical sets already implies no records, so no separate
- * records-loading gate is needed. **History tab** (`ExerciseHistoryTab`)
+ * records content into one scroll; it gates loading on BOTH `historyQuery`
+ * and `recordsQuery` (bugfix: these are two independent async queries with
+ * no ordering guarantee — gating on `historyQuery.isLoading` alone let the
+ * tab render with a stale `EMPTY_RECORDS_SNAPSHOT` while the real records
+ * query was still in flight, popping in real data on a later render).
+ * **History tab** (`ExerciseHistoryTab`)
  * shares the same `historyQuery` data feed. **How to tab** (`HowToTab`)
  * holds the exercise type/equipment/muscle/instructions content that used to
  * live in this file's inline `AboutTab`. The merged Summary/History empty
@@ -364,7 +367,7 @@ export function ExerciseDetailScreen({
 
           <View style={{ flex: 1, marginTop: spacing['2'] }}>
             {tab === 'summary' ? (
-              historyQuery.isLoading ? (
+              historyQuery.isLoading || recordsQuery.isLoading ? (
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
                   <ActivityIndicator color={colors.accent.primary} />
                 </View>

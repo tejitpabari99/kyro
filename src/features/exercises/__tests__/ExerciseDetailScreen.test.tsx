@@ -418,6 +418,84 @@ describe('ExerciseDetailScreen — Summary tab (real content)', () => {
     expect(within(screen.getByTestId('detail-summary-records-set-record-10+')).getByText('—')).toBeTruthy();
   });
 
+  // Bugfix regression (code review of the Summary-tab merge): `historyQuery`
+  // and `recordsQuery` are two independent async queries with no ordering
+  // guarantee. This test manually holds `recordsQuery`'s underlying promise
+  // open (via a stored `resolve`, not fired until the test says so) so it
+  // can prove `historyQuery` has already settled — via switching to the
+  // History tab, which depends on `historyQuery` alone, and back — while
+  // `recordsQuery` is still pending. Before the fix, Summary gated only on
+  // `historyQuery.isLoading`, so it would already be rendering
+  // `ExerciseSummaryTab` (chart included) with the stale
+  // `EMPTY_RECORDS_SNAPSHOT` fallback at that point; this asserts it isn't.
+  it('keeps showing the Summary loading state until recordsQuery also resolves, not just historyQuery', async () => {
+    const repository = new FakeExerciseRepository([REAL_EXERCISE]);
+
+    const recordsFixtureSets: HistoricalSet[] = [
+      {
+        setId: 'set-1b',
+        workoutId: 'w1',
+        workoutStartTime: DAY1,
+        setOrder: 0,
+        exerciseType: 'weight_reps',
+        setType: 'normal',
+        isCompleted: true,
+        weightKg: 80,
+        reps: 8,
+        durationSeconds: null,
+      },
+    ];
+
+    let resolveWatermark: ((value: number) => void) | undefined;
+    const watermarkPromise = new Promise<number>((resolve) => {
+      resolveWatermark = resolve;
+    });
+    configureRecordsService({
+      setsForExercise: async () => recordsFixtureSets,
+      // Held open on purpose — this is `recordsQuery`'s data source
+      // (`RecordsService.getSnapshot` awaits the watermark first), so
+      // `recordsQuery` cannot settle until this test explicitly resolves it.
+      exerciseHistoryWatermark: () => watermarkPromise,
+    });
+
+    render(
+      <QueryClientProvider client={newTestQueryClient()}>
+        <ThemeProvider preference="dark">
+          <ExerciseDetailScreen
+            repository={repository}
+            workoutRepository={fakeWorkoutRepository(EXERCISE_HISTORY_FIXTURE)}
+            exerciseId={REAL_ID}
+            testID="detail"
+          />
+        </ThemeProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('detail-name')).toBeTruthy());
+
+    // Prove historyQuery has already resolved by way of the History tab
+    // (its own independent `historyQuery.isLoading` gate, untouched by this
+    // fix) rendering real content — without touching recordsQuery at all.
+    await fireEvent.press(screen.getByTestId('detail-tabs-history'));
+    await waitFor(() => expect(screen.getByTestId('detail-history-card-w2')).toBeTruthy());
+
+    // Back to Summary: historyQuery is settled and historicalSets is
+    // non-empty, but recordsQuery is still pending. Summary must still be
+    // in its loading state — neither the content branch (chart) nor the
+    // empty-state branch should have rendered yet.
+    await fireEvent.press(screen.getByTestId('detail-tabs-summary'));
+    expect(screen.queryByTestId('detail-summary-chart-metric-heaviest_weight')).toBeNull();
+    expect(screen.queryByTestId('detail-summary')).toBeNull();
+
+    // Now let recordsQuery resolve — Summary content (chart + real records,
+    // not the stale EMPTY_RECORDS_SNAPSHOT) should appear.
+    resolveWatermark?.(1);
+    await waitFor(() =>
+      expect(screen.getByTestId('detail-summary-chart-metric-heaviest_weight')).toBeTruthy(),
+    );
+    expect(screen.getByTestId('detail-summary-records-pr-heaviest_weight')).toBeTruthy();
+  });
+
   it('reps_only exercises show a single Total Reps metric', async () => {
     const repsOnly: Exercise = { ...REAL_EXERCISE, id: 'reps-only-fixture', exerciseType: 'reps_only' };
     const repository = new FakeExerciseRepository([repsOnly]);
