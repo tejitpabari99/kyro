@@ -194,6 +194,21 @@ describe('RoutinesHubScreen — smoke render (both themes)', () => {
     await renderHub(fixtureRepo(), 'light');
     expect(await screen.findByTestId('routine-card-r1')).toBeTruthy();
   });
+
+  it('renders the routine preview at footnote size, not the old subhead size (07-history-routines-list-decarding PRD §4.1)', async () => {
+    await renderHub(fixtureRepo());
+
+    await screen.findByTestId('routine-card-r1');
+    const preview = await waitFor(() => screen.getByTestId('routine-card-r1-preview'));
+
+    const flattenedStyle = Array.isArray(preview.props.style)
+      ? Object.assign({}, ...preview.props.style)
+      : preview.props.style;
+
+    // typography.footnote.fontSize === 13 (src/ui/tokens.ts) — the old
+    // typography.subhead.fontSize === 15 this guards against reverting to.
+    expect(flattenedStyle.fontSize).toBe(13);
+  });
 });
 
 describe('RoutinesHubScreen — empty state', () => {
