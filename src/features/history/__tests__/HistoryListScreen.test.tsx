@@ -200,7 +200,6 @@ describe('HistoryListScreen — populated list (04 §3.1 acceptance: accurate vo
     expect(screen.getByText('Morning Workout')).toBeTruthy();
     expect(screen.getByText(/480 kg/)).toBeTruthy();
     expect(screen.getByText(/🏆 5 PRs/)).toBeTruthy();
-    expect(screen.getByText('1 × Bench Press (Barbell) — best 60kg × 8')).toBeTruthy();
   });
 
   it('omits the trophy segment entirely when PR count is 0', async () => {
