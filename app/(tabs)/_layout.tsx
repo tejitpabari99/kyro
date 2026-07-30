@@ -1,13 +1,13 @@
 /**
- * Tab bar layout (M0-08) — 06 §3 tab structure (workout | history |
- * exercises | profile + `GlobalWorkoutBar` overlay) and 07 §6/§4 tab-bar
+ * Tab bar layout (M0-08) — 06 §3 tab structure (home | workout |
+ * profile + `GlobalWorkoutBar` overlay) and 07 §6/§4 tab-bar
  * spec: `bg.surface` with a subtle top hairline; active = accent icon +
  * label; inactive `text.tertiary`; no center FAB (Start lives in the
- * Workout tab). Icons per 07 §4: Workout `dumbbell`, History `history`,
- * Exercises `book-open`, Profile `user`, 24 pt / 1.75 pt stroke.
+ * Workout tab). Icons per 07 §4: Home `home`, Workout `dumbbell`,
+ * Profile `user`, 24 pt / 1.75 pt stroke.
  */
 import React from 'react';
-import { BookOpen, Dumbbell, History, User } from 'lucide-react-native';
+import { Dumbbell, Home, User } from 'lucide-react-native';
 import { StyleSheet, View } from 'react-native';
 import { Tabs } from 'expo-router';
 
@@ -36,29 +36,20 @@ export default function TabsLayout(): React.JSX.Element {
         }}
       >
         <Tabs.Screen
+          name="home"
+          options={{
+            title: 'Home',
+            tabBarIcon: ({ color }) => (
+              <Home size={TAB_ICON_SIZE} strokeWidth={TAB_ICON_STROKE_WIDTH} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
           name="workout"
           options={{
             title: 'Workout',
             tabBarIcon: ({ color }) => (
               <Dumbbell size={TAB_ICON_SIZE} strokeWidth={TAB_ICON_STROKE_WIDTH} color={color} />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="history"
-          options={{
-            title: 'History',
-            tabBarIcon: ({ color }) => (
-              <History size={TAB_ICON_SIZE} strokeWidth={TAB_ICON_STROKE_WIDTH} color={color} />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="exercises"
-          options={{
-            title: 'Exercises',
-            tabBarIcon: ({ color }) => (
-              <BookOpen size={TAB_ICON_SIZE} strokeWidth={TAB_ICON_STROKE_WIDTH} color={color} />
             ),
           }}
         />
