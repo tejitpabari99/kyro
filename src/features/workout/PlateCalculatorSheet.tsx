@@ -99,14 +99,14 @@ export function PlateCalculatorSheet({
 
   // Seeded once at mount (this component instance persists across
   // open/close — `ActiveWorkoutScreen` toggles its `visible` prop rather
-  // than mounting/unmounting it, same shape `NoteEditSheet`'s
+  // than mounting/unmounting it, same shape `DurationEditSheet.tsx`'s
   // own sheet uses) via a lazy initializer for the very first open, then
   // re-seeded on every subsequent visible-transition below.
   const [selectedBarIndex, setSelectedBarIndex] = useState(barbellIndexOrFirst);
   const [draft, setDraft] = useState(prefillDraft);
 
   // Re-seed the draft + bar selection every time the sheet transitions to
-  // visible again (mirrors `NoteEditSheet`'s own "derive from a
+  // visible again (mirrors `DurationEditSheet.tsx`'s own "derive from a
   // visible transition" pattern) — pre-fills from the captured field's
   // current canonical value, converted to display units.
   const [wasVisible, setWasVisible] = useState(visible);
