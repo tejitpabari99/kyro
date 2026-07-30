@@ -97,7 +97,8 @@
  */
 import React, { useState } from 'react';
 import { router } from 'expo-router';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ChevronLeft } from 'lucide-react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -336,16 +337,36 @@ export default function SettingsScreen(): React.JSX.Element {
   };
 
   return (
-    <ScrollView
-      testID="settings-screen"
-      style={[styles.container, { backgroundColor: colors.bg.base }]}
-      contentContainerStyle={{
-        padding: spacing['4'],
-        // BUGFIX-01: `insets.top` clears the status bar/notch — see
-        // `app/_layout.tsx`'s header.
-        paddingTop: insets.top + spacing['4'],
-      }}
-    >
+    <>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingHorizontal: spacing['4'],
+          paddingTop: insets.top + spacing['4'],
+          paddingBottom: spacing['2'],
+          backgroundColor: colors.bg.base,
+        }}
+      >
+        <Pressable
+          testID="settings-back"
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          hitSlop={8}
+          onPress={() => router.back()}
+          style={{ marginRight: spacing['3'] }}
+        >
+          <ChevronLeft size={24} strokeWidth={1.75} color={colors.text.primary} />
+        </Pressable>
+        <Text style={[typography.headline, { color: colors.text.primary }]}>Settings</Text>
+      </View>
+      <ScrollView
+        testID="settings-screen"
+        style={[styles.container, { backgroundColor: colors.bg.base }]}
+        contentContainerStyle={{
+          padding: spacing['4'],
+        }}
+      >
       <View style={{ marginBottom: spacing['6'] }}>
         <Text
           style={[
@@ -539,6 +560,13 @@ export default function SettingsScreen(): React.JSX.Element {
           onPress={() => router.push('/profile/settings/warmup-calculator')}
         />
 
+        <ListRow
+          testID="settings-archived-exercises-link"
+          title="Archived Exercises"
+          chevron
+          onPress={() => router.push('/profile/exercises-archived')}
+        />
+
         <SettingsToggleRow
           testID="settings-live-pr-banner"
           title="Live PR Notification"
@@ -713,7 +741,8 @@ export default function SettingsScreen(): React.JSX.Element {
           />
         </View>
       </Sheet>
-    </ScrollView>
+      </ScrollView>
+    </>
   );
 }
 

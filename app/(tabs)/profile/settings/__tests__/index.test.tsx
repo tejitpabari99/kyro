@@ -42,7 +42,7 @@ function newQueryClient(): QueryClient {
 
 jest.mock('expo-router', () => ({
   ...jest.requireActual('expo-router'),
-  router: { push: jest.fn() },
+  router: { push: jest.fn(), back: jest.fn() },
 }));
 
 // M5-04: "Export Diagnostics" calls this directly — mocked so the suite
@@ -343,6 +343,32 @@ describe('Settings screen — Workouts group (M2-17, 02 §13)', () => {
 
     fireEvent.press(screen.getByTestId('settings-warmup-calc-link'));
     expect(router.push).toHaveBeenCalledWith('/profile/settings/warmup-calculator');
+  });
+
+  it('navigates to the Archived Exercises screen', async () => {
+    await render(
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <SettingsScreen />
+        </ThemeProvider>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.press(screen.getByTestId('settings-archived-exercises-link'));
+    expect(router.push).toHaveBeenCalledWith('/profile/exercises-archived');
+  });
+
+  it('pressing the back chevron calls router.back()', async () => {
+    await render(
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <SettingsScreen />
+        </ThemeProvider>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.press(screen.getByTestId('settings-back'));
+    expect(router.back).toHaveBeenCalledTimes(1);
   });
 
   it('each Workouts setting persists across a simulated relaunch (fresh store instance, same DB)', async () => {
