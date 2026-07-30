@@ -91,6 +91,7 @@ import { captureError } from '@/lib/sentry';
 import { Button } from '@/ui/Button';
 import { EmptyState } from '@/ui/EmptyState';
 import { KeyboardAccessoryBar } from '@/ui/KeyboardAccessoryBar';
+import { KeyboardDoneBar } from '@/ui/KeyboardDoneBar';
 import { StatColumn } from '@/ui/StatColumn';
 import { useTheme } from '@/ui/theme-provider';
 
@@ -99,6 +100,7 @@ import { createActiveWorkoutStore, selectActiveWorkout } from './activeWorkoutSt
 import { EditWorkoutMetaSheet } from './EditWorkoutMetaSheet';
 import { ExerciseCard } from './ExerciseCard';
 import { ExercisePickerSheet, type ExercisePickerMode } from './ExercisePickerSheet';
+import { NOTES_KEYBOARD_ACCESSORY_VIEW_ID } from './InlineNoteField';
 import { KEYBOARD_ACCESSORY_VIEW_ID, useKeyboardFocusStore } from './keyboardFocusStore';
 import { PlateCalculatorSheet } from './PlateCalculatorSheet';
 import { PRBannerHost } from './PRBannerHost';
@@ -627,6 +629,8 @@ export function EditWorkoutScreen({
             onCalculatorPress={handleCalculatorPress}
             onNextPress={handleNextPress}
           />
+
+          <KeyboardDoneBar testID={`${testID}-notes-keyboard-done-bar`} nativeID={NOTES_KEYBOARD_ACCESSORY_VIEW_ID} />
 
           <PlateCalculatorSheet
             testID={`${testID}-plate-calculator-sheet`}
