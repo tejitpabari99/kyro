@@ -55,7 +55,6 @@ import { useLocalSearchParams } from 'expo-router';
 import { ExerciseRepositoryImpl } from '@/data/exercises/exercise-repository';
 import { RoutineRepositoryImpl } from '@/data/routines/routine-repository';
 import { getAppDriver } from '@/data/sqlite/boot';
-import { WorkoutRepositoryImpl } from '@/data/workouts/workout-repository';
 import { ActiveWorkoutScreen } from '@/features/workout/ActiveWorkoutScreen';
 
 export default function ActiveWorkoutRoute(): React.JSX.Element {
@@ -67,18 +66,12 @@ export default function ActiveWorkoutRoute(): React.JSX.Element {
   }>();
   const repository = useMemo(() => new ExerciseRepositoryImpl(getAppDriver()), []);
   const routineRepository = useMemo(() => new RoutineRepositoryImpl(getAppDriver()), []);
-  // M4-09: the exercise-name-tap `ExerciseDetailSheet`'s History/Charts
-  // feed — see `ActiveWorkoutScreen.tsx`'s own `workoutRepository` doc
-  // comment for why this is constructed at the route layer rather than
-  // inside that screen component.
-  const workoutRepository = useMemo(() => new WorkoutRepositoryImpl(getAppDriver()), []);
 
   const parsedStartTime = startTime ? Number(startTime) : undefined;
 
   return (
     <ActiveWorkoutScreen
       exerciseRepository={repository}
-      workoutRepository={workoutRepository}
       retro={retro === '1'}
       retroStartTime={
         parsedStartTime !== undefined && Number.isFinite(parsedStartTime)
