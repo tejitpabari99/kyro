@@ -1090,7 +1090,15 @@ export function ActiveWorkoutScreen({
         testID={`${testID}-body`}
         ref={scrollViewRef}
         style={styles.body}
-        contentContainerStyle={{ padding: spacing['4'], gap: spacing['4'] }}
+        contentContainerStyle={{
+          padding: spacing['4'],
+          // G3: safe-area-aware bottom gap — same `insets.bottom + spacing[n]`
+          // idiom this file's own header already uses (`paddingTop: insets.top +
+          // spacing['3']`, line ~1010) and that MeasuresHomeScreen/PhotoPagerScreen/
+          // PhotoGalleryScreen all use identically for a bottom-anchored element.
+          paddingBottom: insets.bottom + spacing['4'],
+          gap: spacing['4'],
+        }}
         keyboardShouldPersistTaps="handled"
       >
         {workout.exercises.map((workoutExercise) => {
@@ -1140,6 +1148,42 @@ export function ActiveWorkoutScreen({
             </View>
           );
         })}
+
+        {/* Footer — + Add Exercise (primary, full-width), Settings/Discard Workout
+            (tonal/destructive, equal-width side-by-side row) (02 §2, revised —
+            sub-project B). Lives inside the scroll content, not a pinned sibling
+            after the ScrollView: on a short/empty workout it sits right below the
+            last card (or right below the meta row, if there are zero exercises)
+            instead of being glued to the screen's bottom edge with a large empty
+            gap (G4); on a long workout it's reached by scrolling with everything
+            else, matching the reference app's own placement of this affordance. */}
+        <View style={[styles.footer, { gap: spacing['2'] }]} testID={`${testID}-footer`}>
+          <Button
+            testID={`${testID}-add-exercise`}
+            label="+ Add Exercise"
+            variant="primary"
+            size="lg"
+            onPress={handleAddExercisePress}
+          />
+          <View style={{ flexDirection: 'row', gap: spacing['2'] }} testID={`${testID}-footer-row`}>
+            <Button
+              testID={`${testID}-settings`}
+              label="Settings"
+              variant="tonal"
+              size="md"
+              onPress={handleSettingsPress}
+              style={{ flex: 1 }}
+            />
+            <Button
+              testID={`${testID}-discard`}
+              label="Discard Workout"
+              variant="destructive"
+              size="md"
+              onPress={handleDiscardPress}
+              style={{ flex: 1 }}
+            />
+          </View>
+        </View>
       </ScrollView>
 
       {/* Remove-exercise Snackbars — one per pending removal (02 §3: "Remove Exercise ... Snackbar with Undo, 5 s"). */}
@@ -1155,31 +1199,6 @@ export function ActiveWorkoutScreen({
           style={{ marginHorizontal: spacing['4'], marginBottom: spacing['2'] }}
         />
       ))}
-
-      {/* Footer — + Add Exercise (primary), Settings (tonal, stub for M2-17), Discard Workout (destructive, confirm) (02 §2). */}
-      <View style={[styles.footer, { padding: spacing['4'], gap: spacing['2'] }]}>
-        <Button
-          testID={`${testID}-add-exercise`}
-          label="+ Add Exercise"
-          variant="primary"
-          size="lg"
-          onPress={handleAddExercisePress}
-        />
-        <Button
-          testID={`${testID}-settings`}
-          label="Settings"
-          variant="tonal"
-          size="md"
-          onPress={handleSettingsPress}
-        />
-        <Button
-          testID={`${testID}-discard`}
-          label="Discard Workout"
-          variant="destructive"
-          size="md"
-          onPress={handleDiscardPress}
-        />
-      </View>
 
       <DurationEditSheet
         testID={`${testID}-duration-sheet`}
