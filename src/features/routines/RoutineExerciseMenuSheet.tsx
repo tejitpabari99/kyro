@@ -12,7 +12,7 @@
  * item, versus this ~40-line sibling that just doesn't have it.
  */
 import React from 'react';
-import { ArrowUpDown, Clock, Link2, Repeat, StickyNote, Trash2, Unlink } from 'lucide-react-native';
+import { ArrowUpDown, Clock, Link2, Repeat, Trash2, Unlink } from 'lucide-react-native';
 import { View } from 'react-native';
 
 import { ListRow } from '@/ui/ListRow';
@@ -28,7 +28,6 @@ export interface RoutineExerciseMenuSheetProps {
   onReplace: () => void;
   onAddToSuperset: () => void;
   onRemoveFromSuperset: () => void;
-  onAddNote: () => void;
   onRestTimer: () => void;
   onRemoveExercise: () => void;
   testID?: string;
@@ -45,7 +44,6 @@ export function RoutineExerciseMenuSheet({
   onReplace,
   onAddToSuperset,
   onRemoveFromSuperset,
-  onAddNote,
   onRestTimer,
   onRemoveExercise,
   testID = 'routine-exercise-menu-sheet',
@@ -87,12 +85,6 @@ export function RoutineExerciseMenuSheet({
             onPress={dismissThen(onAddToSuperset)}
           />
         )}
-        <ListRow
-          testID={`${testID}-add-note`}
-          title="Add a Note"
-          leading={<StickyNote size={ICON_SIZE} strokeWidth={ICON_STROKE_WIDTH} color={colors.text.secondary} />}
-          onPress={dismissThen(onAddNote)}
-        />
         <ListRow
           testID={`${testID}-rest-timer`}
           title="Rest Timer"
