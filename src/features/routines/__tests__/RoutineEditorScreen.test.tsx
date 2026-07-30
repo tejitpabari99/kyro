@@ -443,18 +443,17 @@ describe('RoutineEditorScreen — per-exercise ⋯ menu (04 §2.1: reorder/repla
     expect(full!.exercises).toEqual([]);
   });
 
-  it('Add a Note opens NoteEditSheet; saving shows the note on the card', async () => {
+  it('tapping the note row enters edit mode; typing and blurring shows the note on the card', async () => {
     const fixture = await setup();
     await renderEditor(fixture);
     await screen.findByTestId(`${testID}-title-input`);
     await addBenchViaPicker(testID, fixture);
 
     const cardTestID = `${testID}-card-${fixture.bench.id}`;
-    await fireEvent.press(screen.getByTestId(`${cardTestID}-menu-button`));
-    await fireEvent.press(screen.getByTestId(`${cardTestID}-menu-add-note`));
-    const noteInput = await screen.findByTestId(`${cardTestID}-note-sheet-input`);
+    await fireEvent.press(screen.getByTestId(`${cardTestID}-note-row`));
+    const noteInput = await screen.findByTestId(`${cardTestID}-note-input`);
     await fireEvent.changeText(noteInput, 'Keep elbows tucked');
-    await fireEvent.press(screen.getByTestId(`${cardTestID}-note-sheet-save`));
+    await fireEvent(noteInput, 'blur');
 
     expect(screen.getByTestId(`${cardTestID}-note-text`)).toBeTruthy();
   });
