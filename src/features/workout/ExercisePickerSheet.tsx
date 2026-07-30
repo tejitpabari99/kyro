@@ -238,26 +238,34 @@ export function ExercisePickerSheet({
   return (
     <Sheet visible={visible} onDismiss={onDismiss} detent="full" testID={testID}>
       <View style={{ flex: 1 }}>
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            paddingHorizontal: spacing['4'],
-            paddingBottom: spacing['2'],
+        <SheetHeader
+          testID={`${testID}-header`}
+          title={mode === 'replace' ? 'Replace Exercise' : 'Add Exercise'}
+          right={{
+            kind: 'custom',
+            content: (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing['3'] }}>
+                <Pressable
+                  testID={`${testID}-options-button`}
+                  accessibilityRole="button"
+                  accessibilityLabel="List options"
+                  hitSlop={8}
+                  onPress={() => setOptionsSheetVisible(true)}
+                >
+                  <SettingsIcon size={22} strokeWidth={1.75} color={colors.text.secondary} />
+                </Pressable>
+                <Button
+                  testID={`${testID}-cancel`}
+                  label="Cancel"
+                  variant="ghost"
+                  size="sm"
+                  onPress={onDismiss}
+                />
+              </View>
+            ),
           }}
-        >
-          <Text style={[typography.headline, { color: colors.text.primary }]}>
-            {mode === 'replace' ? 'Replace Exercise' : 'Add Exercise'}
-          </Text>
-          <Button
-            testID={`${testID}-cancel`}
-            label="Cancel"
-            variant="ghost"
-            size="sm"
-            onPress={onDismiss}
-          />
-        </View>
+          safeTop
+        />
 
         <View style={{ paddingHorizontal: spacing['4'], marginBottom: spacing['3'] }}>
           <SearchBar
