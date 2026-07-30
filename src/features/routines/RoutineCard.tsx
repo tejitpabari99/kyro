@@ -2,9 +2,10 @@
  * `RoutineCard` (M3-02, 04 §1) — title, 2-line grey exercise-name preview,
  * ⋯ menu trigger, full-width **tonal** `Start Routine` button (07 §5/§6:
  * "Routine card: Start Routine as full-width tonal button ... tonal keeps
- * single-accent hierarchy under the page-level primary"). Built on `Card`
- * (`src/ui/Card.tsx`) — no one-off surface styling (07 §5's "no
- * feature-local one-off buttons/cards" rule).
+ * single-accent hierarchy under the page-level primary"). Built as a plain
+ * `View` + bottom hairline divider (07-history-routines-list-decarding PRD
+ * §4.1) — no `Card` surface, matching `ListRow`'s hairline-divider idiom
+ * used elsewhere in this codebase.
  *
  * **Reorder mode (M3-03):** when `reorderMode` is true the ⋯ trigger and
  * `Start Routine` button are replaced by `dragHandle` (a
@@ -19,11 +20,10 @@
  */
 import React from 'react';
 import { Ellipsis } from 'lucide-react-native';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { RoutineSummary } from '@/data/routines/types';
 import { Button } from '@/ui/Button';
-import { Card } from '@/ui/Card';
 import { useTheme } from '@/ui/theme-provider';
 
 export interface RoutineCardProps {
@@ -51,10 +51,17 @@ export function RoutineCard({
   const { colors, spacing, typography } = useTheme();
 
   return (
-    <Card testID={testID} style={{ marginBottom: spacing['3'] }}>
+    <View
+      testID={testID}
+      style={{
+        paddingVertical: spacing['3'],
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: colors.border.hairline,
+      }}
+    >
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         <Text
-          style={[typography.title2, { color: colors.text.primary, flex: 1 }]}
+          style={[typography.headline, { color: colors.text.primary, flex: 1 }]}
           numberOfLines={1}
         >
           {routine.title}
@@ -76,7 +83,7 @@ export function RoutineCard({
       {!reorderMode && preview.length > 0 ? (
         <Text
           testID={`${testID}-preview`}
-          style={[typography.subhead, { color: colors.text.secondary, marginTop: spacing['1'] }]}
+          style={[typography.footnote, { color: colors.text.secondary, marginTop: spacing['1'] }]}
           numberOfLines={2}
         >
           {preview}
@@ -87,11 +94,11 @@ export function RoutineCard({
           testID={`${testID}-start`}
           label="Start Routine"
           variant="tonal"
-          size="lg"
+          size="md"
           onPress={onStart}
-          style={{ marginTop: spacing['4'] }}
+          style={{ marginTop: spacing['2'], alignSelf: 'stretch' }}
         />
       )}
-    </Card>
+    </View>
   );
 }
