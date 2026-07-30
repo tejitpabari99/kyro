@@ -60,8 +60,9 @@
  * header, "Warm-up / checked-set gating").
  */
 import React, { useMemo, useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
-import { TriangleAlert } from 'lucide-react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
+import { router } from 'expo-router';
+import { ChevronLeft, TriangleAlert } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 
@@ -320,9 +321,19 @@ export function StatisticsScreen({
         paddingBottom: spacing['10'],
       }}
     >
-      <Text style={[typography.title2, { color: colors.text.primary, marginBottom: spacing['4'] }]}>
-        Statistics
-      </Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing['4'] }}>
+        <Pressable
+          testID={`${testID}-back`}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          hitSlop={8}
+          onPress={() => router.back()}
+          style={{ marginRight: spacing['3'] }}
+        >
+          <ChevronLeft size={24} strokeWidth={1.75} color={colors.text.primary} />
+        </Pressable>
+        <Text style={[typography.title2, { color: colors.text.primary }]}>Statistics</Text>
+      </View>
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing['3'], marginBottom: spacing['4'] }}>
         <StatTile

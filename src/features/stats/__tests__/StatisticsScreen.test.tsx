@@ -17,6 +17,7 @@
  */
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import React from 'react';
+import { router } from 'expo-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import type { StatsFeedRow, WorkoutDateCount } from '@/data/workouts/types';
@@ -24,6 +25,11 @@ import { useSettingsStore } from '@/features/settings/settings-store';
 import { ThemeProvider } from '@/ui/theme-provider';
 
 import { StatisticsScreen, type StatsRepository } from '../StatisticsScreen';
+
+jest.mock('expo-router', () => ({
+  ...jest.requireActual('expo-router'),
+  router: { back: jest.fn() },
+}));
 
 // Each render mounts 3 real victory-native/Skia chart cards at once — under
 // Jest's CanvasKit-wasm test environment that's measurably slower per test
@@ -122,6 +128,22 @@ describe('StatisticsScreen — summary tiles', () => {
     expect(within(screen.getByTestId('stats-screen-tile-volume')).getByText('0 kg')).toBeTruthy();
     expect(within(screen.getByTestId('stats-screen-tile-time')).getByText('0:00')).toBeTruthy();
     expect(within(screen.getByTestId('stats-screen-tile-streak')).getByText('0 wks')).toBeTruthy();
+  });
+});
+
+describe('StatisticsScreen — back button (M4-09: Statistics is now a pushed route, not a tab root)', () => {
+  it('calls router.back() when the back chevron is pressed', async () => {
+    const workoutRepository = makeRepository();
+
+    await renderScreen(workoutRepository);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('stats-screen-tile-workouts')).toBeTruthy();
+    }, WAIT_OPTS);
+
+    fireEvent.press(screen.getByTestId('stats-screen-back'));
+
+    expect(router.back).toHaveBeenCalledTimes(1);
   });
 });
 
