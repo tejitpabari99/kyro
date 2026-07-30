@@ -105,7 +105,7 @@ describe('ExerciseCard — chrome (02 §3)', () => {
     expect(screen.getByText('Incline Bench Press')).toBeTruthy();
     expect(screen.getByText('Rest Timer: Off')).toBeTruthy();
     expect(screen.queryByTestId('card-superset-indicator')).toBeNull();
-    expect(screen.queryByTestId('card-note-row')).toBeNull();
+    expect(screen.getByTestId('card-note-placeholder')).toBeTruthy();
   });
 
   it('renders the rest-timer value and a note row when notes are present', async () => {
@@ -113,6 +113,7 @@ describe('ExerciseCard — chrome (02 §3)', () => {
     await renderCard(fixture, { restSeconds: 90, notes: 'Keep elbows tucked' });
     expect(screen.getByText('Rest Timer: 1min 30s')).toBeTruthy();
     expect(screen.getByTestId('card-note-row')).toBeTruthy();
+    expect(screen.getByTestId('card-note-text')).toBeTruthy();
     expect(screen.getByText('Keep elbows tucked')).toBeTruthy();
   });
 
@@ -146,41 +147,29 @@ describe('ExerciseCard — chrome (02 §3)', () => {
   });
 });
 
-describe('ExerciseCard — note row + sheet (02 §9)', () => {
-  it('tapping the note row opens the note sheet pre-filled; saving persists it', async () => {
+describe('ExerciseCard — inline note field (06 §4.1)', () => {
+  it('tapping the note row enters edit mode pre-filled; typing and blurring persists it', async () => {
     const fixture = await setup();
     await renderCard(fixture, { notes: 'Old note' });
 
     await fireEvent.press(screen.getByTestId('card-note-row'));
-    await waitFor(() => expect(screen.getByTestId('card-note-sheet-input')).toBeTruthy());
-    expect(screen.getByTestId('card-note-sheet-input').props.value).toBe('Old note');
+    await waitFor(() => expect(screen.getByTestId('card-note-input')).toBeTruthy());
+    expect(screen.getByTestId('card-note-input').props.value).toBe('Old note');
 
-    await fireEvent.changeText(screen.getByTestId('card-note-sheet-input'), 'New note');
-    await fireEvent.press(screen.getByTestId('card-note-sheet-save'));
+    await fireEvent.changeText(screen.getByTestId('card-note-input'), 'New note');
+    await fireEvent(screen.getByTestId('card-note-input'), 'blur');
 
-    // The sheet dismisses; `notes` itself is a plain prop here (this test
-    // renders `ExerciseCard` directly, not through `ActiveWorkoutScreen`'s
-    // store-subscribed re-render), so the persisted DB write is the
-    // meaningful assertion, not the still-static on-screen text.
-    await waitFor(() => expect(screen.queryByTestId('card-note-sheet-input')).toBeNull());
+    // The field returns to display mode; `notes` itself is a plain prop here
+    // (this test renders `ExerciseCard` directly, not through
+    // `ActiveWorkoutScreen`'s store-subscribed re-render), so the persisted
+    // DB write is the meaningful assertion, not the still-static on-screen text.
+    await waitFor(() => expect(screen.queryByTestId('card-note-input')).toBeNull());
     await waitFor(async () => {
       const persisted = await fixture.workoutRepo.getFull(
         useActiveWorkoutStore.getState().workout!.id,
       );
       expect(persisted!.exercises[0]!.notes).toBe('New note');
     });
-  });
-
-  it('⋯ → Add a Note opens the note sheet even with no existing note', async () => {
-    const fixture = await setup();
-    await renderCard(fixture);
-
-    await fireEvent.press(screen.getByTestId('card-menu-button'));
-    await waitFor(() => expect(screen.getByTestId('card-menu-add-note')).toBeTruthy());
-    await fireEvent.press(screen.getByTestId('card-menu-add-note'));
-
-    await waitFor(() => expect(screen.getByTestId('card-note-sheet-input')).toBeTruthy());
-    expect(screen.getByTestId('card-note-sheet-input').props.value).toBe('');
   });
 });
 
