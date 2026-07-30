@@ -686,7 +686,7 @@ export function ActiveWorkoutScreen({
       const exerciseIds = finished.exercises.map((exercise) => exercise.exerciseId);
       await invalidateAfterWorkoutMutation(queryClient, exerciseIds);
       setSaveSheetVisible(false);
-      router.replace(`/history/${finished.id}` as never);
+      router.replace(`/home/${finished.id}` as never);
     };
 
     // The workout itself already finished successfully above (`finish()`

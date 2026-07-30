@@ -888,8 +888,8 @@ describe('ActiveWorkoutScreen — finish flow (M2-14, 02 §14)', () => {
 
     await waitFor(() => expect(router.replace).toHaveBeenCalled());
     const [replaceTarget] = (router.replace as jest.Mock).mock.calls[0];
-    expect(replaceTarget).toMatch(/^\/history\//);
-    const workoutId = String(replaceTarget).replace('/history/', '');
+    expect(replaceTarget).toMatch(/^\/home\//);
+    const workoutId = String(replaceTarget).replace('/home/', '');
 
     expect(useRestTimerStore.getState().timer).toBeNull();
     expect(cancelNotification).toHaveBeenCalledWith(pendingNotificationId);
