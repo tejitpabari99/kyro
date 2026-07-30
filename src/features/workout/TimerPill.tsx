@@ -63,6 +63,7 @@
 import * as Linking from 'expo-linking';
 import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { formatDuration } from '@/domain/units';
 import { useSettingsStore } from '@/features/settings/settings-store';
@@ -81,8 +82,6 @@ import { useRestTimerTicker } from './useRestTimerTicker';
 
 /** 02 §7's own literal step. */
 const ADJUST_STEP_SECONDS = 15;
-const PILL_RING_SIZE = 40;
-const PILL_RING_STROKE = 4;
 const SHEET_RING_SIZE = 220;
 const SHEET_RING_STROKE = 12;
 
@@ -232,6 +231,7 @@ function RestTimerPanelControls({
 
 export function TimerPill({ testID = 'timer-pill' }: TimerPillProps): React.JSX.Element | null {
   const { colors, typography, spacing, radii } = useTheme();
+  const insets = useSafeAreaInsets();
 
   const timer = useRestTimerStore((state) => state.timer);
   const soundChoice = useSettingsStore((state) => state.settings.sounds.timer_sound);
@@ -298,13 +298,6 @@ export function TimerPill({ testID = 'timer-pill' }: TimerPillProps): React.JSX.
   const progress = Math.max(0, Math.min(1, remainingMs / total));
   const remainingSeconds = Math.ceil(remainingMs / 1000);
   const remainingText = formatDuration(remainingSeconds) ?? '0:00';
-  // `typography.statLarge` carries a readonly `fontVariant` tuple (tokens.ts
-  // header) — copy into a mutable array to satisfy RN's `TextStyle`, same
-  // pattern `StatColumn.tsx` already established for this exact token.
-  const remainingTextStyle = {
-    ...typography.statLarge,
-    fontVariant: [...typography.statLarge.fontVariant],
-  };
 
   const handleAdjust = (deltaSeconds: number): void => {
     selection();
@@ -320,40 +313,40 @@ export function TimerPill({ testID = 'timer-pill' }: TimerPillProps): React.JSX.
       <View
         testID={testID}
         style={[
-          styles.pillContainer,
+          styles.panelContainer,
           {
             backgroundColor: colors.bg.surface,
-            borderRadius: radii.pill,
-            borderColor: colors.border.hairline,
-            paddingHorizontal: spacing['3'],
-            paddingVertical: spacing['2'],
-            gap: spacing['3'],
+            borderTopColor: colors.border.hairline,
+            paddingBottom: insets.bottom,
           },
         ]}
       >
+        <View style={[styles.progressTrack, { backgroundColor: colors.bg.elevated }]}>
+          <View
+            style={[
+              styles.progressFill,
+              { width: `${progress * 100}%`, backgroundColor: colors.semantic.info },
+            ]}
+          />
+        </View>
+
         <Pressable
           testID={`${testID}-open`}
           accessibilityRole="button"
           accessibilityLabel={`Rest timer, ${remainingText} remaining. Tap for details.`}
           onPress={() => setSheetVisible(true)}
-          style={styles.pillTapArea}
+          style={[styles.countdownArea, { paddingVertical: spacing['4'] }]}
         >
-          <ProgressRing
-            testID={`${testID}-ring`}
-            progress={progress}
-            size={PILL_RING_SIZE}
-            strokeWidth={PILL_RING_STROKE}
-            color={colors.accent.primary}
-            trackColor={colors.bg.elevated}
-          />
           <Text
             testID={`${testID}-remaining`}
-            style={[remainingTextStyle, { color: colors.text.primary, marginLeft: spacing['2'] }]}
+            style={[typography.display, { color: colors.text.primary }]}
           >
             {remainingText}
           </Text>
         </Pressable>
-        <TimerControlsRow testIDPrefix={testID} onAdjust={handleAdjust} onSkip={handleSkip} />
+
+        <RestTimerPanelControls testIDPrefix={testID} onAdjust={handleAdjust} onSkip={handleSkip} />
+
         {/* M2-18 (08 §6 flow 7, semi-manual): dev-only debug hook asserting
             notification *scheduling* happened — `restTimerStore`'s own
             `RestTimer.notificationId` is already the exact signal (non-null
@@ -367,7 +360,10 @@ export function TimerPill({ testID = 'timer-pill' }: TimerPillProps): React.JSX.
         {__DEV__ ? (
           <Text
             testID={`${testID}-debug-notification-id`}
-            style={[typography.caption, { color: colors.text.tertiary }]}
+            style={[
+              typography.caption,
+              { color: colors.text.tertiary, textAlign: 'center', paddingBottom: spacing['2'] },
+            ]}
           >
             {timer.notificationId ?? 'none'}
           </Text>
@@ -471,18 +467,21 @@ export function RestTimerPermissionNotice({
 }
 
 const styles = StyleSheet.create({
-  pillContainer: {
+  panelContainer: {
     position: 'absolute',
-    left: 16,
-    right: 16,
-    bottom: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: StyleSheet.hairlineWidth,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
-  pillTapArea: {
-    flexDirection: 'row',
+  progressTrack: {
+    height: 4,
+    width: '100%',
+  },
+  progressFill: {
+    height: 4,
+  },
+  countdownArea: {
     alignItems: 'center',
   },
   controlsRow: {
