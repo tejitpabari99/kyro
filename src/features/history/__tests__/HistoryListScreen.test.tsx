@@ -22,6 +22,7 @@ import { useSettingsStore } from '@/features/settings/settings-store';
 import { ThemeProvider } from '@/ui/theme-provider';
 
 import { HistoryListScreen } from '../HistoryListScreen';
+import { formatRelativeWorkoutDate } from '../date-format';
 
 jest.mock('expo-router', () => ({
   ...jest.requireActual('expo-router'),
@@ -269,6 +270,60 @@ describe('HistoryListScreen — populated list (04 §3.1 acceptance: accurate vo
 
     fireEvent.press(screen.getByTestId('history-card-w-1'));
     expect(router.push).toHaveBeenCalledWith('/history/w-1');
+  });
+
+  it('does not render per-exercise summary lines even for a workout with several exercises (07-history-routines-list-decarding PRD §4.2/§9.2)', async () => {
+    const benchPress = makeExercise({ id: 'ex-1', name: 'Bench Press' });
+    const squat = makeExercise({ id: 'ex-2', name: 'Squat' });
+    const cableRow = makeExercise({ id: 'ex-3', name: 'Cable Row' });
+
+    const workoutExercises = [
+      makeWorkoutExercise({ id: 'we-1', exerciseId: 'ex-1' }),
+      makeWorkoutExercise({ id: 'we-2', exerciseId: 'ex-2' }),
+      makeWorkoutExercise({ id: 'we-3', exerciseId: 'ex-3' }),
+    ];
+
+    const workoutRepository: Pick<WorkoutRepository, 'listCompleted' | 'getExercisesForWorkouts'> = {
+      listCompleted: async () => [makeSummary()],
+      getExercisesForWorkouts: async () => new Map([['w-1', workoutExercises]]),
+    };
+    const exerciseRepository: Pick<ExerciseRepository, 'list'> = {
+      list: async () => [benchPress, squat, cableRow],
+    };
+
+    await renderScreen(workoutRepository, exerciseRepository);
+    await waitFor(() => expect(screen.getByTestId('history-card-w-1')).toBeTruthy());
+
+    expect(screen.queryByText(/Bench Press/)).toBeNull();
+    expect(screen.queryByText(/Squat/)).toBeNull();
+    expect(screen.queryByText(/Cable Row/)).toBeNull();
+  });
+
+  it('renders the relative date as trailing text next to a chevron, confirming the new layout mounted (07-history-routines-list-decarding PRD §4.2/§7)', async () => {
+    const summary = makeSummary();
+    const workoutRepository: Pick<WorkoutRepository, 'listCompleted' | 'getExercisesForWorkouts'> = {
+      listCompleted: async () => [summary],
+      getExercisesForWorkouts: async () => new Map([['w-1', [makeWorkoutExercise()]]]),
+    };
+    const exerciseRepository: Pick<ExerciseRepository, 'list'> = {
+      list: async () => [makeExercise()],
+    };
+
+    await renderScreen(workoutRepository, exerciseRepository);
+    await waitFor(() => expect(screen.getByTestId('history-card-w-1')).toBeTruthy());
+
+    expect(screen.getByText(formatRelativeWorkoutDate(summary.startTime))).toBeTruthy();
+    // `@testing-library/react-native` v14 dropped `UNSAFE_getByType` (its
+    // `TestInstance`-based renderer only ever exposes host elements — see
+    // that package's own migration-v14 notes), so the chevron glyph can't be
+    // matched by component identity. Its host `RNSVGSvgView` is still
+    // reachable via `container.queryAll`, and its `width`/`height: 20` props
+    // uniquely single it out from this screen's other (24px) header icons —
+    // `ListRow.tsx`'s own `ICON_SIZE` constant for the `chevron` prop.
+    const chevronSvgs = screen.container.queryAll(
+      (node) => node.type === 'RNSVGSvgView' && node.props.width === 20 && node.props.height === 20,
+    );
+    expect(chevronSvgs.length).toBeGreaterThan(0);
   });
 });
 
