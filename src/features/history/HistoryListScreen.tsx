@@ -182,15 +182,15 @@ export function HistoryListScreen({
   // render would silently defeat that by always failing `React.memo`'s
   // shallow-prop check on this one prop.
   const handleRowPress = useCallback((workoutId: string): void => {
-    router.push(`/history/${workoutId}` as never);
+    router.push(`/home/${workoutId}` as never);
   }, []);
 
   const handleCalendarPress = (): void => {
     // M4-06 hasn't landed yet — same "wire the intended route, don't build
     // a stub screen" seam `ExerciseBrowseScreen.tsx`'s M1-07 header already
     // established for `/exercise/[id]` before M1-08 existed. 06 §3's own
-    // navigation map names this exact path: "history/calendar.tsx".
-    router.push('/history/calendar' as never);
+    // navigation map names this exact path: "home/calendar.tsx".
+    router.push('/home/calendar' as never);
   };
 
   const handleLogPastWorkout = (): void => {
@@ -222,7 +222,7 @@ export function HistoryListScreen({
           paddingBottom: spacing['2'],
         }}
       >
-        <Text style={[typography.title1, { color: colors.text.primary }]}>History</Text>
+        <Text style={[typography.title1, { color: colors.text.primary }]}>Home</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing['4'] }}>
           <Pressable
             testID={`${testID}-calendar-button`}

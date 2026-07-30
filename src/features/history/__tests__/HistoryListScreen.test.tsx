@@ -256,7 +256,7 @@ describe('HistoryListScreen — populated list (04 §3.1 acceptance: accurate vo
     expect(screen.queryByText(/999/)).toBeNull();
   });
 
-  it('tapping a card navigates to /history/{id}', async () => {
+  it('tapping a card navigates to /home/{id}', async () => {
     const workoutRepository: Pick<WorkoutRepository, 'listCompleted' | 'getExercisesForWorkouts'> = {
       listCompleted: async () => [makeSummary()],
       getExercisesForWorkouts: async () => new Map([['w-1', [makeWorkoutExercise()]]]),
@@ -269,7 +269,7 @@ describe('HistoryListScreen — populated list (04 §3.1 acceptance: accurate vo
     await waitFor(() => expect(screen.getByTestId('history-card-w-1')).toBeTruthy());
 
     fireEvent.press(screen.getByTestId('history-card-w-1'));
-    expect(router.push).toHaveBeenCalledWith('/history/w-1');
+    expect(router.push).toHaveBeenCalledWith('/home/w-1');
   });
 
   it('does not render per-exercise summary lines even for a workout with several exercises (07-history-routines-list-decarding PRD §4.2/§9.2)', async () => {
@@ -372,12 +372,12 @@ describe('HistoryListScreen — header navigation', () => {
   };
   const exerciseRepository: Pick<ExerciseRepository, 'list'> = { list: async () => [] };
 
-  it('Calendar button navigates to /history/calendar (M4-06 seam)', async () => {
+  it('Calendar button navigates to /home/calendar (M4-06 seam)', async () => {
     await renderScreen(workoutRepository, exerciseRepository);
     await waitFor(() => expect(screen.getByTestId('history-calendar-button')).toBeTruthy());
 
     fireEvent.press(screen.getByTestId('history-calendar-button'));
-    expect(router.push).toHaveBeenCalledWith('/history/calendar');
+    expect(router.push).toHaveBeenCalledWith('/home/calendar');
   });
 
   it('"+" opens a sheet whose "Log past workout" navigates to /workout/active?retro=1 (M4-05 seam)', async () => {
