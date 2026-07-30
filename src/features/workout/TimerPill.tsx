@@ -64,6 +64,12 @@ import * as Linking from 'expo-linking';
 import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { formatDuration } from '@/domain/units';
 import { useSettingsStore } from '@/features/settings/settings-store';
@@ -84,6 +90,11 @@ import { useRestTimerTicker } from './useRestTimerTicker';
 const ADJUST_STEP_SECONDS = 15;
 const SHEET_RING_SIZE = 220;
 const SHEET_RING_STROKE = 12;
+/** Fixed, deliberately-oversized off-screen start offset (§4.2.4) — larger
+ * than the panel's realistic max rendered height (~174pt), so an
+ * imprecise fixed value is visually indistinguishable from a measured
+ * one, without an extra measure-then-animate frame. */
+const PANEL_ENTER_OFFSET = 220;
 
 export interface TimerPillProps {
   testID?: string;
@@ -290,6 +301,32 @@ export function TimerPill({ testID = 'timer-pill' }: TimerPillProps): React.JSX.
     void playTimerChime(soundChoice, soundVolume);
   }, [timer, remainingMs, soundChoice, soundVolume]);
 
+  // Entrance ("pop up") animation (§4.2.4) — keyed on `timerKey`, not `[]`:
+  // unlike `Sheet.tsx` (whose callers conditionally mount it), `TimerPill`
+  // itself never remounts across a session — `ActiveWorkoutScreen` renders
+  // it unconditionally — so an empty-deps effect would only ever animate
+  // in the very first timer of the session. Keying on `timerKey` instead
+  // re-arms the animation for every genuinely new timer instance, per
+  // §9 decision 5.
+  const translateY = useSharedValue(PANEL_ENTER_OFFSET);
+  // Intentionally re-fires only on a genuinely new timer instance
+  // (`timerKey` changing), not on every `remainingMs` tick; `timer` and
+  // `translateY` are omitted deliberately — `translateY` is a stable
+  // Reanimated shared-value ref, and `timer` is only read to no-op when
+  // it's already `null`, same reasoning `Sheet.tsx`'s own entrance effect
+  // uses.
+  useEffect(() => {
+    if (!timer) {
+      return;
+    }
+    translateY.value = PANEL_ENTER_OFFSET;
+    translateY.value = withTiming(0, { duration: 250, easing: Easing.out(Easing.quad) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timerKey]);
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
   if (!timer) {
     return null;
   }
@@ -310,7 +347,7 @@ export function TimerPill({ testID = 'timer-pill' }: TimerPillProps): React.JSX.
 
   return (
     <>
-      <View
+      <Animated.View
         testID={testID}
         style={[
           styles.panelContainer,
@@ -319,6 +356,7 @@ export function TimerPill({ testID = 'timer-pill' }: TimerPillProps): React.JSX.
             borderTopColor: colors.border.hairline,
             paddingBottom: insets.bottom,
           },
+          animatedStyle,
         ]}
       >
         <View style={[styles.progressTrack, { backgroundColor: colors.bg.elevated }]}>
@@ -368,7 +406,7 @@ export function TimerPill({ testID = 'timer-pill' }: TimerPillProps): React.JSX.
             {timer.notificationId ?? 'none'}
           </Text>
         ) : null}
-      </View>
+      </Animated.View>
 
       <Sheet
         testID={`${testID}-sheet`}
