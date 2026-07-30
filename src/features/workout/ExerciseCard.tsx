@@ -16,11 +16,9 @@
  * to decide "group of 1 auto-dissolves" for the group's remaining member,
  * so this card only needs to name which row is leaving.
  *
- * Add Warm-Up Sets (M2-16, 02 §12) is the other card-local ⋯ item: it opens
- * `AddWarmUpSetsSheet`, which owns its own working-weight pre-fill/
- * calculation/insert — this component only wires the sheet's `visible`
- * state and hands it this card's own `workoutExerciseId`/`exercise
- * .equipment`/unit + previous-values context.
+ * "Add Warm-Up Sets" (M2-16, 02 §12) was removed from this card's ⋯ menu
+ * (08 §1/§4: redundant with the set-number-tap → slide-up set-type menu in
+ * `ConnectedSetRow`, which already covers marking a set as a warm-up).
  *
  * ## Superset visual (M2-12, 02 §8 / 07 §2.5)
  *
@@ -48,7 +46,6 @@ import { Card } from '@/ui/Card';
 import { Thumb } from '@/ui/Avatar';
 import { useTheme } from '@/ui/theme-provider';
 
-import { AddWarmUpSetsSheet } from './AddWarmUpSetsSheet';
 import { ExerciseCardMenuSheet } from './ExerciseCardMenuSheet';
 import { ExerciseSetTableSection } from './ExerciseSetTableSection';
 import { InlineNoteField } from './InlineNoteField';
@@ -110,7 +107,6 @@ export function ExerciseCard({
 
   const [menuVisible, setMenuVisible] = useState(false);
   const [restTimerSheetVisible, setRestTimerSheetVisible] = useState(false);
-  const [warmUpSheetVisible, setWarmUpSheetVisible] = useState(false);
 
   const handleAddSet = (): void => {
     void workoutStore.getState().addSet(workoutExerciseId);
@@ -126,10 +122,6 @@ export function ExerciseCard({
 
   const handleRemoveFromSuperset = (): void => {
     void workoutStore.getState().removeFromSuperset(workoutExerciseId);
-  };
-
-  const handleAddWarmUpSets = (): void => {
-    setWarmUpSheetVisible(true);
   };
 
   return (
@@ -223,7 +215,6 @@ export function ExerciseCard({
         onReplace={() => onReplacePress(workoutExerciseId)}
         onAddToSuperset={() => onAddToSupersetPress(workoutExerciseId)}
         onRemoveFromSuperset={handleRemoveFromSuperset}
-        onAddWarmUpSets={handleAddWarmUpSets}
         onRestTimer={() => setRestTimerSheetVisible(true)}
         onRemoveExercise={() => onRemove(workoutExerciseId, exercise.name)}
       />
@@ -234,19 +225,6 @@ export function ExerciseCard({
         onDismiss={() => setRestTimerSheetVisible(false)}
         value={restSeconds}
         onChange={handleSaveRestSeconds}
-      />
-
-      <AddWarmUpSetsSheet
-        testID={`${testID}-warmup-sheet`}
-        visible={warmUpSheetVisible}
-        onDismiss={() => setWarmUpSheetVisible(false)}
-        workoutExerciseId={workoutExerciseId}
-        exerciseId={exercise.id}
-        equipment={exercise.equipment}
-        weightUnit={weightUnit}
-        previousValuesMode={previousValuesMode}
-        routineId={routineId}
-        previousSetsExcludeWorkoutId={previousSetsExcludeWorkoutId}
       />
     </Card>
   );
