@@ -63,8 +63,7 @@ import { SetTable } from '@/ui/SetTable';
 import type { SetBadgeKind } from '@/ui/SetRow';
 import { useTheme } from '@/ui/theme-provider';
 
-import { NoteEditSheet } from '../workout/NoteEditSheet';
-import { NoteText } from '../workout/NoteText';
+import { InlineNoteField } from '../workout/InlineNoteField';
 import { formatRestSeconds } from '../workout/rest-timer-format';
 import { RestTimerSheet } from '../workout/RestTimerSheet';
 import { RoutineExerciseMenuSheet } from './RoutineExerciseMenuSheet';
@@ -126,7 +125,6 @@ export function RoutineExerciseCard({
   const { colors, typography, spacing } = useTheme();
 
   const [menuVisible, setMenuVisible] = useState(false);
-  const [noteSheetVisible, setNoteSheetVisible] = useState(false);
   const [restTimerSheetVisible, setRestTimerSheetVisible] = useState(false);
 
   const units = useMemo(() => ({ weightUnit, distanceUnit }), [weightUnit, distanceUnit]);
@@ -227,17 +225,7 @@ export function RoutineExerciseCard({
         </Pressable>
       </View>
 
-      {draftExercise.notes != null && draftExercise.notes.length > 0 ? (
-        <Pressable
-          testID={`${testID}-note-row`}
-          accessibilityRole="button"
-          accessibilityLabel="Edit note"
-          onPress={() => setNoteSheetVisible(true)}
-          style={{ marginBottom: spacing['3'] }}
-        >
-          <NoteText testID={`${testID}-note-text`} text={draftExercise.notes} />
-        </Pressable>
-      ) : null}
+      <InlineNoteField testID={`${testID}-note`} value={draftExercise.notes} onSave={handleSaveNote} />
 
       <Pressable
         testID={`${testID}-rest-timer-row`}
@@ -299,17 +287,8 @@ export function RoutineExerciseCard({
         onReplace={() => onReplacePress(draftExercise.id)}
         onAddToSuperset={() => onAddToSupersetPress(draftExercise.id)}
         onRemoveFromSuperset={handleRemoveFromSuperset}
-        onAddNote={() => setNoteSheetVisible(true)}
         onRestTimer={() => setRestTimerSheetVisible(true)}
         onRemoveExercise={() => onRemove(draftExercise.id, exercise.name)}
-      />
-
-      <NoteEditSheet
-        testID={`${testID}-note-sheet`}
-        visible={noteSheetVisible}
-        onDismiss={() => setNoteSheetVisible(false)}
-        initialValue={draftExercise.notes ?? ''}
-        onSave={handleSaveNote}
       />
 
       <RestTimerSheet
