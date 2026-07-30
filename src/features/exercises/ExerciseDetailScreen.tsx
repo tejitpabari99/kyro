@@ -81,12 +81,11 @@ export interface ExerciseDetailScreenProps {
   /**
    * M4-09 addition — the History/Charts tabs' shared data feed
    * (`WorkoutRepository.exerciseHistory`). Optional and defaulted to
-   * `undefined`: every call site that has a real repository handy wires it
-   * (the primary `/exercise/[id]` route, the mid-workout/edit-workout
-   * `ExerciseDetailSheet`), but a couple of picker-context call sites
-   * (`RoutineEditorScreen`'s add-exercise picker) don't have one in scope
-   * and intentionally omit it — those two tabs simply fall back to their
-   * pre-M4-09 `EmptyState` placeholders rather than crashing. The Records
+   * `undefined`: the sole non-test call site, `app/exercise/[id].tsx`,
+   * always constructs and wires a real `WorkoutRepositoryImpl`, so in the
+   * running app this prop is always present. It stays optional so tests can
+   * render this screen without a `WorkoutRepository` and exercise the
+   * pre-M4-09 `EmptyState` fallback on the History/Charts tabs. The Records
    * tab does **not** depend on this prop at all — it reads the app-wide
    * `RecordsService` singleton directly (`useRecordsSnapshot`), exactly like
    * every other PR surface in the app already does.

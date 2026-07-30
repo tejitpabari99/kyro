@@ -2,7 +2,7 @@
  * `ExerciseCard` unit tests (M2-09) — direct render (not through the full
  * `ActiveWorkoutScreen`) covering the card's own chrome and card-local ⋯
  * menu items: superset indicator, note row visibility + edit, rest-timer
- * row + sheet, `+ Add Set`, name-tap detail sheet, and every ⋯ menu item's
+ * row + sheet, `+ Add Set`, name-tap navigation, and every ⋯ menu item's
  * wiring (the cross-card ones as bubbled callback assertions, the
  * card-local ones — Remove from Superset, Add Warm-Up Sets stub — against
  * real store/DB state). Real `WorkoutRepositoryImpl`/`ExerciseRepositoryImpl`
@@ -36,11 +36,6 @@ jest.mock('expo-router', () => ({
   ...jest.requireActual('expo-router'),
   router: { push: jest.fn(), back: jest.fn(), replace: jest.fn() },
 }));
-
-// `ExerciseDetailSheet` -> `ExerciseDetailScreen` -> `@/lib/files` (native-only
-// top-level imports, unavailable under Jest, 08 §5) — same convention every
-// other consumer of that seam uses.
-jest.mock('@/lib/files');
 
 interface Fixture {
   driver: SqliteDriver;

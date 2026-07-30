@@ -66,13 +66,15 @@ jest.mock('expo-router', () => ({
   useFocusEffect: () => {},
 }));
 
-// `ExerciseCard`'s name-tap opens `ExerciseDetailSheet` -> the real
-// `ExerciseDetailScreen`, which imports `@/lib/files` (native-only top-level
-// imports, unavailable under Jest, 08 §5) — mocked wholesale, same
-// convention `ExerciseCard.operations.test.tsx` established. Only the
-// `ActiveWorkoutScreen`-level describe block below actually renders
-// `ExerciseCard`; the `ExerciseSetTableSection`-only tests never reach this
-// import at all, but mocking it here is harmless either way.
+// The "Add Exercise"/"Replace" picker (`ExercisePickerSheet`, mounted by
+// `ActiveWorkoutScreen`) renders each row via `ExerciseRow`, which calls
+// `resolveExerciseThumbnailSource` (`exercise-thumbnail.ts`) to resolve
+// custom-exercise photo thumbnails — that helper imports `@/lib/files`
+// (native-only top-level imports, unavailable under Jest, 08 §5) — mocked
+// wholesale, same convention `ExerciseCard.operations.test.tsx` established.
+// Only the `ActiveWorkoutScreen`-level describe block below actually renders
+// `ExercisePickerSheet`; the `ExerciseSetTableSection`-only tests never reach
+// this import at all, but mocking it here is harmless either way.
 jest.mock('@/lib/files');
 
 // M2-13: see `ActiveWorkoutScreen.test.tsx`'s identical note — a **factory**

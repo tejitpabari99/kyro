@@ -1,7 +1,8 @@
 /**
  * `ExerciseCard` (M2-09) — 02 §3's full exercise-card chrome wrapping
  * `ExerciseSetTableSection` (M2-06, the set table itself, reused unchanged):
- * 40 pt thumb, accent name (tap → read-only detail sheet), note row (URLs
+ * 40 pt thumb, accent name (tap → `router.push` to the full-screen
+ * `/exercise/[id]` detail screen), note row (URLs
  * tappable), rest-timer row, `+ Add Set`, and the ⋯ menu's card-local items
  * (Add a Note, Rest Timer — both fully self-contained here) plus bubbled
  * callbacks for the cross-card operations a single card can't resolve on

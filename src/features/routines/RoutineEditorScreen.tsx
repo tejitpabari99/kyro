@@ -66,11 +66,13 @@
  *
  * ## Deliberate scope decisions (documented, not oversights)
  *
- *  - **No exercise-name-tap-to-detail sheet.** The active logger's
- *    `ExerciseCard` opens a read-only `ExerciseDetailSheet` on a name tap;
- *    04 §2.1's own text never asks for this in the editor, and it isn't
- *    part of the acceptance gate — omitted to keep this already-large
- *    task's surface area honest rather than silently growing it.
+ *  - **No exercise-name-tap-to-detail navigation.** The active logger's
+ *    `ExerciseCard` name-tap does a `router.push` to the full-screen
+ *    `/exercise/[id]` detail screen; this screen's own per-row component,
+ *    `RoutineExerciseCard`, has no such affordance — 04 §2.1's own text
+ *    never asks for this in the editor, and it isn't part of the acceptance
+ *    gate — omitted to keep this already-large task's surface area honest
+ *    rather than silently growing it.
  *  - **Remove Exercise has no confirm/undo-snackbar.** 02 §3's "no confirm;
  *    snackbar with Undo" is the *logger's* documented behavior for removing
  *    a mid-workout exercise (`ExerciseCardMenuSheet.tsx`'s header); 04 §2.1
@@ -79,16 +81,14 @@
  *    warranted — removal here is immediate (the outer Cancel/dirty-confirm
  *    is still the safety net for an accidental removal, same as any other
  *    edit).
- *  - **The `ExercisePickerSheet`'s own ⓘ info-icon `ExerciseDetailSheet`
- *    doesn't get a `workoutRepository` (M4-09).** That prop is optional
- *    specifically for this reason — the History/Charts tabs just fall back
- *    to their empty states here rather than this screen threading a new
- *    `WorkoutRepositoryImpl` dependency in purely to serve a picker's info
- *    button. Consistent with the "no exercise-name-tap-to-detail sheet"
- *    decision above (this editor already scopes exercise-detail access down
- *    on purpose), and the acceptance text this feature exists for
- *    ("detail-as-sheet mid-workout doesn't disturb active workout") doesn't
- *    apply here at all — a routine editor has no active workout to disturb.
+ *  - **The `ExercisePickerSheet`'s own ⓘ info-icon needs no `workoutRepository`
+ *    from this screen.** The info button navigates (`router.push`) straight
+ *    to the full-screen `/exercise/[id]` detail screen, which wires its own
+ *    `workoutRepository` from `app/exercise/[id].tsx`'s route-level deps —
+ *    `ExercisePickerSheetProps` has no `workoutRepository` prop at all
+ *    (removed repo-wide once the picker's info-icon moved from an in-sheet
+ *    mount to real navigation), so there's no dependency for this screen to
+ *    thread through in the first place.
  *  - **On successful save, this screen always calls `router.back()`** —
  *    for both create and edit — rather than navigating to a routine-detail
  *    screen, because no such screen exists yet in this milestone (the same

@@ -73,12 +73,12 @@ jest.mock('expo-router', () => ({
 // `expo-notifications` module (see `src/lib/notifications.ts`'s own header).
 jest.mock('@/lib/notifications');
 
-// M2-09: `ExerciseCard`'s name-tap opens `ExerciseDetailSheet`, which reuses
-// the real `ExerciseDetailScreen` (M1-08) — that screen imports `@/lib/files`,
-// whose own real top-level native imports (`expo-image-manipulator`/
-// `expo-image-picker`) are unavailable under Jest (08 §5); mocked wholesale
-// here the same way `ExerciseDetailScreen.test.tsx` (M1-10) already does for
-// every other consumer of that seam.
+// The "Add Exercise"/"Replace" picker (`ExercisePickerSheet`, mounted by
+// `ActiveWorkoutScreen`) renders each row via `ExerciseRow`, which calls
+// `resolveExerciseThumbnailSource` (`exercise-thumbnail.ts`) to resolve
+// custom-exercise photo thumbnails — that helper imports `@/lib/files`
+// (native-only top-level imports, unavailable under Jest, 08 §5) — mocked
+// wholesale, same convention `ExerciseDetailScreen.test.tsx` established.
 jest.mock('@/lib/files');
 
 // M2-13: `ActiveWorkoutScreen` now conditionally mounts `KeepAwakeGate`,
