@@ -202,6 +202,18 @@ export function ExercisePickerSheet({
     onDismiss();
   };
 
+  const handleResetFilters = useCallback(() => {
+    setEquipmentFilter(null);
+    setMuscleFilter(null);
+    setOptionsSheetVisible(false);
+  }, []);
+
+  const handleOpenAppSettings = useCallback(() => {
+    setOptionsSheetVisible(false);
+    onDismiss();
+    router.push('/profile/settings');
+  }, [onDismiss]);
+
   const renderItem = useCallback(
     ({ item }: { item: ExerciseBrowseRow }) => {
       if (item.type === 'header') {
