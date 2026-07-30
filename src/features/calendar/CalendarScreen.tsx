@@ -4,11 +4,10 @@
  * sheet listing that day's workouts (tap-through to detail) or a "Log past
  * workout" CTA on empty days. Reached via `HistoryListScreen`'s Calendar
  * icon (`router.push('/history/calendar')`, already wired in M4-03) — this
- * file is the screen that seam was left pointing at. No back button in the
- * header — same "rely on the native swipe-back gesture, no explicit
- * chevron" convention `HistoryDetailScreen.tsx` (M2-14) already established
- * for a plain pushed stack screen under this app's `headerShown: false`
- * root `<Stack>` (`app/_layout.tsx`).
+ * file is the screen that seam was left pointing at. The header includes an
+ * explicit back-chevron (`router.back()`), matching the
+ * Statistics/Measures/Settings convention added by the tabs-navigation-
+ * restructure PRD (§4.5).
  *
  * ## Data flow — two independently-cached queries, one shared local re-bucket
  *
@@ -48,8 +47,8 @@
  * too, for the same reason.
  */
 import React, { useMemo, useState } from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
-import { TriangleAlert } from 'lucide-react-native';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { ChevronLeft, TriangleAlert } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
@@ -159,7 +158,7 @@ export function CalendarScreen({
 
   const handleWorkoutPress = (workoutId: string): void => {
     setSelectedDate(null);
-    router.push(`/history/${workoutId}` as never);
+    router.push(`/home/${workoutId}` as never);
   };
 
   const handleLogPastWorkout = (): void => {
@@ -184,7 +183,19 @@ export function CalendarScreen({
           paddingTop: insets.top + spacing['4'],
         }}
       >
-        <Text style={[typography.title2, { color: colors.text.primary }]}>Calendar</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Pressable
+            testID={`${testID}-back`}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            hitSlop={8}
+            onPress={() => router.back()}
+            style={{ marginRight: spacing['3'] }}
+          >
+            <ChevronLeft size={24} strokeWidth={1.75} color={colors.text.primary} />
+          </Pressable>
+          <Text style={[typography.title2, { color: colors.text.primary }]}>Calendar</Text>
+        </View>
         <Text
           testID={`${testID}-streak`}
           style={[typography.subhead, { color: colors.text.secondary, marginTop: spacing['1'] }]}

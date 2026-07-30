@@ -184,7 +184,22 @@ describe('CalendarScreen — day sheet', () => {
     expect(screen.getByText('Leg Day')).toBeTruthy();
 
     fireEvent.press(screen.getByTestId('calendar-screen-day-workout-w-42'));
-    expect(router.push).toHaveBeenCalledWith('/history/w-42');
+    expect(router.push).toHaveBeenCalledWith('/home/w-42');
+  });
+});
+
+describe('CalendarScreen — back button', () => {
+  it('pressing the back chevron calls router.back', async () => {
+    const workoutRepository: Pick<WorkoutRepository, 'workoutDates' | 'workoutsForDate'> = {
+      workoutDates: async () => [],
+      workoutsForDate: async () => [],
+    };
+
+    await renderScreen(workoutRepository);
+
+    fireEvent.press(screen.getByTestId('calendar-screen-back'));
+
+    expect(router.back).toHaveBeenCalledTimes(1);
   });
 });
 
