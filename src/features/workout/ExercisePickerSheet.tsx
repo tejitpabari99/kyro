@@ -19,9 +19,11 @@
  * sheet-presented, selection-aware assembly that seam was left open for.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
+import { Settings as SettingsIcon } from 'lucide-react-native';
 
 import {
   EQUIPMENT_LABELS,
@@ -49,9 +51,11 @@ import { Chip } from '@/ui/Chip';
 import { EmptyState } from '@/ui/EmptyState';
 import { SearchBar } from '@/ui/SearchBar';
 import { Sheet } from '@/ui/Sheet';
+import { SheetHeader } from '@/ui/SheetHeader';
 import { useTheme } from '@/ui/theme-provider';
 
 import { ExerciseDetailSheet } from './ExerciseDetailSheet';
+import { ExercisePickerOptionsSheet } from './ExercisePickerOptionsSheet';
 
 const SEARCH_DEBOUNCE_MS = 150;
 const RECENT_LIMIT = 10;
