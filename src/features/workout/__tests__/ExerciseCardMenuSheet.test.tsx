@@ -19,7 +19,6 @@ function baseProps(overrides: Partial<React.ComponentProps<typeof ExerciseCardMe
     onReplace: jest.fn(),
     onAddToSuperset: jest.fn(),
     onRemoveFromSuperset: jest.fn(),
-    onAddWarmUpSets: jest.fn(),
     onRestTimer: jest.fn(),
     onRemoveExercise: jest.fn(),
     ...overrides,
@@ -65,16 +64,13 @@ describe('ExerciseCardMenuSheet', () => {
     await fireEvent.press(screen.getByTestId('menu-remove-from-superset'));
     expect(props.onRemoveFromSuperset).toHaveBeenCalledTimes(1);
 
-    await fireEvent.press(screen.getByTestId('menu-warmup-sets'));
-    expect(props.onAddWarmUpSets).toHaveBeenCalledTimes(1);
-
     await fireEvent.press(screen.getByTestId('menu-rest-timer'));
     expect(props.onRestTimer).toHaveBeenCalledTimes(1);
 
     await fireEvent.press(screen.getByTestId('menu-remove-exercise'));
     expect(props.onRemoveExercise).toHaveBeenCalledTimes(1);
 
-    expect(props.onDismiss).toHaveBeenCalledTimes(6);
+    expect(props.onDismiss).toHaveBeenCalledTimes(5);
   });
 
   it('Add to Superset item dismisses then fires its own callback', async () => {
