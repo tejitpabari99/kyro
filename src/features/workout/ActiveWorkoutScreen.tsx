@@ -140,7 +140,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { Exercise, ExerciseRepository } from '@/data/exercises/types';
 import type { RoutineFull } from '@/data/routines/types';
-import type { FinishMeta, WorkoutRepository } from '@/data/workouts/types';
+import type { FinishMeta } from '@/data/workouts/types';
 import { autoTitleForDate } from '@/domain/auto-title';
 import { computeRoutineDiff } from '@/domain/routine-diff';
 import { resolveSupersetScrollTarget, supersetVisualsByExerciseId } from '@/domain/supersets';
@@ -180,22 +180,6 @@ import { useWorkoutStopwatch } from './useWorkoutStopwatch';
 export interface ActiveWorkoutScreenProps {
   /** Real `ExerciseRepositoryImpl` (or a fake in tests) — used only to look up each workout exercise's `Exercise` row (name, type, columns) for its card. */
   exerciseRepository: ExerciseRepository;
-  /**
-   * M4-09: threaded straight through to every `ExerciseCard`/
-   * `ExercisePickerSheet`'s name-tap `ExerciseDetailSheet` — see that
-   * component's own `workoutRepository` doc comment. Deliberately a route-
-   * supplied prop, **not** constructed inside this component: the real
-   * `WorkoutRepositoryImpl` transitively imports `expo-sqlite`'s native
-   * module (`@/data/sqlite/boot`), which this screen's own test suite
-   * (`ActiveWorkoutScreen.test.tsx` and its siblings) deliberately never
-   * loads — every one of those tests drives this screen entirely off fake,
-   * in-memory repositories so it never needs a real native SQLite binding
-   * under Jest. `app/workout/active.tsx` constructs the real instance
-   * (same "route wires real deps" convention `exerciseRepository`/
-   * `getRoutineFull` above already establish); optional so this screen's
-   * existing tests compile unchanged.
-   */
-  workoutRepository?: Pick<WorkoutRepository, 'exerciseHistory'>;
   /** Retro-log mode (02 §1) — see file header. Defaults `false` (the only entry point that exists today, "Start Empty Workout"). */
   retro?: boolean;
   /** Retro-log's chosen day (epoch ms); defaults to today at 12:00 local, matching 02 §1's "chosen date 12:00" when the future entry point doesn't override it. */
@@ -226,7 +210,6 @@ const HEADER_SWIPE_MINIMIZE_THRESHOLD = 120;
 
 export function ActiveWorkoutScreen({
   exerciseRepository,
-  workoutRepository,
   retro = false,
   retroStartTime,
   routineId,
