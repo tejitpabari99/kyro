@@ -408,7 +408,7 @@ export function EditWorkoutScreen({
       await invalidateAfterWorkoutMutation(queryClient, unionExerciseIds);
       await queryClient.invalidateQueries({ queryKey: ['history', 'detail', workoutId] });
 
-      router.replace(`/history/${workoutId}` as never);
+      router.replace(`/home/${workoutId}` as never);
     } catch (error) {
       captureError(error);
       Alert.alert('Something went wrong', 'This workout could not be saved. Please try again.');

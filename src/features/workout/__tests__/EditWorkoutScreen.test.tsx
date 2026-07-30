@@ -197,7 +197,7 @@ describe('EditWorkoutScreen (M4-05)', () => {
     expect(input.exercises[0]!.sets).toHaveLength(1);
     expect(input.exercises[0]!.sets[0]!.weightKg).toBe(100);
 
-    await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/history/w1'));
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/home/w1'));
   });
 
   it('editing a past workout does not disturb a genuinely active workout (one-active invariant, RNTL-level)', async () => {
