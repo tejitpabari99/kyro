@@ -395,6 +395,14 @@ export function ExercisePickerSheet({
         workoutRepository={workoutRepository}
         exerciseId={detailExerciseId}
       />
+      <ExercisePickerOptionsSheet
+        testID={`${testID}-options-sheet`}
+        visible={optionsSheetVisible}
+        onDismiss={() => setOptionsSheetVisible(false)}
+        filtersActive={equipmentFilter != null || muscleFilter != null}
+        onResetFilters={handleResetFilters}
+        onOpenAppSettings={handleOpenAppSettings}
+      />
     </Sheet>
   );
 }
