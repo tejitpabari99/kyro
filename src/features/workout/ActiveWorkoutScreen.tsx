@@ -1128,8 +1128,6 @@ export function ActiveWorkoutScreen({
                 workoutExerciseId={workoutExercise.id}
                 exercisePosition={workoutExercise.position}
                 exercise={exercise}
-                exerciseRepository={exerciseRepository}
-                workoutRepository={workoutRepository}
                 notes={workoutExercise.notes}
                 restSeconds={workoutExercise.restSeconds}
                 supersetVisual={supersetVisuals.get(workoutExercise.id) ?? null}

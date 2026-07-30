@@ -34,12 +34,12 @@
  * simply `supersetVisual != null` — no separate boolean prop needed.
  */
 import React, { useState } from 'react';
+import { router } from 'expo-router';
 import { Clock, Ellipsis } from 'lucide-react-native';
 import { Pressable, Text, View } from 'react-native';
 
-import type { Exercise, ExerciseRepository } from '@/data/exercises/types';
+import type { Exercise } from '@/data/exercises/types';
 import type { RoutineFull } from '@/data/routines/types';
-import type { WorkoutRepository } from '@/data/workouts/types';
 import type { DistanceUnit, PreviousValuesMode, WeightUnit } from '@/domain/enums';
 import type { SupersetVisual } from '@/domain/supersets';
 import { Button } from '@/ui/Button';
@@ -49,7 +49,6 @@ import { useTheme } from '@/ui/theme-provider';
 
 import { AddWarmUpSetsSheet } from './AddWarmUpSetsSheet';
 import { ExerciseCardMenuSheet } from './ExerciseCardMenuSheet';
-import { ExerciseDetailSheet } from './ExerciseDetailSheet';
 import { ExerciseSetTableSection } from './ExerciseSetTableSection';
 import { NoteEditSheet } from './NoteEditSheet';
 import { NoteText } from './NoteText';
@@ -62,9 +61,6 @@ export interface ExerciseCardProps {
   /** `workoutExercise.position` — threaded through to `ExerciseSetTableSection`/`ConnectedSetRow` for M2-08's Next-traversal order key. */
   exercisePosition: number;
   exercise: Exercise;
-  exerciseRepository: ExerciseRepository;
-  /** M4-09: threaded straight through to the name-tap `ExerciseDetailSheet` — see that component's own `workoutRepository` doc comment. Optional (a missing repository just means the sheet's History/Charts tabs fall back to their empty states, never a crash). */
-  workoutRepository?: Pick<WorkoutRepository, 'exerciseHistory'>;
   notes: string | null;
   restSeconds: RestSeconds;
   /** `null` when ungrouped; this card's own group label/color when it is (M2-12, see file header). */
@@ -91,8 +87,6 @@ export function ExerciseCard({
   workoutExerciseId,
   exercisePosition,
   exercise,
-  exerciseRepository,
-  workoutRepository,
   notes,
   restSeconds,
   supersetVisual,
@@ -115,7 +109,6 @@ export function ExerciseCard({
   const workoutStore = useWorkoutStore();
 
   const [menuVisible, setMenuVisible] = useState(false);
-  const [detailVisible, setDetailVisible] = useState(false);
   const [noteSheetVisible, setNoteSheetVisible] = useState(false);
   const [restTimerSheetVisible, setRestTimerSheetVisible] = useState(false);
   const [warmUpSheetVisible, setWarmUpSheetVisible] = useState(false);
@@ -163,7 +156,7 @@ export function ExerciseCard({
           testID={`${testID}-name`}
           accessibilityRole="button"
           accessibilityLabel={`${exercise.name} details`}
-          onPress={() => setDetailVisible(true)}
+          onPress={() => router.push(`/exercise/${exercise.id}` as never)}
           style={{ flex: 1 }}
         >
           <Text style={[typography.headline, { color: colors.accent.text }]} numberOfLines={1}>
@@ -245,15 +238,6 @@ export function ExerciseCard({
         onAddNote={() => setNoteSheetVisible(true)}
         onRestTimer={() => setRestTimerSheetVisible(true)}
         onRemoveExercise={() => onRemove(workoutExerciseId, exercise.name)}
-      />
-
-      <ExerciseDetailSheet
-        testID={`${testID}-detail-sheet`}
-        visible={detailVisible}
-        onDismiss={() => setDetailVisible(false)}
-        repository={exerciseRepository}
-        workoutRepository={workoutRepository}
-        exerciseId={exercise.id}
       />
 
       <NoteEditSheet
