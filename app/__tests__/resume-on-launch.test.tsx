@@ -80,12 +80,15 @@ describe('resume on launch shows the mini-bar, not the full logger (M2-13)', () 
 
       await renderRouter('app', { initialUrl: '/' });
 
-      // Tabs render (the Workout tab's own empty state, since the seeded
-      // workout has no exercises to browse yet) — proving we're on the tab
-      // shell, not the fullScreenModal logger (which would show
-      // "screen-title"/"screen-finish", not this empty-state copy). M3-02
-      // update: the real routines hub replaced the placeholder.
-      expect(await screen.findByText('No routines yet')).toBeTruthy();
+      // Tabs render (the Home tab's own empty state — the seeded workout is
+      // still `state='active'`, so `listCompleted()` doesn't surface it in
+      // the history list) — proving we're on the tab shell, not the
+      // fullScreenModal logger (which would show "screen-title"/
+      // "screen-finish", not this empty-state copy).
+      // 09-tabs-navigation-restructure update: `/` now redirects into the
+      // Home tab (formerly the Workout tab's routines hub, before Task 6
+      // repointed `app/index.tsx`'s redirect at `/home`).
+      expect(await screen.findByText('No workouts logged yet')).toBeTruthy();
 
       // The mini-bar itself, showing the resumed workout's title.
       expect(await screen.findByTestId('global-workout-bar')).toBeTruthy();
