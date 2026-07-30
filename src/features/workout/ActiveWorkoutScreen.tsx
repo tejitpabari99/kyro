@@ -156,6 +156,7 @@ import { invalidateAfterWorkoutMutation, tryGetRecordsService } from '@/features
 import { captureError } from '@/lib/sentry';
 import { Button } from '@/ui/Button';
 import { KeyboardAccessoryBar } from '@/ui/KeyboardAccessoryBar';
+import { KeyboardDoneBar } from '@/ui/KeyboardDoneBar';
 import { Snackbar } from '@/ui/Snackbar';
 import { StatColumn } from '@/ui/StatColumn';
 import { useTheme } from '@/ui/theme-provider';
@@ -164,6 +165,7 @@ import { AddToSupersetSheet } from './AddToSupersetSheet';
 import { DurationEditSheet } from './DurationEditSheet';
 import { ExerciseCard } from './ExerciseCard';
 import { ExercisePickerSheet, type ExercisePickerMode } from './ExercisePickerSheet';
+import { NOTES_KEYBOARD_ACCESSORY_VIEW_ID } from './InlineNoteField';
 import { KeepAwakeGate } from './KeepAwakeGate';
 import { KEYBOARD_ACCESSORY_VIEW_ID, useKeyboardFocusStore } from './keyboardFocusStore';
 import { PlateCalculatorSheet } from './PlateCalculatorSheet';
@@ -1253,6 +1255,8 @@ export function ActiveWorkoutScreen({
         onCalculatorPress={handleCalculatorPress}
         onNextPress={handleNextPress}
       />
+
+      <KeyboardDoneBar testID={`${testID}-notes-keyboard-done-bar`} nativeID={NOTES_KEYBOARD_ACCESSORY_VIEW_ID} />
 
       <PlateCalculatorSheet
         testID={`${testID}-plate-calculator-sheet`}
