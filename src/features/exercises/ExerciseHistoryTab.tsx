@@ -160,7 +160,7 @@ export function ExerciseHistoryTab({
   );
 
   const handlePress = (workoutId: string): void => {
-    router.push(`/history/${workoutId}` as never);
+    router.push(`/home/${workoutId}` as never);
   };
 
   return (
