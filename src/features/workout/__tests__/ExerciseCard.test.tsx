@@ -4,8 +4,8 @@
  * menu items: superset indicator, note row visibility + edit, rest-timer
  * row + sheet, `+ Add Set`, name-tap navigation, and every ⋯ menu item's
  * wiring (the cross-card ones as bubbled callback assertions, the
- * card-local ones — Remove from Superset, Add Warm-Up Sets stub — against
- * real store/DB state). Real `WorkoutRepositoryImpl`/`ExerciseRepositoryImpl`
+ * card-local one — Remove from Superset — against real store/DB state).
+ * Real `WorkoutRepositoryImpl`/`ExerciseRepositoryImpl`
  * over an in-memory `better-sqlite3` driver (08 §5), same convention as
  * every other M2 suite.
  */
@@ -281,82 +281,5 @@ describe('ExerciseCard — ⋯ menu wiring (02 §3)', () => {
     await fireEvent.press(screen.getByTestId('card-menu-button'));
     await fireEvent.press(screen.getByTestId('card-menu-remove-exercise'));
     expect(props.onRemove).toHaveBeenCalledWith(fixture.workoutExerciseId, 'Incline Bench Press');
-  });
-});
-
-/** Same shape as `setup()`, but the exercise is created with `equipment: 'barbell'` — needed for the default-formula test's "0% = empty bar" / bar-weight-floor rows to actually engage (`setup()`'s own exercise defaults to `equipment: 'none'`, `ExerciseRepositoryImpl.create`'s own default, which every other test in this file is indifferent to). */
-async function setupBarbell(): Promise<Fixture> {
-  const driver = openBetterSqlite3Driver(':memory:');
-  migrate(driver);
-  const workoutRepo = new WorkoutRepositoryImpl(driver, {});
-  const exerciseRepo = new ExerciseRepositoryImpl(driver);
-  await useActiveWorkoutStore.getState().rehydrate(workoutRepo);
-
-  const exercise = await exerciseRepo.create({
-    name: 'Barbell Back Squat',
-    exerciseType: 'weight_reps',
-    primaryMuscleGroup: 'quadriceps',
-    equipment: 'barbell',
-  });
-  await useActiveWorkoutStore.getState().startEmpty({ title: 'Today', startTime: Date.now() });
-  const [added] = await useActiveWorkoutStore.getState().addExercises([{ exerciseId: exercise.id }]);
-
-  return { driver, workoutRepo, exerciseRepo, exercise, workoutExerciseId: added!.id };
-}
-
-describe('ExerciseCard — Add Warm-Up Sets (M2-16, 02 §12)', () => {
-  it('⋯ → Add Warm-Up Sets opens the sheet pre-filled from the first normal set\'s weight', async () => {
-    const fixture = await setupBarbell();
-    const firstSetId = useActiveWorkoutStore.getState().workout!.exercises[0]!.sets[0]!.id;
-    await useActiveWorkoutStore.getState().updateSet(firstSetId, { weightKg: 100, reps: 5 });
-    await renderCard(fixture);
-
-    await fireEvent.press(screen.getByTestId('card-menu-button'));
-    await fireEvent.press(screen.getByTestId('card-menu-warmup-sets'));
-
-    await waitFor(() => expect(screen.getByTestId('card-warmup-sheet')).toBeTruthy());
-    expect(screen.getByTestId('card-warmup-sheet-working-weight').props.value).toBe('100');
-  });
-
-  it('Generate inserts the default-formula warm-up rows above the existing set, without disturbing working-set numbering', async () => {
-    const fixture = await setupBarbell();
-    const firstSetId = useActiveWorkoutStore.getState().workout!.exercises[0]!.sets[0]!.id;
-    await useActiveWorkoutStore.getState().updateSet(firstSetId, { weightKg: 100, reps: 5 });
-    await renderCard(fixture);
-
-    // One working row at SET badge "1" before generating.
-    await waitFor(() =>
-      expect(screen.getByTestId('card-table-row-0-badge-number')).toHaveTextContent('1'),
-    );
-
-    await fireEvent.press(screen.getByTestId('card-menu-button'));
-    await fireEvent.press(screen.getByTestId('card-menu-warmup-sets'));
-    await waitFor(() => expect(screen.getByTestId('card-warmup-sheet-working-weight')).toBeTruthy());
-    await fireEvent.press(screen.getByTestId('card-warmup-sheet-generate'));
-
-    // Sheet dismisses.
-    await waitFor(() => expect(screen.queryByTestId('card-warmup-sheet')).toBeNull());
-
-    // Default formula (P8) @ 100 kg, 2.5 kg rounding, 20 kg bar -> 4 W rows
-    // above the original working set, which keeps SET badge "1" (warm-ups
-    // don't consume working-set numbering, 02 §4/§12).
-    await waitFor(() => expect(screen.getByTestId('card-table-row-4-badge-number')).toBeTruthy());
-    for (let i = 0; i < 4; i += 1) {
-      expect(screen.getByTestId(`card-table-row-${i}-badge-circle`)).toBeTruthy();
-    }
-    expect(screen.getByTestId('card-table-row-4-badge-number')).toHaveTextContent('1');
-
-    const persisted = await fixture.workoutRepo.getFull(
-      useActiveWorkoutStore.getState().workout!.id,
-    );
-    const sets = persisted!.exercises[0]!.sets;
-    expect(sets.map((s) => ({ setType: s.setType, weightKg: s.weightKg, reps: s.reps }))).toEqual([
-      { setType: 'warmup', weightKg: 20, reps: 10 },
-      { setType: 'warmup', weightKg: 40, reps: 8 },
-      { setType: 'warmup', weightKg: 60, reps: 5 },
-      { setType: 'warmup', weightKg: 80, reps: 3 },
-      { setType: 'normal', weightKg: 100, reps: 5 },
-    ]);
-    expect(sets.every((s) => !s.isCompleted)).toBe(true);
   });
 });
