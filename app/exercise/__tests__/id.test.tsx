@@ -13,8 +13,14 @@
  * M1-10 update: `ExerciseDetailScreen` now imports `@/lib/files` (the
  * delete flow's `deleteExercisePhotos` call) — mocked wholesale here too,
  * same as every other consumer of that native-touching seam (08 §5).
+ *
+ * AD-2 update: the exercise type ("Weight & Reps") moved off the default
+ * Summary tab into the How to tab's TYPE row (`HowToTab`,
+ * `ExerciseDetailScreen.test.tsx` covers this in depth) — this smoke test
+ * now presses the How-to tab first, same as that suite, before asserting on
+ * it.
  */
-import { renderRouter, screen } from 'expo-router/testing-library';
+import { fireEvent, renderRouter, screen } from 'expo-router/testing-library';
 
 jest.mock('@/lib/files');
 
@@ -64,6 +70,7 @@ describe('/exercise/[id] route', () => {
     async () => {
       await renderRouter('app', { initialUrl: `/exercise/${FIXTURE_EXERCISE.id}` });
       expect(await screen.findByText('Barbell Squat')).toBeTruthy();
+      await fireEvent.press(screen.getByTestId('exercise-detail-screen-tabs-howto'));
       expect(await screen.findByText('Weight & Reps')).toBeTruthy();
     },
     15000,
