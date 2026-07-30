@@ -154,6 +154,82 @@ function TimerControlsRow({
   );
 }
 
+interface RestTimerPanelControlsProps {
+  testIDPrefix: string;
+  onAdjust: (deltaSeconds: number) => void;
+  onSkip: () => void;
+}
+
+/**
+ * −15 / +15 / Skip, in Hevy's literal button order (§4.2.3) — a *new*,
+ * panel-only control row, not an edit to `TimerControlsRow` above (that
+ * component keeps its own order/styling, reused unchanged by the
+ * full-screen sheet, §3). `Skip` alone is filled (`semantic.info` /
+ * `semantic.onInfo`); `-15`/`+15` keep the existing gray/elevated
+ * treatment.
+ */
+function RestTimerPanelControls({
+  testIDPrefix,
+  onAdjust,
+  onSkip,
+}: RestTimerPanelControlsProps): React.JSX.Element {
+  const { colors, typography, spacing, radii } = useTheme();
+  return (
+    <View
+      style={[
+        styles.panelControlsRow,
+        { gap: spacing['3'], paddingHorizontal: spacing['4'], paddingBottom: spacing['4'] },
+      ]}
+    >
+      <Pressable
+        testID={`${testIDPrefix}-minus15`}
+        accessibilityRole="button"
+        accessibilityLabel="Subtract 15 seconds"
+        onPress={() => onAdjust(-ADJUST_STEP_SECONDS)}
+        hitSlop={8}
+        style={[
+          styles.panelControlButton,
+          { backgroundColor: colors.bg.elevated, borderRadius: radii.md },
+        ]}
+      >
+        <Text style={[typography.footnote, { color: colors.text.primary, fontWeight: '600' }]}>
+          −15s
+        </Text>
+      </Pressable>
+      <Pressable
+        testID={`${testIDPrefix}-plus15`}
+        accessibilityRole="button"
+        accessibilityLabel="Add 15 seconds"
+        onPress={() => onAdjust(ADJUST_STEP_SECONDS)}
+        hitSlop={8}
+        style={[
+          styles.panelControlButton,
+          { backgroundColor: colors.bg.elevated, borderRadius: radii.md },
+        ]}
+      >
+        <Text style={[typography.footnote, { color: colors.text.primary, fontWeight: '600' }]}>
+          +15s
+        </Text>
+      </Pressable>
+      <Pressable
+        testID={`${testIDPrefix}-skip`}
+        accessibilityRole="button"
+        accessibilityLabel="Skip rest timer"
+        onPress={onSkip}
+        hitSlop={8}
+        style={[
+          styles.panelControlButton,
+          { backgroundColor: colors.semantic.info, borderRadius: radii.md },
+        ]}
+      >
+        <Text style={[typography.footnote, { color: colors.semantic.onInfo, fontWeight: '600' }]}>
+          Skip
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
 export function TimerPill({ testID = 'timer-pill' }: TimerPillProps): React.JSX.Element | null {
   const { colors, typography, spacing, radii } = useTheme();
 
@@ -420,6 +496,15 @@ const styles = StyleSheet.create({
   },
   sheetContent: {
     flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  panelControlsRow: {
+    flexDirection: 'row',
+  },
+  panelControlButton: {
+    flex: 1,
+    minHeight: 48,
     alignItems: 'center',
     justifyContent: 'center',
   },
