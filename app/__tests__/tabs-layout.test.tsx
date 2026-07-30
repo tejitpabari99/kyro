@@ -1,6 +1,6 @@
 /**
  * Tab shell smoke test (M0-08 acceptance gate): "app boots to tabs ...
- * all 4 tabs navigable ... RNTL smoke on the tab layout itself."
+ * all 3 tabs navigable ... RNTL smoke on the tab layout itself."
  *
  * `renderRouter` (expo-router/testing-library) builds the real navigation
  * tree from the actual `app/` directory (via a require-context ponyfill —
@@ -50,14 +50,15 @@ jest.mock('@/data/sqlite/boot', () => ({
   }),
 }));
 
-// The Exercises tab route (M1-07) renders `ExerciseRow`, whose thumbnail
+// The `/profile/exercises` route (M1-07, relocated under `profile` by the
+// 09-tabs-navigation-restructure PRD) renders `ExerciseRow`, whose thumbnail
 // resolution (`resolveExerciseThumbnailSource`, fixed M1-12) now reaches
 // `@/lib/files`'s real top-level native imports (`expo-image-manipulator`/
 // `expo-image-picker`) — mocked here for the same reason
 // `ExerciseBrowseScreen.test.tsx` mocks it.
 jest.mock('@/lib/files');
 
-describe('tab shell — boots to tabs, all 4 tabs navigable', () => {
+describe('tab shell — boots to tabs, all 3 tabs navigable', () => {
   // M0-12 note: the default 5000 ms Jest test timeout was observed to flake
   // under full-suite (`pnpm run ci`) CPU contention specifically on the
   // first `renderRouter(...)` call in this file (~2.9s in isolation, timed
@@ -67,16 +68,27 @@ describe('tab shell — boots to tabs, all 4 tabs navigable', () => {
   // this file (not just the first) since any of them can land first
   // depending on worker scheduling. Not a functional change.
   it(
-    'redirects "/" to the Workout tab',
+    'redirects "/" to the Home tab',
     async () => {
       await renderRouter('app', { initialUrl: '/' });
-      // M3-02 update: the real routines hub replaced the placeholder. The
-      // mocked driver's `queryAll` returns `[]` for everything (including
-      // `RoutineRepository.listFolders()`/`list()`), so the hub legitimately
-      // renders its empty state here — this smoke test only needs to prove
-      // the route renders the real screen, not routines-hub behavior
-      // (covered in `src/features/routines/__tests__/`).
-      expect(await screen.findByText('No routines yet')).toBeTruthy();
+      // 09-tabs-navigation-restructure update: `/` now redirects into the
+      // `home` tab (formerly `history`, renamed by Task 2) rather than
+      // `workout`. The mocked driver's `queryAll` returns `[]` for
+      // everything (including `HistoryRepository`'s list queries), so the
+      // Home tab's `HistoryListScreen` legitimately renders its empty state
+      // here — this smoke test only needs to prove the route renders the
+      // real screen, not `HistoryListScreen`'s own behavior (covered in
+      // `src/features/history/__tests__/`).
+      expect(await screen.findByText('No workouts logged yet')).toBeTruthy();
+    },
+    15000,
+  );
+
+  it(
+    'navigates to the Home tab',
+    async () => {
+      await renderRouter('app', { initialUrl: '/home' });
+      expect(await screen.findByText('No workouts logged yet')).toBeTruthy();
     },
     15000,
   );
@@ -85,32 +97,13 @@ describe('tab shell — boots to tabs, all 4 tabs navigable', () => {
     'navigates to the Workout tab',
     async () => {
       await renderRouter('app', { initialUrl: '/workout' });
+      // M3-02 update: the real routines hub replaced the placeholder. The
+      // mocked driver's `queryAll` returns `[]` for everything (including
+      // `RoutineRepository.listFolders()`/`list()`), so the hub legitimately
+      // renders its empty state here — this smoke test only needs to prove
+      // the route renders the real screen, not routines-hub behavior
+      // (covered in `src/features/routines/__tests__/`).
       expect(await screen.findByText('No routines yet')).toBeTruthy();
-    },
-    15000,
-  );
-
-  it(
-    'navigates to the History tab',
-    async () => {
-      await renderRouter('app', { initialUrl: '/history' });
-      expect(await screen.findByText('No workouts logged yet')).toBeTruthy();
-    },
-    15000,
-  );
-
-  it(
-    'navigates to the Exercises tab',
-    async () => {
-      // M1-07 update: the real browse screen replaced the placeholder.
-      // `getAppDriver`'s mock above returns an empty `queryAll(...)` result
-      // for everything (including `ExerciseRepository.list()`), so the
-      // screen legitimately renders its "no exercises" empty state here —
-      // this smoke test only needs to prove the route renders the real
-      // screen, not exercise real browse behavior (covered in
-      // `src/features/exercises/__tests__/`).
-      await renderRouter('app', { initialUrl: '/exercises' });
-      expect(await screen.findByText('No exercises found')).toBeTruthy();
     },
     15000,
   );
@@ -127,6 +120,23 @@ describe('tab shell — boots to tabs, all 4 tabs navigable', () => {
       // `src/features/profile/__tests__/ProfileScreen.test.tsx`).
       await renderRouter('app', { initialUrl: '/profile' });
       expect(await screen.findByText('Add your name')).toBeTruthy();
+    },
+    15000,
+  );
+
+  it(
+    'navigates to /profile/exercises and renders the real ExerciseBrowseScreen',
+    async () => {
+      // 09-tabs-navigation-restructure update: the Exercises screen relocated
+      // from its own top-level tab (`/exercises`) to `/profile/exercises`.
+      // `getAppDriver`'s mock above returns an empty `queryAll(...)` result
+      // for everything (including `ExerciseRepository.list()`), so the
+      // screen legitimately renders its "no exercises" empty state here —
+      // this smoke test only needs to prove the route renders the real
+      // screen post-relocation, not exercise browse behavior (covered in
+      // `src/features/exercises/__tests__/`).
+      await renderRouter('app', { initialUrl: '/profile/exercises' });
+      expect(await screen.findByText('No exercises found')).toBeTruthy();
     },
     15000,
   );
