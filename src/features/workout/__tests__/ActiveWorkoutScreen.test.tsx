@@ -707,6 +707,18 @@ describe('ActiveWorkoutScreen — footer layout (02 §2, revised — sub-project
 
     expect(screen.getByTestId('screen-footer-row')).toHaveStyle({ flexDirection: 'row' });
   });
+
+  it('Settings and Discard Workout are each flex: 1 (equal width)', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+    await useActiveWorkoutStore.getState().startEmpty({ title: 'Test Workout', startTime: Date.now() });
+
+    await renderScreen(exerciseRepo);
+    await waitFor(() => expect(screen.getByTestId('screen-settings')).toBeTruthy());
+
+    expect(screen.getByTestId('screen-settings')).toHaveStyle({ flex: 1 });
+    expect(screen.getByTestId('screen-discard')).toHaveStyle({ flex: 1 });
+  });
 });
 
 /** Seeds one exercise with a checked first set (60kg x 8) and, when `withUncheckedSecondSet`, a second bare/unchecked set — the fixture every finish-flow case below builds on. */
