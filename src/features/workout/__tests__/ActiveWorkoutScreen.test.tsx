@@ -719,6 +719,21 @@ describe('ActiveWorkoutScreen — footer layout (02 §2, revised — sub-project
     expect(screen.getByTestId('screen-settings')).toHaveStyle({ flex: 1 });
     expect(screen.getByTestId('screen-discard')).toHaveStyle({ flex: 1 });
   });
+
+  it('applies insets.bottom + spacing[4] as the ScrollView contentContainerStyle paddingBottom', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+    await useActiveWorkoutStore.getState().startEmpty({ title: 'Test Workout', startTime: Date.now() });
+
+    const insetsOverride = { top: 0, right: 0, bottom: 34, left: 0 };
+    await renderScreen(exerciseRepo, {}, 'dark', insetsOverride);
+    await waitFor(() => expect(screen.getByTestId('screen-body')).toBeTruthy());
+
+    // insets.bottom (34) + spacing['4'] (16, `src/ui/tokens.ts`) = 50.
+    expect(screen.getByTestId('screen-body').props.contentContainerStyle).toEqual(
+      expect.objectContaining({ paddingBottom: 50 }),
+    );
+  });
 });
 
 /** Seeds one exercise with a checked first set (60kg x 8) and, when `withUncheckedSecondSet`, a second bare/unchecked set — the fixture every finish-flow case below builds on. */
