@@ -1,7 +1,7 @@
 /**
  * `ExerciseCardMenuSheet` (M2-09) — 02 §3's exercise-card ⋯ menu: "Reorder
  * Exercises ... Replace Exercise ... Add to Superset / Remove from Superset
- * ... Add Warm-Up Sets ... Add a Note ... Rest Timer ... Remove Exercise
+ * ... Add Warm-Up Sets ... Rest Timer ... Remove Exercise
  * (no confirm; snackbar with Undo)." Every item is a plain callback prop —
  * this component owns no state or navigation itself, `ExerciseCard` decides
  * what each press actually does (open a sub-sheet, bubble to the screen for
@@ -14,7 +14,6 @@ import {
   Flame,
   Link2,
   Repeat,
-  StickyNote,
   Trash2,
   Unlink,
 } from 'lucide-react-native';
@@ -34,7 +33,6 @@ export interface ExerciseCardMenuSheetProps {
   onAddToSuperset: () => void;
   onRemoveFromSuperset: () => void;
   onAddWarmUpSets: () => void;
-  onAddNote: () => void;
   onRestTimer: () => void;
   onRemoveExercise: () => void;
   testID?: string;
@@ -52,7 +50,6 @@ export function ExerciseCardMenuSheet({
   onAddToSuperset,
   onRemoveFromSuperset,
   onAddWarmUpSets,
-  onAddNote,
   onRestTimer,
   onRemoveExercise,
   testID = 'exercise-card-menu-sheet',
@@ -99,12 +96,6 @@ export function ExerciseCardMenuSheet({
           title="Add Warm-Up Sets"
           leading={<Flame size={ICON_SIZE} strokeWidth={ICON_STROKE_WIDTH} color={colors.text.secondary} />}
           onPress={dismissThen(onAddWarmUpSets)}
-        />
-        <ListRow
-          testID={`${testID}-add-note`}
-          title="Add a Note"
-          leading={<StickyNote size={ICON_SIZE} strokeWidth={ICON_STROKE_WIDTH} color={colors.text.secondary} />}
-          onPress={dismissThen(onAddNote)}
         />
         <ListRow
           testID={`${testID}-rest-timer`}
