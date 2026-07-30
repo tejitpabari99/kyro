@@ -4,7 +4,7 @@
  * 40 pt thumb, accent name (tap → `router.push` to the full-screen
  * `/exercise/[id]` detail screen), note row (URLs
  * tappable), rest-timer row, `+ Add Set`, and the ⋯ menu's card-local items
- * (Add a Note, Rest Timer — both fully self-contained here) plus bubbled
+ * (Rest Timer — fully self-contained here) plus bubbled
  * callbacks for the cross-card operations a single card can't resolve on
  * its own (Reorder/Replace/Add to Superset/Remove — all need the *whole*
  * workout's exercise list, which only `ActiveWorkoutScreen` has).
@@ -51,8 +51,7 @@ import { useTheme } from '@/ui/theme-provider';
 import { AddWarmUpSetsSheet } from './AddWarmUpSetsSheet';
 import { ExerciseCardMenuSheet } from './ExerciseCardMenuSheet';
 import { ExerciseSetTableSection } from './ExerciseSetTableSection';
-import { NoteEditSheet } from './NoteEditSheet';
-import { NoteText } from './NoteText';
+import { InlineNoteField } from './InlineNoteField';
 import { formatRestSeconds, type RestSeconds } from './rest-timer-format';
 import { RestTimerSheet } from './RestTimerSheet';
 import { useWorkoutStore } from './workoutStoreContext';
@@ -110,7 +109,6 @@ export function ExerciseCard({
   const workoutStore = useWorkoutStore();
 
   const [menuVisible, setMenuVisible] = useState(false);
-  const [noteSheetVisible, setNoteSheetVisible] = useState(false);
   const [restTimerSheetVisible, setRestTimerSheetVisible] = useState(false);
   const [warmUpSheetVisible, setWarmUpSheetVisible] = useState(false);
 
@@ -175,17 +173,7 @@ export function ExerciseCard({
         </Pressable>
       </View>
 
-      {notes != null && notes.length > 0 ? (
-        <Pressable
-          testID={`${testID}-note-row`}
-          accessibilityRole="button"
-          accessibilityLabel="Edit note"
-          onPress={() => setNoteSheetVisible(true)}
-          style={{ marginBottom: spacing['3'] }}
-        >
-          <NoteText testID={`${testID}-note-text`} text={notes} />
-        </Pressable>
-      ) : null}
+      <InlineNoteField testID={`${testID}-note`} value={notes} onSave={handleSaveNote} />
 
       <Pressable
         testID={`${testID}-rest-timer-row`}
@@ -236,17 +224,8 @@ export function ExerciseCard({
         onAddToSuperset={() => onAddToSupersetPress(workoutExerciseId)}
         onRemoveFromSuperset={handleRemoveFromSuperset}
         onAddWarmUpSets={handleAddWarmUpSets}
-        onAddNote={() => setNoteSheetVisible(true)}
         onRestTimer={() => setRestTimerSheetVisible(true)}
         onRemoveExercise={() => onRemove(workoutExerciseId, exercise.name)}
-      />
-
-      <NoteEditSheet
-        testID={`${testID}-note-sheet`}
-        visible={noteSheetVisible}
-        onDismiss={() => setNoteSheetVisible(false)}
-        initialValue={notes ?? ''}
-        onSave={handleSaveNote}
       />
 
       <RestTimerSheet
