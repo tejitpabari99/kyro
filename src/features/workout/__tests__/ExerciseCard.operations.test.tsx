@@ -14,6 +14,7 @@
  * `useActiveWorkoutStore`/`useSettingsStore` singletons.
  */
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
+import { router } from 'expo-router';
 import React from 'react';
 import { Alert } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -93,6 +94,16 @@ function renderScreen(exerciseRepo: ExerciseRepository) {
       </ThemeProvider>
     </QueryClientProvider>,
   );
+}
+
+/**
+ * Selects `option` in whichever filter sheet is currently open, awaiting
+ * the press through — mirrors `ExerciseBrowseScreen.test.tsx`'s identical
+ * helper for the sibling browse screen's equipment/muscle `FilterOptionSheet`s.
+ */
+async function selectFilterOption(testIdPrefix: string, value: string): Promise<void> {
+  const option = await screen.findByTestId(`${testIdPrefix}-option-${value}`);
+  await fireEvent.press(option);
 }
 
 beforeEach(() => {
@@ -690,5 +701,172 @@ describe('ExerciseCard — superset colors/labels + dissolution (M2-12, 02 §8 a
     const b = persisted!.exercises.find((we) => we.id === addedB!.id)!;
     expect(a.supersetId).toBeNull();
     expect(b.supersetId).toBeNull();
+  });
+});
+
+describe('Exercise picker — options sheet (04 §4)', () => {
+  it('gear icon opens the options sheet, revealing both Reset Filters and More Settings rows', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+    await useActiveWorkoutStore.getState().startEmpty({ title: 'Today', startTime: Date.now() });
+
+    await renderScreen(exerciseRepo);
+    await waitFor(() => expect(screen.getByTestId('screen-add-exercise')).toBeTruthy());
+    await fireEvent.press(screen.getByTestId('screen-add-exercise'));
+    await waitFor(() => expect(screen.getByTestId('screen-exercise-picker-confirm')).toBeTruthy());
+
+    expect(screen.getByTestId('screen-exercise-picker-options-button')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('screen-exercise-picker-options-button'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('screen-exercise-picker-options-sheet-reset-filters')).toBeTruthy(),
+    );
+    expect(screen.getByTestId('screen-exercise-picker-options-sheet-app-settings')).toBeTruthy();
+  });
+
+  it('Reset Filters row is disabled (dimmed, onPress gated off) when neither filter chip has a value', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+    await useActiveWorkoutStore.getState().startEmpty({ title: 'Today', startTime: Date.now() });
+
+    await renderScreen(exerciseRepo);
+    await fireEvent.press(screen.getByTestId('screen-add-exercise'));
+    await waitFor(() => expect(screen.getByTestId('screen-exercise-picker-confirm')).toBeTruthy());
+
+    expect(
+      within(screen.getByTestId('screen-exercise-picker-equipment-chip')).getByText('All Equipment'),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByTestId('screen-exercise-picker-muscle-chip')).getByText('All Muscles'),
+    ).toBeTruthy();
+
+    await fireEvent.press(screen.getByTestId('screen-exercise-picker-options-button'));
+    await waitFor(() =>
+      expect(screen.getByTestId('screen-exercise-picker-options-sheet-reset-filters')).toBeTruthy(),
+    );
+
+    // `ListRow`'s `disabled` prop both dims the row and disables its
+    // `Pressable` — asserted here via `accessibilityState.disabled` on the
+    // row's own button rather than by firing a press: this repo's
+    // `@testing-library/react-native` (14.0.1) calls `onPress` directly and
+    // does not itself honor `disabled`/`accessibilityState.disabled` the way
+    // a real touch responder does, so "press it and observe no change"
+    // isn't a reliable disabled-state signal under `fireEvent` here — the
+    // next test (a real, enabled reset) is what proves the row's *effect*
+    // when active.
+    const resetRow = screen.getByTestId('screen-exercise-picker-options-sheet-reset-filters');
+    expect(within(resetRow).getByRole('button')).toHaveProp(
+      'accessibilityState',
+      expect.objectContaining({ disabled: true }),
+    );
+    expect(
+      within(screen.getByTestId('screen-exercise-picker-equipment-chip')).getByText('All Equipment'),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByTestId('screen-exercise-picker-muscle-chip')).getByText('All Muscles'),
+    ).toBeTruthy();
+  });
+
+  it('Reset Filters clears the equipment filter, closes the options sheet, and leaves search/selection untouched', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+    const exercise = await exerciseRepo.create({
+      name: 'Barbell Row',
+      exerciseType: 'weight_reps',
+      primaryMuscleGroup: 'upper_back',
+    });
+    await useActiveWorkoutStore.getState().startEmpty({ title: 'Today', startTime: Date.now() });
+
+    await renderScreen(exerciseRepo);
+    await fireEvent.press(screen.getByTestId('screen-add-exercise'));
+    await waitFor(() =>
+      expect(screen.getAllByTestId(`exercise-row-${exercise.id}`).length).toBeGreaterThan(0),
+    );
+
+    // State "Reset Filters" must NOT touch: a selected exercise and an
+    // in-progress search string (Task 4's deliberately narrow reset scope —
+    // only the equipment/muscle chips are cleared).
+    await fireEvent.press(screen.getAllByTestId(`exercise-row-${exercise.id}`)[0]!);
+    expect(screen.getByText('1 selected')).toBeTruthy();
+    const searchField = screen.getByPlaceholderText('Search exercises');
+    await fireEvent.changeText(searchField, 'Row');
+    expect(screen.getByPlaceholderText('Search exercises').props.value).toBe('Row');
+
+    // Set the equipment filter chip to a real value.
+    await fireEvent.press(screen.getByTestId('screen-exercise-picker-equipment-chip'));
+    await selectFilterOption('screen-exercise-picker-equipment-sheet', 'barbell');
+    await waitFor(() =>
+      expect(
+        within(screen.getByTestId('screen-exercise-picker-equipment-chip')).getByText('Barbell'),
+      ).toBeTruthy(),
+    );
+
+    await fireEvent.press(screen.getByTestId('screen-exercise-picker-options-button'));
+    await waitFor(() =>
+      expect(screen.getByTestId('screen-exercise-picker-options-sheet-reset-filters')).toBeTruthy(),
+    );
+    await fireEvent.press(screen.getByTestId('screen-exercise-picker-options-sheet-reset-filters'));
+
+    // Equipment chip back to its default label...
+    await waitFor(() =>
+      expect(
+        within(screen.getByTestId('screen-exercise-picker-equipment-chip')).getByText('All Equipment'),
+      ).toBeTruthy(),
+    );
+    // ...the options sheet itself closed (`Sheet` only mounts its content
+    // while `visible`)...
+    expect(screen.queryByTestId('screen-exercise-picker-options-sheet-reset-filters')).toBeNull();
+    // ...the picker itself is still open...
+    expect(screen.getByTestId('screen-exercise-picker-confirm')).toBeTruthy();
+    // ...and the search text / selection set up above are untouched.
+    expect(screen.getByPlaceholderText('Search exercises').props.value).toBe('Row');
+    expect(screen.getByText('1 selected')).toBeTruthy();
+  });
+
+  it('More Settings closes the picker before navigating to /profile/settings', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+    await useActiveWorkoutStore.getState().startEmpty({ title: 'Today', startTime: Date.now() });
+
+    await renderScreen(exerciseRepo);
+    await fireEvent.press(screen.getByTestId('screen-add-exercise'));
+    await waitFor(() => expect(screen.getByTestId('screen-exercise-picker-confirm')).toBeTruthy());
+
+    await fireEvent.press(screen.getByTestId('screen-exercise-picker-options-button'));
+    await waitFor(() =>
+      expect(screen.getByTestId('screen-exercise-picker-options-sheet-app-settings')).toBeTruthy(),
+    );
+
+    expect(router.push).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByTestId('screen-exercise-picker-options-sheet-app-settings'));
+
+    // The picker's own content must already be gone by the time
+    // `router.push` is asserted — confirms `handleOpenAppSettings` closes
+    // the sheet (`onDismiss()`) strictly before navigating, the reverse
+    // order of `handleConfirmAdd`'s `onAdd?.(...); onDismiss();`.
+    expect(screen.queryByTestId('screen-exercise-picker-confirm')).toBeNull();
+    expect(router.push).toHaveBeenCalledWith('/profile/settings');
+  });
+
+  it('dismissing the options sheet via its own scrim only closes that sheet, not the picker (regression guard)', async () => {
+    const { driver, workoutRepo, exerciseRepo } = setup();
+    await rehydrateStores(workoutRepo, driver);
+    await useActiveWorkoutStore.getState().startEmpty({ title: 'Today', startTime: Date.now() });
+
+    await renderScreen(exerciseRepo);
+    await fireEvent.press(screen.getByTestId('screen-add-exercise'));
+    await waitFor(() => expect(screen.getByTestId('screen-exercise-picker-confirm')).toBeTruthy());
+
+    await fireEvent.press(screen.getByTestId('screen-exercise-picker-options-button'));
+    await waitFor(() =>
+      expect(screen.getByTestId('screen-exercise-picker-options-sheet-scrim')).toBeTruthy(),
+    );
+
+    await fireEvent.press(screen.getByTestId('screen-exercise-picker-options-sheet-scrim'));
+
+    expect(screen.queryByTestId('screen-exercise-picker-options-sheet-reset-filters')).toBeNull();
+    // The picker itself is untouched — still open.
+    expect(screen.getByTestId('screen-exercise-picker-search')).toBeTruthy();
+    expect(screen.getByTestId('screen-exercise-picker-confirm')).toBeTruthy();
   });
 });
