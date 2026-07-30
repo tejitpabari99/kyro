@@ -2,25 +2,22 @@
 
 ## Open Questions
 
-- **§9.5 — PRD A reconciliation (flagged, not blocking).** PRD A
-  (`sheet-header-footer-foundation`, `docs/agent_files/tasks/2026-07-28/01-sheet-header-footer-foundation/`)
-  does not exist on disk yet — confirmed by directory listing at task-generation
-  time. This PRD's §4.2 header edit is written against `ExercisePickerSheet.tsx`'s
-  *current* hand-rolled header (`<View style={{ flexDirection: 'row', ... }}>` +
-  `justifyContent: 'space-between'`), not against any shared header primitive,
-  because no such primitive exists yet to build against.
-  - **Assumption made to proceed**: implement the header change below directly
-    against the current hand-rolled `View` markup now. If/when PRD A lands a
-    shared primitive (e.g. `<SheetHeader title=... right={...} />`) that other
-    sheets are expected to migrate to, a follow-up task/PR should migrate this
-    header edit onto that primitive — the *visual outcome* (title left, gear
-    icon + Cancel grouped on the right, in that order) must carry over
-    unchanged; only the markup implementing it would change.
-  - **Why**: PRD A doesn't exist yet, so there is nothing concrete to build
-    against today, and this PRD's own text is explicit that it is "not blocked
-    on A landing first" (§9.5, PRD A reconciliation) — the risk is documented,
-    not resolved, and that's an intentional, author-sanctioned tradeoff, not an
-    oversight to fix during task generation.
+- **§9.5 — PRD A reconciliation — RESOLVED.** PRD A
+  (`sheet-header-footer-foundation`) is now fully implemented, reviewed, and
+  merged: `src/ui/Sheet.tsx`, `src/ui/SheetHeader.tsx`, and `src/ui/ScreenFooter.tsx`
+  exist for real, and 24 other screens/sheets have already adopted them
+  (e.g. `src/features/exercises/ExerciseTypeSheet.tsx`). This task list has
+  been reconciled: Tasks 2 and 5 below now build the header change against the
+  real `SheetHeader` primitive (via its `right: { kind: 'custom', ... }` slot —
+  the exact escape hatch PRD A's own §4.2 documents for multi-element clusters
+  like this one) instead of the old hand-rolled `View` + `justifyContent:
+  'space-between'` markup. Confirmed against the live
+  `src/features/workout/ExercisePickerSheet.tsx` that the hand-rolled header
+  this PRD originally targeted was never independently touched by other work
+  in the meantime, so this reconciliation is a straight swap, not a merge of
+  divergent changes. The specified *visual outcome* (title left, gear icon +
+  Cancel grouped on the right, in that order) is unchanged from the original
+  PRD.
 - **§9.1 — human product sign-off (not blocking, but worth surfacing).** The
   two-row options-sheet scope this PRD builds (Reset Filters + More Settings)
   is marked `[RESOLVED ... pending human product sign-off]` — i.e. resolved
@@ -43,13 +40,13 @@ file; Tasks 2, 3, 4, 5, 6 all edit `src/features/workout/ExercisePickerSheet.tsx
 file, but in genuinely disjoint locations).
 
 1. **Wave 1 — Tasks 1, 2.** Task 1 creates the new
-   `ExercisePickerOptionsSheet.tsx` file; Task 2 only adds four import lines
-   (three from existing libraries, plus a `./ExercisePickerOptionsSheet`
-   import) to `ExercisePickerSheet.tsx`. Different files, and Task 2's import
-   line is given verbatim in the task text — it doesn't require reading Task
-   1's file contents, only that the file eventually exists at that path with
-   the named export, which Task 1 guarantees regardless of landing order. Safe
-   to run concurrently.
+   `ExercisePickerOptionsSheet.tsx` file; Task 2 only adds five import lines
+   (three from existing libraries, plus `@/ui/SheetHeader` and a
+   `./ExercisePickerOptionsSheet` import) to `ExercisePickerSheet.tsx`.
+   Different files, and Task 2's import lines are given verbatim in the task
+   text — it doesn't require reading Task 1's file contents, only that the
+   file eventually exists at that path with the named export, which Task 1
+   guarantees regardless of landing order. Safe to run concurrently.
 2. **Wave 2 — Task 3.** Adds the `optionsSheetVisible` state hook to
    `ExercisePickerSheet.tsx`. Same file as Task 2 (must land after it to avoid
    a same-file conflict), and nothing else is ready yet: Tasks 4–6 all need
@@ -188,7 +185,8 @@ file, but in genuinely disjoint locations).
 - **Files:**
   - `src/features/workout/ExercisePickerSheet.tsx`
 - **Changes:** This task only adds imports; later tasks add the code that
-  uses them. Four things need adding:
+  uses them. Confirmed against the live file that none of these are already
+  present. Five things need adding:
   1. Add `Pressable` to the existing `react-native` import (currently line 22:
      `import { ActivityIndicator, Text, View } from 'react-native';`):
      ```tsx
@@ -205,14 +203,21 @@ file, but in genuinely disjoint locations).
      ```tsx
      import { Settings as SettingsIcon } from 'lucide-react-native';
      ```
-  4. Add the new local-file import for the component built in Task 1,
+  4. Add the shared `SheetHeader` primitive import (PRD A,
+     `sheet-header-footer-foundation`, already merged), alongside the existing
+     `import { Sheet } from '@/ui/Sheet';` (currently line 51) — Task 5 uses
+     this to replace the header's hand-rolled `View` markup:
+     ```tsx
+     import { SheetHeader } from '@/ui/SheetHeader';
+     ```
+  5. Add the new local-file import for the component built in Task 1,
      alongside the existing `import { ExerciseDetailSheet } from
      './ExerciseDetailSheet';` (currently line 54):
      ```tsx
      import { ExercisePickerOptionsSheet } from './ExercisePickerOptionsSheet';
      ```
 - **Acceptance criteria:**
-  - File still typechecks (no unused-import errors — all four new imports are
+  - File still typechecks (no unused-import errors — all five new imports are
     consumed once Tasks 3–6 land; if this task is verified in isolation
     before those land, ESLint will flag them as temporarily unused, which is
     expected and resolved by the next tasks).
@@ -304,12 +309,22 @@ file, but in genuinely disjoint locations).
 
 - **Files:**
   - `src/features/workout/ExercisePickerSheet.tsx`
-- **Changes:** Replace the header `<View>` block (the `flexDirection: 'row'`
-  block immediately inside the outer `<Sheet>` / `<View style={{ flex: 1
-  }}>`, currently rendering the title `<Text>` and the `Cancel` `<Button>`
-  side by side via `justifyContent: 'space-between'`) with a version that
-  wraps the gear icon and the Cancel button together in one right-aligned
-  group:
+- **Changes:** **Reconciled against PRD A** (`sheet-header-footer-foundation`,
+  now merged) — this task originally targeted the hand-rolled header `<View>`
+  block directly; it now replaces that block with the real `SheetHeader`
+  primitive instead, following the pattern already established by sibling
+  retrofits in this same feature folder (`src/features/exercises/ExerciseTypeSheet.tsx`
+  is the closest example: `<SheetHeader title=... left={...} safeTop />` on a
+  `detent="full"` sheet). Confirmed against the live
+  `src/features/workout/ExercisePickerSheet.tsx` that the header block below
+  is still exactly the pre-PRD-A hand-rolled markup (untouched by other work),
+  so this is a direct swap, not a merge.
+
+  Replace the header `<View>` block (the `flexDirection: 'row'` block
+  immediately inside the outer `<Sheet>` / `<View style={{ flex: 1 }}>`,
+  currently rendering the title `<Text>` and the `Cancel` `<Button>` side by
+  side via `justifyContent: 'space-between'`) with a `SheetHeader` whose
+  `right` slot holds the gear icon and Cancel button grouped together:
 
   **Before:**
   ```tsx
@@ -337,49 +352,68 @@ file, but in genuinely disjoint locations).
 
   **After:**
   ```tsx
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            paddingHorizontal: spacing['4'],
-            paddingBottom: spacing['2'],
+        <SheetHeader
+          testID={`${testID}-header`}
+          title={mode === 'replace' ? 'Replace Exercise' : 'Add Exercise'}
+          right={{
+            kind: 'custom',
+            content: (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing['3'] }}>
+                <Pressable
+                  testID={`${testID}-options-button`}
+                  accessibilityRole="button"
+                  accessibilityLabel="List options"
+                  hitSlop={8}
+                  onPress={() => setOptionsSheetVisible(true)}
+                >
+                  <SettingsIcon size={22} strokeWidth={1.75} color={colors.text.secondary} />
+                </Pressable>
+                <Button
+                  testID={`${testID}-cancel`}
+                  label="Cancel"
+                  variant="ghost"
+                  size="sm"
+                  onPress={onDismiss}
+                />
+              </View>
+            ),
           }}
-        >
-          <Text style={[typography.headline, { color: colors.text.primary }]}>
-            {mode === 'replace' ? 'Replace Exercise' : 'Add Exercise'}
-          </Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing['3'] }}>
-            <Pressable
-              testID={`${testID}-options-button`}
-              accessibilityRole="button"
-              accessibilityLabel="List options"
-              hitSlop={8}
-              onPress={() => setOptionsSheetVisible(true)}
-            >
-              <SettingsIcon size={22} strokeWidth={1.75} color={colors.text.secondary} />
-            </Pressable>
-            <Button
-              testID={`${testID}-cancel`}
-              label="Cancel"
-              variant="ghost"
-              size="sm"
-              onPress={onDismiss}
-            />
-          </View>
-        </View>
+          safeTop
+        />
   ```
 
   Design decisions to preserve — a junior dev should not "clean up" any of
   these:
-  - **Gear icon goes to the LEFT of Cancel, both wrapped in one new
-    right-side `View`.** The outer row's `justifyContent: 'space-between'`
-    must keep seeing exactly two children (title, right-group) — same shape
-    as today — not three. Do not put the gear icon as a third direct child
-    of the outer row.
-  - **Do not swap the order** (Cancel then gear icon). Cancel's tap target —
-    the one-thumb, muscle-memory dismiss action every existing picker
-    session already uses — must not move position within the row.
+  - **`right: { kind: 'custom', content: ... }`, not two separate slots.**
+    `SheetHeaderSlot`'s `'custom'` variant is documented in PRD A's own §4.2 as
+    "the escape hatch for clusters like `ExerciseDetailScreen`'s Edit+⋯ pair"
+    — exactly this shape (two elements sharing one side). `SheetHeader` only
+    accepts a single `left`/`right` slot each; do not invent a second prop or
+    try to pass an array.
+  - **Gear icon goes to the LEFT of Cancel inside that one custom `View`.**
+    Do not swap the order — Cancel's tap target, the one-thumb, muscle-memory
+    dismiss action every existing picker session already uses, must not move.
+  - **Cancel stays a `Button` (`variant="ghost" size="sm"`), not `SheetHeader`'s
+    `kind: 'label'` text slot.** `kind: 'label'` would restyle Cancel as a bare
+    accent-colored text link (the look `ExerciseTypeSheet`'s own *left-side*
+    Cancel uses) — a different existing visual language for a different
+    header. PRD §9.5 requires the *visual outcome* to carry over unchanged
+    from the original hand-rolled version, so Cancel keeps its pill-shaped
+    ghost-button look exactly as before; only the surrounding chrome (title
+    row layout, safe-area padding) comes from the new primitive.
+  - **No `left` slot.** Passing only `right` means `SheetHeader`'s own
+    `hasLeft/hasRight` algorithm left-aligns the title automatically (`textAlign:
+    !hasLeft && !hasRight ? 'center' : 'left'`) — the same left-aligned
+    position the title already had, with no extra prop needed to force it.
+  - **`safeTop` — pass `true`.** This is a `detent="full"` sheet sitting at
+    the physical screen top; every other `detent="full"` sheet that has
+    already adopted `SheetHeader` passes `safeTop` (`ExerciseTypeSheet`,
+    `SaveWorkoutSheet`, `LogEntrySheet`, `ReorderExercisesSheet`,
+    `MultiSelectOptionSheet`, `PlateCalculatorSheet`). Note this is a small
+    byproduct improvement, not scope creep: the old hand-rolled header had no
+    top-safe-area handling at all, and adopting the shared primitive fixes
+    that for free by following the same convention every sibling already
+    uses — it isn't a new decision being introduced by this task.
   - **`accessibilityLabel="List options"`, not `"Settings"`.** This is
     deliberate, not an oversight: this icon does not open the app Settings
     screen directly, it opens a small local sheet that *also* links to
@@ -409,10 +443,11 @@ file, but in genuinely disjoint locations).
   - Pressing it calls `setOptionsSheetVisible(true)` (verified once Task 6
     wires the sheet's actual render — this task alone just needs the
     `onPress` wired to that setter, which already exists from Task 3).
-  - The outer header row still has exactly two direct children (title,
-    right-side group `View`); `justifyContent: 'space-between'` behavior is
-    visually unchanged from before this edit (title left, everything else
-    right).
+  - `SheetHeader` renders with `testID={`${testID}-header`}`, `title` equal to
+    the mode-conditional string, and no `left` prop; the title remains
+    left-aligned and everything else (gear icon + Cancel) renders
+    right-aligned — visually unchanged from the pre-reconciliation hand-rolled
+    layout.
   - `Cancel`'s own `testID`, label, and `onPress={onDismiss}` are unchanged.
 
 ---
@@ -593,12 +628,10 @@ file, but in genuinely disjoint locations).
   or a sort-order control)? Nothing blocks on this — the PRD explicitly
   designed this scope to be cheap to revise in either direction (delete one
   file + revert one header edit) if the answer is "no, something else."
-- **§9.5 PRD A reconciliation (flagged, not blocking):** this task list
-  implements the header change against `ExercisePickerSheet.tsx`'s current
-  hand-rolled header markup, because PRD A (`sheet-header-footer-foundation`)
-  does not exist on disk yet. If/when PRD A ships a shared header primitive
-  other sheets are expected to adopt, someone should schedule a small
-  follow-up to migrate this header onto that primitive, preserving the same
-  visual outcome (title left, gear icon + Cancel grouped right). No action
-  needed from you before this task list can be executed — just a heads-up for
-  whoever owns PRD A once it lands.
+- **§9.5 PRD A reconciliation — resolved, no action needed:** PRD A
+  (`sheet-header-footer-foundation`) has since shipped and merged, so this
+  task list (Tasks 2 and 5) now builds the header change directly against the
+  real `SheetHeader` primitive instead of the old hand-rolled markup, using
+  the same `right: { kind: 'custom', ... }` pattern PRD A's own docs call out
+  for multi-element header clusters. The visual outcome (title left, gear
+  icon + Cancel grouped right) is unchanged from the original plan.
