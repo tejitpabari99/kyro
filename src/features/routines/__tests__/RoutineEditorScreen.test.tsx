@@ -44,14 +44,18 @@ jest.mock('@sentry/react-native', () => ({
   captureException: jest.fn(),
 }));
 
-// `ExercisePickerSheet` -> `ExerciseDetailSheet` -> `ExerciseDetailScreen`
-// -> `@/lib/files` (native-only top-level imports, unavailable under Jest,
-// 08 §5) — same convention `ExerciseCard.test.tsx` already uses.
+// The "Add Exercise"/"Replace" picker (`ExercisePickerSheet`) renders each
+// row via `ExerciseRow`, which calls `resolveExerciseThumbnailSource`
+// (`exercise-thumbnail.ts`) to resolve custom-exercise photo thumbnails —
+// that helper imports `@/lib/files` (native-only top-level imports,
+// unavailable under Jest, 08 §5) — mocked wholesale, same convention
+// `ExerciseCard.operations.test.tsx` established.
 jest.mock('@/lib/files');
 
 jest.mock('expo-router', () => ({
   ...jest.requireActual('expo-router'),
   router: { push: jest.fn(), back: jest.fn(), replace: jest.fn() },
+  useFocusEffect: () => {},
 }));
 
 interface Fixture {

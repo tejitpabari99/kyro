@@ -63,6 +63,7 @@ jest.mock('@sentry/react-native', () => ({
 jest.mock('expo-router', () => ({
   ...jest.requireActual('expo-router'),
   router: { push: jest.fn(), back: jest.fn(), replace: jest.fn() },
+  useFocusEffect: () => {},
 }));
 
 // M2-14: the finish flow cancels any pending rest-timer notification
