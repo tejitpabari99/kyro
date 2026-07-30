@@ -382,25 +382,59 @@ export default function RootLayout(): React.JSX.Element | null {
         <QueryClientProvider client={queryClient}>
           <ThemeProvider preference={themePreference} onPreferenceChange={handleThemePreferenceChange}>
             <Stack screenOptions={{ headerShown: false }}>
+              {/* Task 7 (09-tabs-navigation-restructure), PRD §4.4: every
+                  fullScreenModal route below also gets
+                  `gestureDirection: 'vertical'` — swipe down to dismiss.
+                  PRD §4.4 describes this via react-native-screens' own
+                  `swipeDirection` prop name, but at the navigation-options
+                  layer `<Stack.Screen options>` actually accepts
+                  (this codebase's installed `NativeStackNavigationOptions`,
+                  from expo-router's vendored native-stack fork), the
+                  equivalent, correctly-typed option is `gestureDirection`
+                  (`gestureDirection?: ScreenProps['swipeDirection']`) —
+                  `swipeDirection` itself only exists on the underlying
+                  native `ScreenProps`, not this options type, so using it
+                  literally here fails `tsc`. Per that type's own doc
+                  comment, `gestureDirection: 'vertical'` bundles
+                  `fullScreenGestureEnabled: true` +
+                  `animationMatchesGesture: true` + `animation:
+                  'slide_from_bottom'` by default, matching each route's
+                  existing `slide_from_bottom` entrance. */}
               <Stack.Screen
                 name="workout/active"
-                options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
+                options={{
+                  presentation: 'fullScreenModal',
+                  animation: 'slide_from_bottom',
+                  gestureDirection: 'vertical',
+                }}
               />
               {/* M3-04, 04 §2.1 / 06 §3: "Full-screen modal" — same presentation
                   as workout/active above. */}
               <Stack.Screen
                 name="routine/new"
-                options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
+                options={{
+                  presentation: 'fullScreenModal',
+                  animation: 'slide_from_bottom',
+                  gestureDirection: 'vertical',
+                }}
               />
               <Stack.Screen
                 name="routine/[id]/edit"
-                options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
+                options={{
+                  presentation: 'fullScreenModal',
+                  animation: 'slide_from_bottom',
+                  gestureDirection: 'vertical',
+                }}
               />
               {/* M4-05, 02 §15: the past-workout editor — same fullScreenModal
                   presentation as every other full-logger-shaped screen above. */}
               <Stack.Screen
                 name="workout/[id]/edit"
-                options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
+                options={{
+                  presentation: 'fullScreenModal',
+                  animation: 'slide_from_bottom',
+                  gestureDirection: 'vertical',
+                }}
               />
               {/* M5-07, 05 §7.2/06 §3: the Hevy CSV import flow — same
                   cross-tab, fullScreenModal presentation as every route
@@ -408,7 +442,11 @@ export default function RootLayout(): React.JSX.Element | null {
                   presented as a modal" convention). */}
               <Stack.Screen
                 name="import/hevy"
-                options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
+                options={{
+                  presentation: 'fullScreenModal',
+                  animation: 'slide_from_bottom',
+                  gestureDirection: 'vertical',
+                }}
               />
               {/* M5-09, 05 §9/06 §3: the Restore-from-backup flow — same
                   cross-tab, fullScreenModal presentation as every route
@@ -417,7 +455,11 @@ export default function RootLayout(): React.JSX.Element | null {
                   CSV already uses (`app/(tabs)/profile/settings/index.tsx`). */}
               <Stack.Screen
                 name="backup/restore"
-                options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
+                options={{
+                  presentation: 'fullScreenModal',
+                  animation: 'slide_from_bottom',
+                  gestureDirection: 'vertical',
+                }}
               />
             </Stack>
           </ThemeProvider>
