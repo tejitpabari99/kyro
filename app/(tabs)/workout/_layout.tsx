@@ -8,7 +8,7 @@
  * header for the layering reason).
  */
 import React from 'react';
-import { Slot } from 'expo-router';
+import { Stack } from 'expo-router';
 
 import { reportBoundaryError } from '@/lib/error-reporting';
 import { ErrorBoundary } from '@/ui/ErrorBoundary';
@@ -16,7 +16,7 @@ import { ErrorBoundary } from '@/ui/ErrorBoundary';
 export default function WorkoutTabLayout(): React.JSX.Element {
   return (
     <ErrorBoundary boundaryName="tab:workout" onError={reportBoundaryError}>
-      <Slot />
+      <Stack screenOptions={{ headerShown: false, gestureEnabled: true }} />
     </ErrorBoundary>
   );
 }
