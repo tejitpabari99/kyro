@@ -241,7 +241,7 @@ function RestTimerPanelControls({
 }
 
 export function TimerPill({ testID = 'timer-pill' }: TimerPillProps): React.JSX.Element | null {
-  const { colors, typography, spacing, radii } = useTheme();
+  const { colors, typography, spacing } = useTheme();
   const insets = useSafeAreaInsets();
 
   const timer = useRestTimerStore((state) => state.timer);
