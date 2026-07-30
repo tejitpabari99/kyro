@@ -4,7 +4,7 @@
  * the finish flow's own post-save `router.replace` (`ActiveWorkoutScreen
  * .tsx`'s `handleSaveWorkout`). Sits alongside `index.tsx` under this same
  * `app/(tabs)/home/` directory (its `_layout.tsx` already wraps both in
- * one `ErrorBoundary` via `<Slot />`) rather than as a top-level
+ * one `ErrorBoundary` via `<Stack />`) rather than as a top-level
  * `app/home/[id].tsx` — deliberately avoiding a second, colliding
  * "home" route root (unlike `app/exercise/[id].tsx`, which is top-level
  * *because* `(tabs)/exercises/` is a different, plural directory name; here

@@ -1,6 +1,6 @@
 /**
  * Workout tab segment layout (M0-11) — 06 §9: "root ErrorBoundary per tab".
- * Wraps this tab's route subtree (`<Slot />`) in the shared
+ * Wraps this tab's route subtree (`<Stack />`) in the shared
  * `ErrorBoundary` (`src/ui/ErrorBoundary.tsx`) so a thrown render error
  * anywhere under this tab renders the themed fallback instead of crashing
  * the whole app; `onError` reports to the local log ring buffer + Sentry

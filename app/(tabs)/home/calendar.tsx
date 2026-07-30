@@ -3,7 +3,7 @@
  * Calendar icon already navigates to (`router.push('/history/calendar')`,
  * wired in M4-03). Sits alongside `index.tsx`/`[id].tsx` under this same
  * `app/(tabs)/home/` directory (that folder's own `_layout.tsx` already
- * wraps every route here in one `ErrorBoundary` via `<Slot />`) for the
+ * wraps every route here in one `ErrorBoundary` via `<Stack />`) for the
  * same reason `[id].tsx`'s own header gives: avoiding a second, colliding
  * "home" route root. Wires the real `WorkoutRepositoryImpl` into
  * `src/features/calendar/CalendarScreen.tsx`, which holds all of this

@@ -109,7 +109,7 @@
  * to `AppState` for the life of the app and silently completes an already-
  * expired rest timer on every foreground transition, regardless of which
  * tab/screen is currently showing (the mini-bar can display a running timer
- * on any of the 4 tabs, not just the logger, so this belongs at the root,
+ * on any of the 3 tabs, not just the logger, so this belongs at the root,
  * not tied to `ActiveWorkoutScreen`'s own mount lifecycle).
  *
  * --- Sentry init (M0-11), deferred past first frame -----------------------
