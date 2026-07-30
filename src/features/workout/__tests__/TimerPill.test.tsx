@@ -15,15 +15,19 @@
  * convention (both are true native seams — `expo-haptics`/`expo-audio` —
  * unavailable under Jest; see each module's own file header).
  */
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import * as Linking from 'expo-linking';
 import React from 'react';
+import { StyleSheet } from 'react-native';
+import { getAnimatedStyle } from 'react-native-reanimated';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 
 import { SETTINGS_DEFAULTS } from '@/data/settings/settings-schema';
 import { useSettingsStore } from '@/features/settings/settings-store';
 import { selection, timerComplete } from '@/lib/haptics';
 import { playTimerChime } from '@/lib/sound';
 import { ThemeProvider } from '@/ui/theme-provider';
+import { colors } from '@/ui/tokens';
 
 import { RestTimerPermissionNotice, TimerPill } from '../TimerPill';
 import { useRestTimerStore } from '../restTimerStore';
@@ -272,6 +276,99 @@ describe('TimerPill (M2-11)', () => {
         __DEV__ = original;
       }
     });
+  });
+});
+
+describe('TimerPill — bottom panel redesign (PRD J)', () => {
+  it('panel is edge-to-edge and its bottom padding includes the live safe-area inset', async () => {
+    seedTimer(60_000);
+    await render(
+      <SafeAreaInsetsContext.Provider value={{ top: 0, right: 0, bottom: 34, left: 0 }}>
+        <ThemeProvider preference="dark">
+          <TimerPill testID="pill" />
+        </ThemeProvider>
+      </SafeAreaInsetsContext.Provider>,
+    );
+    const flatStyle = StyleSheet.flatten(screen.getByTestId('pill').props.style);
+    expect(flatStyle.left).toBe(0);
+    expect(flatStyle.right).toBe(0);
+    expect(flatStyle.bottom).toBe(0);
+    expect(flatStyle.paddingBottom).toBe(34);
+  });
+
+  it('renders the panel controls in Hevy order: -15, +15, Skip', async () => {
+    seedTimer(60_000);
+    await renderPill();
+    const orderedIds = screen
+      .getAllByRole('button')
+      .map((el) => el.props.testID)
+      .filter((id): id is string => typeof id === 'string' && !id.includes('sheet'));
+    expect(orderedIds.indexOf('pill-minus15')).toBeLessThan(orderedIds.indexOf('pill-plus15'));
+    expect(orderedIds.indexOf('pill-plus15')).toBeLessThan(orderedIds.indexOf('pill-skip'));
+  });
+
+  it.each(['dark', 'light'] as const)(
+    'Skip is filled with semantic.info / text semantic.onInfo in %s theme',
+    async (theme) => {
+      seedTimer(60_000);
+      await render(
+        <ThemeProvider preference={theme}>
+          <TimerPill testID="pill" />
+        </ThemeProvider>,
+      );
+      const skip = screen.getByTestId('pill-skip');
+      expect(StyleSheet.flatten(skip.props.style).backgroundColor).toBe(
+        colors[theme].semantic.info,
+      );
+      const skipLabel = within(skip).getByText('Skip');
+      expect(StyleSheet.flatten(skipLabel.props.style).color).toBe(
+        colors[theme].semantic.onInfo,
+      );
+    },
+  );
+
+  // Open Questions #3: the spec's literal mechanics asserted on
+  // `StyleSheet.flatten(pill.props.style).transform` directly, on the
+  // assumption that a settled Reanimated animation gets synced back onto the
+  // host component's own `style` prop. Running this under this repo's actual
+  // `react-native-reanimated` 4.x Jest fallback shows that sync path
+  // (`AnimatedComponent`'s `FORCE_REACT_RENDER_FOR_SETTLED_ANIMATIONS`
+  // branch) never fires under Jest — it depends on
+  // `PropsRegistryGarbageCollector` registering a *real* native view tag,
+  // which the JS/web fallback never produces (always `-1`), so `props.style`
+  // itself never picks up the resolved `transform`. Reanimated's own
+  // `jestUtils` module ships `getAnimatedStyle(component)` for exactly this
+  // — it reads the same `jestAnimatedStyle`/`jestInlineStyle` bookkeeping
+  // props the fallback *does* populate on every `AnimatedComponent` instance
+  // under Jest, merged the same way the package's own `toHaveAnimatedStyle`
+  // matcher does internally. Swapped in below in place of
+  // `StyleSheet.flatten(...).props.style` for the animated `transform`
+  // check; the 300ms timer advances (comfortably past the real 250ms
+  // `withTiming` duration) and the reset-then-settle behavioral assertions
+  // are otherwise unchanged from the spec.
+  it('a new timer (different setId) re-triggers the entrance animation while the panel stays visible', async () => {
+    seedTimer(10_000, { setId: 'set1' });
+    await renderPill();
+    await act(async () => {
+      jest.advanceTimersByTime(300); // let the first entrance settle past 250ms
+    });
+    expect(getAnimatedStyle(screen.getByTestId('pill')).transform).toEqual([
+      { translateY: 0 },
+    ]);
+
+    await act(async () => {
+      seedTimer(30_000, { setId: 'set2' });
+    });
+    expect(getAnimatedStyle(screen.getByTestId('pill')).transform).toEqual([
+      { translateY: 220 },
+    ]);
+
+    await act(async () => {
+      jest.advanceTimersByTime(300);
+    });
+    expect(getAnimatedStyle(screen.getByTestId('pill')).transform).toEqual([
+      { translateY: 0 },
+    ]);
   });
 });
 
