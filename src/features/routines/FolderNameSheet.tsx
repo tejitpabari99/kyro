@@ -1,8 +1,8 @@
 /**
  * `FolderNameSheet` (M3-02) — the single-text-field `Sheet` used for both
  * "New Folder" (folder-plus icon, 04 §1) and a folder's ⋯ menu "Rename".
- * Feature-local rather than a `src/ui/` primitive, same call `NoteEditSheet`
- * (`src/features/workout/NoteEditSheet.tsx`, M2-09) makes for the identical
+ * Feature-local rather than a `src/ui/` primitive, same call `DurationEditSheet`
+ * (`src/features/workout/DurationEditSheet.tsx`, M2-05) makes for the identical
  * shape (a `Sheet` + one `TextInput` + Save button) — this is a
  * routines-specific text prompt, not a generic enough pattern to promote to
  * `src/ui/` yet (07 §5's "new primitives go in src/ui/" rule is for
@@ -39,8 +39,8 @@ export function FolderNameSheet({
 
   const [draft, setDraft] = useState(initialValue);
   // Re-seed the draft every time the sheet opens (same mid-render "derive
-  // state from a prop change" pattern `NoteEditSheet`/`DurationEditSheet`
-  // already use) so a stale draft from a previous open (a different
+  // state from a prop change" pattern `DurationEditSheet`
+  // already uses) so a stale draft from a previous open (a different
   // folder's rename, or a leftover create draft) never leaks in.
   const [wasVisible, setWasVisible] = useState(visible);
   if (visible !== wasVisible) {

@@ -127,7 +127,7 @@ export function AddWarmUpSetsSheet({
   const prefillDisplay = prefillWeightKg !== null ? toDisplay(prefillWeightKg, weightUnit) : null;
 
   const [draft, setDraft] = useState(prefillDisplay !== null ? String(prefillDisplay) : '');
-  // Re-seed the draft each time the sheet opens (mirrors `NoteEditSheet`'s
+  // Re-seed the draft each time the sheet opens (mirrors `DurationEditSheet`'s
   // "derive from a visible transition" pattern) — including re-seeding
   // once the previous-values query resolves after the sheet is already
   // open (a fast local DB read, but not guaranteed synchronous with the

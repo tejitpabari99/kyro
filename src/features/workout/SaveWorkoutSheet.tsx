@@ -11,7 +11,7 @@
  * (no `CalendarMonth`/day picker primitive exists yet, 07 §5 — same
  * documented limitation that file already carries) and the same
  * "re-seed every draft only on the visible:false->true transition" pattern
- * (`DurationEditSheet`/`NoteEditSheet`'s own file headers) so a still-open
+ * (`DurationEditSheet`'s own file header) so a still-open
  * sheet never fights the user's in-progress edits.
  *
  * **Volume/Sets are fixed** — the caller (`ActiveWorkoutScreen`) computes
@@ -108,7 +108,7 @@ export function SaveWorkoutSheet({
   // Re-seed every draft exactly once per visible:false->true transition —
   // see file header. Mid-render state adjustment (not a `useEffect`), the
   // established pattern for "derive state from a prop change" in this
-  // codebase (`DurationEditSheet.tsx`/`NoteEditSheet.tsx`).
+  // codebase (`DurationEditSheet.tsx`).
   const [wasVisible, setWasVisible] = useState(visible);
   if (visible !== wasVisible) {
     setWasVisible(visible);

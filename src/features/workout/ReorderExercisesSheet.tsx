@@ -61,8 +61,8 @@ export function ReorderExercisesSheet({
   const { colors, typography, spacing } = useTheme();
 
   const [draft, setDraft] = useState<ReorderableExercise[]>(exercises.slice());
-  // Re-seed on every open transition (same pattern as `NoteEditSheet` /
-  // `DurationEditSheet`) so a stale draft from a previous open never leaks
+  // Re-seed on every open transition (same pattern as `DurationEditSheet`)
+  // so a stale draft from a previous open never leaks
   // in, and so a workout mutation that happened while the sheet was closed
   // (e.g. an exercise added elsewhere) is reflected the next time it opens.
   const [wasVisible, setWasVisible] = useState(visible);

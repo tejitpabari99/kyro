@@ -96,7 +96,7 @@ export function ExercisePickerSheet({
 
   // Reset every transient picker state on each open transition — the same
   // mid-render "derive state from a prop change" pattern used throughout
-  // this feature (`NoteEditSheet`, `ReorderExercisesSheet`) — so a stale
+  // this feature (`DurationEditSheet`, `ReorderExercisesSheet`) — so a stale
   // selection/search from a previous open never leaks into the next.
   const [wasVisible, setWasVisible] = useState(visible);
   if (visible !== wasVisible) {
