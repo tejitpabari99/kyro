@@ -131,6 +131,8 @@ export interface ThemeColors {
     warning: string;
     /** Drop-set badge `D` only. */
     info: string;
+    /** Label on `semantic.info`-filled controls (e.g. the rest-timer panel's Skip button). */
+    onInfo: string;
     /** Checked states, PR banner — equals `accent.primary` (no separate green). */
     success: string;
     /** Second chart series (teal). */
@@ -190,6 +192,7 @@ const darkColors: ThemeColors = {
     danger: '#EF4444',
     warning: '#F59E0B',
     info: '#3B82F6',
+    onInfo: '#FFFFFF',
     success: '#10B981', // = accent.primary (dark)
     chartSecondary: '#2DD4BF',
     overlay: alphaOverlayToRgba(darkAlphaOverlays.overlay),
@@ -223,6 +226,7 @@ const lightColors: ThemeColors = {
     danger: '#DC2626',
     warning: '#D97706',
     info: '#2563EB',
+    onInfo: '#FFFFFF',
     success: '#059669', // = accent.primary (light)
     chartSecondary: '#14B8A6',
     overlay: alphaOverlayToRgba(lightAlphaOverlays.overlay),

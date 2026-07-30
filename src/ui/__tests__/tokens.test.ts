@@ -89,6 +89,12 @@ describe.each(THEMES)('token contrast (%s theme, 07 §2.6)', (theme) => {
     });
   });
 
+  describe('info-filled controls (label on fill)', () => {
+    it('semantic.onInfo on semantic.info is >= 3:1', () => {
+      expect(contrastRatio(t.semantic.onInfo, t.semantic.info)).toBeGreaterThanOrEqual(3);
+    });
+  });
+
   describe('checked-row tint (bg.accentSubtle) keeps cell text readable', () => {
     const overlay = alphaOverlays[theme].bgAccentSubtle;
     const tintedBackgrounds: [name: string, hex: string][] = [
