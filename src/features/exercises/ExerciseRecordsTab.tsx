@@ -91,7 +91,7 @@ function PrCard({
     <Pressable
       testID={testID}
       accessibilityRole="button"
-      onPress={() => router.push(`/history/${holder.workoutId}` as never)}
+      onPress={() => router.push(`/home/${holder.workoutId}` as never)}
       style={{ marginBottom: spacing['3'] }}
     >
       <Card>
@@ -172,7 +172,7 @@ function SetRecordRow({
     <Pressable
       testID={testID}
       accessibilityRole="button"
-      onPress={() => router.push(`/history/${holder.workoutId}` as never)}
+      onPress={() => router.push(`/home/${holder.workoutId}` as never)}
       style={{ paddingHorizontal: spacing['4'] }}
     >
       {row}
