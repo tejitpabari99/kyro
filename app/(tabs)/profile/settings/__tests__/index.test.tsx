@@ -4,7 +4,7 @@
  * Weight Unit control above): Default Rest Timer (wheel sheet), Previous
  * Workout Values, RPE Tracking, Smart Superset Scrolling, Inline Timer,
  * Keep Awake, Sounds (nav), Warm-Up Sets in stats, Plate Calculator (nav),
- * Warm-up Calculator (nav), Live PR Notification.
+ * Live PR Notification.
  *
  * The "applies instantly app-wide via the root `ThemeProvider`" half of the
  * Theme acceptance gate is covered separately in
@@ -330,19 +330,6 @@ describe('Settings screen — Workouts group (M2-17, 02 §13)', () => {
 
     fireEvent.press(screen.getByTestId('settings-plate-calc-link'));
     expect(router.push).toHaveBeenCalledWith('/profile/settings/plate-calculator');
-  });
-
-  it('navigates to the Warm-up Calculator screen', async () => {
-    await render(
-      <QueryClientProvider client={queryClient}>
-        <ThemeProvider>
-          <SettingsScreen />
-        </ThemeProvider>
-      </QueryClientProvider>,
-    );
-
-    fireEvent.press(screen.getByTestId('settings-warmup-calc-link'));
-    expect(router.push).toHaveBeenCalledWith('/profile/settings/warmup-calculator');
   });
 
   it('navigates to the Archived Exercises screen', async () => {

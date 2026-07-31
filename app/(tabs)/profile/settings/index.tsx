@@ -12,8 +12,8 @@
  * exception — it bundles 4 sub-settings (`sounds.timer_sound` + three
  * volumes), so it gets its own nav row → `sounds.tsx`, same "settings
  * screen writes, feature consumer reads" split as the existing Plate
- * Calculator / Warm-up Calculator nav rows (M2-15/M2-16, already built —
- * this task only adds the `ListRow` entries that link to them).
+ * Calculator nav row (M2-15, already built — this task only adds the
+ * `ListRow` entry that links to it).
  *
  * Every row reads its value via a reactive `useSettingsStore` selector, so
  * flipping a toggle here is what makes it "apply live mid-workout" for any
@@ -551,13 +551,6 @@ export default function SettingsScreen(): React.JSX.Element {
           title="Plate Calculator"
           chevron
           onPress={() => router.push('/profile/settings/plate-calculator')}
-        />
-
-        <ListRow
-          testID="settings-warmup-calc-link"
-          title="Warm-up Calculator"
-          chevron
-          onPress={() => router.push('/profile/settings/warmup-calculator')}
         />
 
         <ListRow
